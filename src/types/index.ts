@@ -37,17 +37,43 @@ export interface Lead {
   last_name: string;
   phone: string | null;
   phone_normalized: string | null;
+  phone2: string | null;
+  phone2_normalized: string | null;
+  phone3: string | null;
+  phone3_normalized: string | null;
   email: string | null;
+  email2: string | null;
   address_street: string | null;
   address_city: string | null;
   address_state: string | null;
   address_zip: string | null;
+  mailing_street: string | null;
+  mailing_city: string | null;
+  mailing_state: string | null;
+  mailing_zip: string | null;
   home_value: number | null;
   year_built: number | null;
+  sqft: number | null;
+  lot_size: number | null;
+  bedrooms: number | null;
+  bathrooms: number | null;
+  stories: number | null;
+  assessed_value: number | null;
+  last_sale_date: string | null;
+  last_sale_price: number | null;
+  owner_type: string | null;
+  apn: string | null;
   roof_age: number | null;
   roof_type: RoofType;
   roof_score: number | null;
   roof_material_notes: string | null;
+  hail_date: string | null;
+  hail_size_inches: number | null;
+  storm_id: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  enriched_at: string | null;
+  enrichment_source: string | null;
   status: LeadStatus;
   priority: LeadPriority;
   source_id: number | null;
@@ -93,6 +119,8 @@ export interface AppSettings {
   company_name: string;
   default_lead_status: LeadStatus;
   default_lead_priority: LeadPriority;
+  regrid_api_key: string | null;
+  auto_enrich_enabled: boolean;
   updated_at: string;
 }
 
@@ -121,4 +149,27 @@ export interface CSVImportResult {
   imported: number;
   skipped: number;
   errors: string[];
+}
+
+export interface IntegrationApiKey {
+  id: string;
+  name: string;
+  api_key: string;
+  source_id: number | null;
+  is_active: boolean;
+  last_used_at: string | null;
+  created_at: string;
+  lead_sources?: LeadSource;
+}
+
+export interface WebhookLog {
+  id: string;
+  api_key_id: string;
+  source_name: string | null;
+  payload_summary: string | null;
+  leads_imported: number;
+  duplicates_skipped: number;
+  errors: string[] | null;
+  created_at: string;
+  integration_api_keys?: { name: string };
 }

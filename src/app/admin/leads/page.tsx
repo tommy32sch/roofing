@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Search, PlusCircle, Upload } from 'lucide-react';
+import { Search, PlusCircle, Upload, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -201,7 +201,10 @@ function LeadsListContent() {
                 >
                   <TableCell>
                     <div>
-                      <p className="font-medium text-sm">{lead.first_name} {lead.last_name}</p>
+                      <p className="font-medium text-sm flex items-center gap-1">
+                        {lead.first_name} {lead.last_name}
+                        {lead.enriched_at && <span title="Enriched"><Sparkles className="h-3 w-3 text-amber-500" /></span>}
+                      </p>
                       <p className="text-xs text-muted-foreground md:hidden">
                         {[lead.address_city, lead.address_state].filter(Boolean).join(', ')}
                       </p>

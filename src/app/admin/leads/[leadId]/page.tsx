@@ -18,6 +18,10 @@ import {
   FileText,
   Eye,
   Plus,
+  CloudRain,
+  Building,
+  Sparkles,
+  MailOpen,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatDistanceToNow, format } from 'date-fns';
@@ -281,6 +285,14 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
         </TabsList>
 
         <TabsContent value="overview" className="space-y-4 mt-4">
+          {/* Enrichment badge */}
+          {lead.enriched_at && (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/50 rounded-md px-3 py-1.5 w-fit">
+              <Sparkles className="h-3 w-3" />
+              Enriched via {lead.enrichment_source || 'unknown'} on {format(new Date(lead.enriched_at), 'MMM d, yyyy')}
+            </div>
+          )}
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* Contact */}
             <Card>
@@ -294,10 +306,28 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
                     {lead.phone}
                   </a>
                 )}
+                {lead.phone2 && (
+                  <a href={`tel:${lead.phone2}`} className="flex items-center gap-2 text-sm hover:text-primary">
+                    <Phone className="h-4 w-4 text-muted-foreground" />
+                    {lead.phone2} <span className="text-xs text-muted-foreground">(2)</span>
+                  </a>
+                )}
+                {lead.phone3 && (
+                  <a href={`tel:${lead.phone3}`} className="flex items-center gap-2 text-sm hover:text-primary">
+                    <Phone className="h-4 w-4 text-muted-foreground" />
+                    {lead.phone3} <span className="text-xs text-muted-foreground">(3)</span>
+                  </a>
+                )}
                 {lead.email && (
                   <a href={`mailto:${lead.email}`} className="flex items-center gap-2 text-sm hover:text-primary">
                     <Mail className="h-4 w-4 text-muted-foreground" />
                     {lead.email}
+                  </a>
+                )}
+                {lead.email2 && (
+                  <a href={`mailto:${lead.email2}`} className="flex items-center gap-2 text-sm hover:text-primary">
+                    <Mail className="h-4 w-4 text-muted-foreground" />
+                    {lead.email2} <span className="text-xs text-muted-foreground">(2)</span>
                   </a>
                 )}
                 {!lead.phone && !lead.email && (
@@ -321,7 +351,13 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
                 {lead.home_value && (
                   <div className="flex items-center gap-2">
                     <Home className="h-4 w-4 text-muted-foreground" />
-                    ${lead.home_value.toLocaleString()}
+                    Est. ${lead.home_value.toLocaleString()}
+                  </div>
+                )}
+                {lead.assessed_value && (
+                  <div className="flex items-center gap-2">
+                    <Building className="h-4 w-4 text-muted-foreground" />
+                    Assessed ${lead.assessed_value.toLocaleString()}
                   </div>
                 )}
                 {lead.year_built && (
@@ -330,8 +366,39 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
                     Built {lead.year_built}
                   </div>
                 )}
+                <Separator />
+                <div className="grid grid-cols-2 gap-1">
+                  {lead.sqft && <div><span className="text-muted-foreground">Sqft:</span> {lead.sqft.toLocaleString()}</div>}
+                  {lead.lot_size && <div><span className="text-muted-foreground">Lot:</span> {lead.lot_size} acres</div>}
+                  {lead.bedrooms && <div><span className="text-muted-foreground">Beds:</span> {lead.bedrooms}</div>}
+                  {lead.bathrooms && <div><span className="text-muted-foreground">Baths:</span> {lead.bathrooms}</div>}
+                  {lead.stories && <div><span className="text-muted-foreground">Stories:</span> {lead.stories}</div>}
+                  {lead.owner_type && <div><span className="text-muted-foreground">Owner:</span> {lead.owner_type}</div>}
+                  {lead.apn && <div className="col-span-2"><span className="text-muted-foreground">APN:</span> {lead.apn}</div>}
+                  {lead.last_sale_date && <div><span className="text-muted-foreground">Last sold:</span> {lead.last_sale_date}</div>}
+                  {lead.last_sale_price && <div><span className="text-muted-foreground">Sale price:</span> ${lead.last_sale_price.toLocaleString()}</div>}
+                </div>
               </CardContent>
             </Card>
+
+            {/* Mailing Address (absentee owner indicator) */}
+            {lead.mailing_street && (
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1">
+                    <MailOpen className="h-3.5 w-3.5" />
+                    Mailing Address
+                    {fullAddress && lead.mailing_street.toLowerCase() !== lead.address_street?.toLowerCase() && (
+                      <span className="text-xs bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-200 px-1.5 py-0.5 rounded ml-1">Absentee</span>
+                    )}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="text-sm">
+                  <p>{lead.mailing_street}</p>
+                  <p>{[lead.mailing_city, lead.mailing_state, lead.mailing_zip].filter(Boolean).join(', ')}</p>
+                </CardContent>
+              </Card>
+            )}
 
             {/* Roof */}
             <Card>
@@ -361,6 +428,31 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
                 </div>
               </CardContent>
             </Card>
+
+            {/* Storm Data (conditional) */}
+            {(lead.hail_date || lead.hail_size_inches) && (
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1">
+                    <CloudRain className="h-3.5 w-3.5" />
+                    Storm Data
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    {lead.hail_date && (
+                      <div><span className="text-muted-foreground">Hail date:</span> {lead.hail_date}</div>
+                    )}
+                    {lead.hail_size_inches && (
+                      <div><span className="text-muted-foreground">Hail size:</span> {lead.hail_size_inches}&quot;</div>
+                    )}
+                    {lead.storm_id && (
+                      <div className="col-span-2"><span className="text-muted-foreground">Storm ID:</span> {lead.storm_id}</div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
 
             {/* Source */}
             <Card>

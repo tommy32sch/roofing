@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/supabase/server';
 import { getAuthenticatedAdmin } from '@/lib/auth/jwt';
 import { parsePhoneNumber } from 'libphonenumber-js';
+import { enrichLead } from '@/lib/integrations/regrid';
 
 export async function GET(request: NextRequest) {
   try {
@@ -110,6 +111,14 @@ export async function POST(request: NextRequest) {
       content: 'Lead created',
       created_by: admin.sub,
     });
+
+    // Auto-enrich with Regrid in the background (non-blocking)
+    enrichLead(lead.id, {
+      address_street: lead.address_street,
+      address_city: lead.address_city,
+      address_state: lead.address_state,
+      address_zip: lead.address_zip,
+    }).catch(() => {});
 
     return NextResponse.json({ success: true, lead }, { status: 201 });
   } catch {

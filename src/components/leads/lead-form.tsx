@@ -36,13 +36,25 @@ export function LeadForm({ lead, isEdit }: LeadFormProps) {
     first_name: lead?.first_name || '',
     last_name: lead?.last_name || '',
     phone: lead?.phone || '',
+    phone2: lead?.phone2 || '',
+    phone3: lead?.phone3 || '',
     email: lead?.email || '',
+    email2: lead?.email2 || '',
     address_street: lead?.address_street || '',
     address_city: lead?.address_city || '',
     address_state: lead?.address_state || '',
     address_zip: lead?.address_zip || '',
+    mailing_street: lead?.mailing_street || '',
+    mailing_city: lead?.mailing_city || '',
+    mailing_state: lead?.mailing_state || '',
+    mailing_zip: lead?.mailing_zip || '',
     home_value: lead?.home_value?.toString() || '',
     year_built: lead?.year_built?.toString() || '',
+    sqft: lead?.sqft?.toString() || '',
+    lot_size: lead?.lot_size?.toString() || '',
+    bedrooms: lead?.bedrooms?.toString() || '',
+    bathrooms: lead?.bathrooms?.toString() || '',
+    assessed_value: lead?.assessed_value?.toString() || '',
     roof_age: lead?.roof_age?.toString() || '',
     roof_type: lead?.roof_type || 'unknown',
     roof_score: lead?.roof_score?.toString() || '',
@@ -80,13 +92,25 @@ export function LeadForm({ lead, isEdit }: LeadFormProps) {
       first_name: form.first_name.trim(),
       last_name: form.last_name.trim(),
       phone: form.phone.trim() || null,
+      phone2: form.phone2.trim() || null,
+      phone3: form.phone3.trim() || null,
       email: form.email.trim() || null,
+      email2: form.email2.trim() || null,
       address_street: form.address_street.trim() || null,
       address_city: form.address_city.trim() || null,
       address_state: form.address_state.trim() || null,
       address_zip: form.address_zip.trim() || null,
+      mailing_street: form.mailing_street.trim() || null,
+      mailing_city: form.mailing_city.trim() || null,
+      mailing_state: form.mailing_state.trim() || null,
+      mailing_zip: form.mailing_zip.trim() || null,
       home_value: form.home_value ? parseInt(form.home_value, 10) : null,
       year_built: form.year_built ? parseInt(form.year_built, 10) : null,
+      sqft: form.sqft ? parseInt(form.sqft, 10) : null,
+      lot_size: form.lot_size ? parseFloat(form.lot_size) : null,
+      bedrooms: form.bedrooms ? parseInt(form.bedrooms, 10) : null,
+      bathrooms: form.bathrooms ? parseFloat(form.bathrooms) : null,
+      assessed_value: form.assessed_value ? parseInt(form.assessed_value, 10) : null,
       roof_age: form.roof_age ? parseInt(form.roof_age, 10) : null,
       roof_type: form.roof_type,
       roof_score: form.roof_score ? parseInt(form.roof_score, 10) : null,
@@ -168,6 +192,33 @@ export function LeadForm({ lead, isEdit }: LeadFormProps) {
               onChange={(e) => updateField('email', e.target.value)}
             />
           </div>
+          <div className="space-y-2">
+            <Label htmlFor="phone2">Phone 2</Label>
+            <Input
+              id="phone2"
+              type="tel"
+              value={form.phone2}
+              onChange={(e) => updateField('phone2', e.target.value)}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="email2">Email 2</Label>
+            <Input
+              id="email2"
+              type="email"
+              value={form.email2}
+              onChange={(e) => updateField('email2', e.target.value)}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="phone3">Phone 3</Label>
+            <Input
+              id="phone3"
+              type="tel"
+              value={form.phone3}
+              onChange={(e) => updateField('phone3', e.target.value)}
+            />
+          </div>
         </CardContent>
       </Card>
 
@@ -215,13 +266,22 @@ export function LeadForm({ lead, isEdit }: LeadFormProps) {
             </div>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="home_value">Home Value ($)</Label>
+            <Label htmlFor="home_value">Estimated Value ($)</Label>
             <Input
               id="home_value"
               type="number"
               value={form.home_value}
               onChange={(e) => updateField('home_value', e.target.value)}
               placeholder="250000"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="assessed_value">Assessed Value ($)</Label>
+            <Input
+              id="assessed_value"
+              type="number"
+              value={form.assessed_value}
+              onChange={(e) => updateField('assessed_value', e.target.value)}
             />
           </div>
           <div className="space-y-2">
@@ -233,6 +293,90 @@ export function LeadForm({ lead, isEdit }: LeadFormProps) {
               onChange={(e) => updateField('year_built', e.target.value)}
               placeholder="1995"
             />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="sqft">Sqft</Label>
+            <Input
+              id="sqft"
+              type="number"
+              value={form.sqft}
+              onChange={(e) => updateField('sqft', e.target.value)}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="lot_size">Lot Size (acres)</Label>
+            <Input
+              id="lot_size"
+              type="number"
+              step="0.01"
+              value={form.lot_size}
+              onChange={(e) => updateField('lot_size', e.target.value)}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="bedrooms">Bedrooms</Label>
+            <Input
+              id="bedrooms"
+              type="number"
+              value={form.bedrooms}
+              onChange={(e) => updateField('bedrooms', e.target.value)}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="bathrooms">Bathrooms</Label>
+            <Input
+              id="bathrooms"
+              type="number"
+              step="0.5"
+              value={form.bathrooms}
+              onChange={(e) => updateField('bathrooms', e.target.value)}
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Mailing Address */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">Mailing Address</CardTitle>
+          <p className="text-xs text-muted-foreground">If different from property address (absentee owner)</p>
+        </CardHeader>
+        <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-2 md:col-span-2">
+            <Label htmlFor="mailing_street">Street</Label>
+            <Input
+              id="mailing_street"
+              value={form.mailing_street}
+              onChange={(e) => updateField('mailing_street', e.target.value)}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="mailing_city">City</Label>
+            <Input
+              id="mailing_city"
+              value={form.mailing_city}
+              onChange={(e) => updateField('mailing_city', e.target.value)}
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="mailing_state">State</Label>
+              <Input
+                id="mailing_state"
+                value={form.mailing_state}
+                onChange={(e) => updateField('mailing_state', e.target.value)}
+                maxLength={2}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="mailing_zip">ZIP</Label>
+              <Input
+                id="mailing_zip"
+                value={form.mailing_zip}
+                onChange={(e) => updateField('mailing_zip', e.target.value)}
+                maxLength={10}
+              />
+            </div>
           </div>
         </CardContent>
       </Card>

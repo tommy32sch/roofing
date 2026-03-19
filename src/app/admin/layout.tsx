@@ -14,6 +14,7 @@ import {
   Menu,
   Moon,
   Sun,
+  Webhook,
 } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { toast } from 'sonner';
@@ -31,6 +32,7 @@ const navItems = [
   { href: '/admin', label: 'Dashboard', icon: Home },
   { href: '/admin/leads', label: 'Leads', icon: Users },
   { href: '/admin/leads/import', label: 'Import', icon: Upload },
+  { href: '/admin/integrations', label: 'Integrations', icon: Webhook },
   { href: '/admin/settings', label: 'Settings', icon: Settings },
 ];
 

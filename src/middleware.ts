@@ -6,10 +6,12 @@ const PUBLIC_PATHS = new Set([
   '/admin/login',
 ]);
 
+const PUBLIC_PREFIXES = ['/api/webhooks/'];
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  if (PUBLIC_PATHS.has(pathname)) {
+  if (PUBLIC_PATHS.has(pathname) || PUBLIC_PREFIXES.some(p => pathname.startsWith(p))) {
     return NextResponse.next();
   }
 
@@ -46,5 +48,5 @@ function handleUnauthenticated(request: NextRequest, isAPI: boolean): NextRespon
 }
 
 export const config = {
-  matcher: ['/admin/:path*', '/api/admin/:path*'],
+  matcher: ['/admin/:path*', '/api/admin/:path*', '/api/webhooks/:path*'],
 };
