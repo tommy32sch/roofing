@@ -121,7 +121,21 @@ export interface AppSettings {
   default_lead_priority: LeadPriority;
   regrid_api_key: string | null;
   auto_enrich_enabled: boolean;
+  email_import_enabled: boolean;
+  allowed_sender_emails: string[] | null;
   updated_at: string;
+}
+
+export interface EmailImportLog {
+  id: string;
+  sender_email: string;
+  subject: string | null;
+  attachment_name: string | null;
+  source_id: number | null;
+  leads_imported: number;
+  duplicates_skipped: number;
+  errors: string[] | null;
+  created_at: string;
 }
 
 export interface LeadWithSource extends Lead {
