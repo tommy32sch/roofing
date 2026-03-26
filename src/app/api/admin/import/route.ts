@@ -3,6 +3,13 @@ import { db } from '@/lib/supabase/server';
 import { getAuthenticatedAdmin } from '@/lib/auth/jwt';
 import { parseLeadCSV } from '@/lib/csv/parser';
 import { LIMITS } from '@/lib/utils/validation';
+import * as XLSX from 'xlsx';
+
+function excelToCSV(buffer: ArrayBuffer): string {
+  const workbook = XLSX.read(buffer, { type: 'array' });
+  const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+  return XLSX.utils.sheet_to_csv(firstSheet);
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -22,7 +29,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'File too large (max 5MB)' }, { status: 400 });
     }
 
-    const csvText = await file.text();
+    const fileName = file.name.toLowerCase();
+    let csvText: string;
+
+    if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
+      const buffer = await file.arrayBuffer();
+      csvText = excelToCSV(buffer);
+    } else {
+      csvText = await file.text();
+    }
+
     const { leads, errors, skipped } = parseLeadCSV(csvText);
 
     if (leads.length === 0) {

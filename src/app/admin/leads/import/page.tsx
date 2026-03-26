@@ -20,8 +20,9 @@ export default function ImportPage() {
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const selected = e.target.files?.[0];
     if (selected) {
-      if (!selected.name.endsWith('.csv')) {
-        toast.error('Please select a CSV file');
+      const name = selected.name.toLowerCase();
+      if (!name.endsWith('.csv') && !name.endsWith('.xlsx') && !name.endsWith('.xls')) {
+        toast.error('Please select a CSV or Excel file');
         return;
       }
       setFile(selected);
@@ -77,7 +78,7 @@ export default function ImportPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Upload CSV File</CardTitle>
+          <CardTitle className="text-base">Upload CSV or Excel File</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div
@@ -87,7 +88,7 @@ export default function ImportPage() {
             <input
               ref={fileRef}
               type="file"
-              accept=".csv"
+              accept=".csv,.xlsx,.xls"
               onChange={handleFileChange}
               className="hidden"
             />
@@ -103,7 +104,7 @@ export default function ImportPage() {
               <div>
                 <Upload className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
                 <p className="text-sm text-muted-foreground">
-                  Click to select a CSV file or drag and drop
+                  Click to select a CSV or Excel file, or drag and drop
                 </p>
               </div>
             )}
