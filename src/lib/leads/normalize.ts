@@ -36,6 +36,7 @@ export const FIELD_MAP: Record<string, string> = {
   'telephone': 'phone',
   'contact phone': 'phone',
   'phone1': 'phone',
+  'phone 1': 'phone',
 
   // Email
   'email': 'email',
@@ -74,6 +75,7 @@ export const FIELD_MAP: Record<string, string> = {
   'postal': 'address_zip',
   'postal code': 'address_zip',
   'postal_code': 'address_zip',
+  'property zip': 'address_zip',
 
   // Home value (estimated / market)
   'home_value': 'home_value',
@@ -137,20 +139,28 @@ export const FIELD_MAP: Record<string, string> = {
   'square_footage': 'sqft',
   'building sqft': 'sqft',
   'building_sqft': 'sqft',
+  'total building area square feet': 'sqft',
   'lot size': 'lot_size',
   'lot_size': 'lot_size',
   'lotsizearea': 'lot_size',
   'lot size area': 'lot_size',
+  'lot size square feet': 'lot_size',
   'bedrooms': 'bedrooms',
   'beds': 'bedrooms',
+  'bedroom count': 'bedrooms',
   'bathrooms': 'bathrooms',
   'baths': 'bathrooms',
+  'bathroom count': 'bathrooms',
   'stories': 'stories',
   'story': 'stories',
 
   // Assessed value (separate from home_value / estimated value)
   'assessed value': 'assessed_value',
   'assessed_value': 'assessed_value',
+  'total assessed value': 'assessed_value',
+
+  // Estimated value (BatchLeads)
+  'current estimated value': 'home_value',
 
   // Sale history
   'last sale date': 'last_sale_date',
@@ -165,6 +175,10 @@ export const FIELD_MAP: Record<string, string> = {
   'owner_type': 'owner_type',
   'owntype': 'owner_type',
   'ownership type': 'owner_type',
+  'property type detail': 'owner_type',
+
+  // Owner occupied (store as note)
+  'owner occupied': 'owner_occupied',
 
   // APN / Parcel number
   'apn': 'apn',
