@@ -10,7 +10,7 @@ export interface CSVParseResult {
 }
 
 function normalizeHeader(header: string): string {
-  return header.toLowerCase().trim().replace(/[_-]/g, ' ').replace(/\s+/g, ' ');
+  return header.replace(/[^\x20-\x7E]/g, '').toLowerCase().trim().replace(/[_-]/g, ' ').replace(/\s+/g, ' ');
 }
 
 export function parseLeadCSV(csvText: string): CSVParseResult {

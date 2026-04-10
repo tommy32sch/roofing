@@ -260,8 +260,9 @@ export interface NormalizedLead {
  * Normalize a raw field key to our standard field name.
  */
 export function mapFieldName(key: string): string | null {
-  const normalized = key.toLowerCase().trim().replace(/[_-]/g, ' ').replace(/\s+/g, ' ');
-  return FIELD_MAP[normalized] || FIELD_MAP[key.toLowerCase().trim()] || null;
+  const cleaned = key.replace(/[^\x20-\x7E]/g, '').trim(); // strip non-printable/non-ASCII chars
+  const normalized = cleaned.toLowerCase().replace(/[_-]/g, ' ').replace(/\s+/g, ' ');
+  return FIELD_MAP[normalized] || FIELD_MAP[cleaned.toLowerCase().trim()] || null;
 }
 
 /**
@@ -330,8 +331,19 @@ export function parseDecimal(value: string | null | undefined): number | null {
 export function normalizeLeadData(raw: Record<string, unknown>): NormalizedLead | null {
   const mapped = mapRawFields(raw);
 
-  const firstName = mapped.first_name?.trim();
-  const lastName = mapped.last_name?.trim();
+  // Fallback: if mapRawFields didn't find first/last name, check raw keys directly
+  // (CSV parser's transformHeader may have already mapped them)
+  let firstName = mapped.first_name?.trim();
+  let lastName = mapped.last_name?.trim();
+
+  if (!firstName) {
+    const rawFirst = raw['first_name'] || raw['First Name'] || raw['first name'] || raw['FirstName'];
+    if (rawFirst) firstName = String(rawFirst).trim();
+  }
+  if (!lastName) {
+    const rawLast = raw['last_name'] || raw['Last Name'] || raw['last name'] || raw['LastName'];
+    if (rawLast) lastName = String(rawLast).trim();
+  }
 
   if (!firstName || !lastName) return null;
 
