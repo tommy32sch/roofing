@@ -409,7 +409,7 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
                 <div className="grid grid-cols-2 gap-2 text-sm">
                   <div>
                     <span className="text-muted-foreground">Type:</span>{' '}
-                    {lead.roof_type === 'unknown' ? '-' : lead.roof_type.replace('_', ' ')}
+                    {!lead.roof_type || lead.roof_type === 'unknown' ? '-' : lead.roof_type.replace('_', ' ')}
                   </div>
                   <div>
                     <span className="text-muted-foreground">Age:</span>{' '}
