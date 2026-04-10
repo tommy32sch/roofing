@@ -331,11 +331,10 @@ export function parseDecimal(value: string | null | undefined): number | null {
 export function normalizeLeadData(raw: Record<string, unknown>): NormalizedLead | null {
   const mapped = mapRawFields(raw);
 
-  // Fallback: if mapRawFields didn't find first/last name, check raw keys directly
-  // (CSV parser's transformHeader may have already mapped them)
-  let firstName = mapped.first_name?.trim();
-  let lastName = mapped.last_name?.trim();
+  let firstName = mapped.first_name?.trim() || '';
+  let lastName = mapped.last_name?.trim() || '';
 
+  // Fallback: check raw keys directly (CSV transformHeader may have already mapped them)
   if (!firstName) {
     const rawFirst = raw['first_name'] || raw['First Name'] || raw['first name'] || raw['FirstName'];
     if (rawFirst) firstName = String(rawFirst).trim();
@@ -343,6 +342,26 @@ export function normalizeLeadData(raw: Record<string, unknown>): NormalizedLead 
   if (!lastName) {
     const rawLast = raw['last_name'] || raw['Last Name'] || raw['last name'] || raw['LastName'];
     if (rawLast) lastName = String(rawLast).trim();
+  }
+
+  // Handle BatchLeads case: full name in one field, other field empty
+  if (!firstName && lastName) {
+    const parts = lastName.split(/\s+/);
+    if (parts.length >= 2) {
+      firstName = parts[0];
+      lastName = parts.slice(1).join(' ');
+    } else {
+      firstName = lastName;
+      lastName = '(unknown)';
+    }
+  } else if (firstName && !lastName) {
+    const parts = firstName.split(/\s+/);
+    if (parts.length >= 2) {
+      lastName = parts.slice(1).join(' ');
+      firstName = parts[0];
+    } else {
+      lastName = '(unknown)';
+    }
   }
 
   if (!firstName || !lastName) return null;
