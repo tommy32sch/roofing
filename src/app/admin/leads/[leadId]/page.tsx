@@ -351,13 +351,13 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
                 {lead.home_value && (
                   <div className="flex items-center gap-2">
                     <Home className="h-4 w-4 text-muted-foreground" />
-                    Est. ${lead.home_value.toLocaleString()}
+                    Est. ${Number(lead.home_value).toLocaleString()}
                   </div>
                 )}
                 {lead.assessed_value && (
                   <div className="flex items-center gap-2">
                     <Building className="h-4 w-4 text-muted-foreground" />
-                    Assessed ${lead.assessed_value.toLocaleString()}
+                    Assessed ${Number(lead.assessed_value).toLocaleString()}
                   </div>
                 )}
                 {lead.year_built && (
@@ -368,15 +368,15 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
                 )}
                 <Separator />
                 <div className="grid grid-cols-2 gap-1">
-                  {lead.sqft && <div><span className="text-muted-foreground">Sqft:</span> {lead.sqft.toLocaleString()}</div>}
-                  {lead.lot_size && <div><span className="text-muted-foreground">Lot:</span> {lead.lot_size} acres</div>}
+                  {lead.sqft && <div><span className="text-muted-foreground">Sqft:</span> {Number(lead.sqft).toLocaleString()}</div>}
+                  {lead.lot_size && <div><span className="text-muted-foreground">Lot:</span> {lead.lot_size} sqft</div>}
                   {lead.bedrooms && <div><span className="text-muted-foreground">Beds:</span> {lead.bedrooms}</div>}
                   {lead.bathrooms && <div><span className="text-muted-foreground">Baths:</span> {lead.bathrooms}</div>}
                   {lead.stories && <div><span className="text-muted-foreground">Stories:</span> {lead.stories}</div>}
-                  {lead.owner_type && <div><span className="text-muted-foreground">Owner:</span> {lead.owner_type}</div>}
+                  {lead.owner_type && <div><span className="text-muted-foreground">Type:</span> {lead.owner_type}</div>}
                   {lead.apn && <div className="col-span-2"><span className="text-muted-foreground">APN:</span> {lead.apn}</div>}
                   {lead.last_sale_date && <div><span className="text-muted-foreground">Last sold:</span> {lead.last_sale_date}</div>}
-                  {lead.last_sale_price && <div><span className="text-muted-foreground">Sale price:</span> ${lead.last_sale_price.toLocaleString()}</div>}
+                  {lead.last_sale_price && <div><span className="text-muted-foreground">Sale price:</span> ${Number(lead.last_sale_price).toLocaleString()}</div>}
                 </div>
               </CardContent>
             </Card>

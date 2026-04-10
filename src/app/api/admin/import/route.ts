@@ -42,15 +42,12 @@ export async function POST(request: NextRequest) {
     const { leads, errors, skipped } = parseLeadCSV(csvText);
 
     if (leads.length === 0) {
-      // Include first few lines of converted CSV for debugging
-      const previewLines = csvText.split('\n').slice(0, 3).map(l => l.substring(0, 500));
       return NextResponse.json({
         success: false,
         error: 'No valid leads found',
         errors,
         imported: 0,
         skipped,
-        debug: { headers: previewLines[0], firstRow: previewLines[1] },
       }, { status: 400 });
     }
 
