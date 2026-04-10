@@ -47,10 +47,18 @@ export default function ImportPage() {
 
       const data = await res.json();
 
+      const debugErrors = [...(data.errors || [])];
+      if (data.debug?.headers) {
+        debugErrors.push(`[Debug] Headers: ${data.debug.headers}`);
+      }
+      if (data.debug?.firstRow) {
+        debugErrors.push(`[Debug] First row: ${data.debug.firstRow}`);
+      }
+
       setResult({
         imported: data.imported || 0,
         skipped: data.skipped || 0,
-        errors: data.errors || [],
+        errors: debugErrors,
       });
 
       if (data.success && data.imported > 0) {
