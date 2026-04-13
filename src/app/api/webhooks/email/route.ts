@@ -5,6 +5,7 @@ import { detectSource } from '@/lib/leads/source-detect';
 import { enrichLead } from '@/lib/integrations/regrid';
 import { checkConfiguredRateLimit, getClientIP } from '@/lib/utils/rate-limit';
 import type { NormalizedLead } from '@/lib/leads/normalize';
+import * as XLSX from 'xlsx';
 
 const MAX_LEADS_PER_IMPORT = 5000;
 
@@ -107,16 +108,26 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true, message: 'No attachments found.' });
     }
 
-    // Process each CSV attachment
+    // Process each attachment (CSV or Excel)
     const results = [];
 
     for (const attachment of body.attachments) {
-      if (!attachment.name?.toLowerCase().endsWith('.csv')) continue;
+      const name = attachment.name?.toLowerCase() || '';
+      const isCSV = name.endsWith('.csv');
+      const isExcel = name.endsWith('.xlsx') || name.endsWith('.xls');
+      if (!isCSV && !isExcel) continue;
 
-      // Decode base64 to string
+      // Decode base64
       let csvText: string;
       try {
-        csvText = Buffer.from(attachment.content, 'base64').toString('utf-8');
+        const buffer = Buffer.from(attachment.content, 'base64');
+        if (isExcel) {
+          const workbook = XLSX.read(buffer, { type: 'buffer' });
+          const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+          csvText = XLSX.utils.sheet_to_csv(firstSheet);
+        } else {
+          csvText = buffer.toString('utf-8');
+        }
       } catch {
         logEmailImport(supabase, senderEmail, body.subject, attachment.name, null, 0, 0, ['Failed to decode attachment']);
         results.push({ file: attachment.name, error: 'Failed to decode' });
