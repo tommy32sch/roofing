@@ -96,16 +96,16 @@ export async function PATCH(
           { status: 403 }
         );
       }
-      if (admin.role !== 'closer' && body.status === 'sold') {
+      if (admin.role === 'setter' && body.status === 'sold') {
         return NextResponse.json(
-          { success: false, error: 'Only closers can mark a lead as sold' },
+          { success: false, error: 'Setters cannot mark a lead as sold' },
           { status: 403 }
         );
       }
     }
 
     // When marking as sold, demographic form must be complete
-    if (body.status === 'sold' && admin.role === 'closer') {
+    if (body.status === 'sold' && (admin.role === 'closer' || admin.role === 'admin')) {
       const missing = DEMOGRAPHIC_REQUIRED_FIELDS.filter(
         f => body[f] === undefined || body[f] === null || body[f] === ''
       );

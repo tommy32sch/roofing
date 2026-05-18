@@ -114,8 +114,8 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
 
   async function handleStatusChange(newStatus: string | null) {
     if (!newStatus) return;
-    // Closers marking as sold must complete the demographic form first
-    if (newStatus === 'sold' && userRole === 'closer') {
+    // Closers and admins marking as sold must complete the demographic form first
+    if (newStatus === 'sold' && (userRole === 'closer' || userRole === 'admin')) {
       setWonModalOpen(true);
       return;
     }
