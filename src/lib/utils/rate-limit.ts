@@ -1,15 +1,17 @@
-import { Ratelimit } from '@upstash/ratelimit';
-import { Redis } from '@upstash/redis';
-
 let hasWarnedNoUpstash = false;
 
-const rateLimiters = new Map<string, Ratelimit>();
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const rateLimiters = new Map<string, any>();
 
-function getRedis(): Redis | null {
+function hasUpstashConfig(): boolean {
   const url = process.env.UPSTASH_REDIS_REST_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  return !!(url && token && url.startsWith('https://') && !url.includes('your_'));
+}
 
-  if (!url || !token || !url.startsWith('https://') || url.includes('your_')) {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function getRedis(): Promise<any | null> {
+  if (!hasUpstashConfig()) {
     if (!hasWarnedNoUpstash) {
       console.warn('[SECURITY] Rate limiting disabled — Upstash not configured');
       hasWarnedNoUpstash = true;
@@ -17,16 +19,22 @@ function getRedis(): Redis | null {
     return null;
   }
 
-  return new Redis({ url, token });
+  const { Redis } = await import('@upstash/redis');
+  return new Redis({
+    url: process.env.UPSTASH_REDIS_REST_URL!,
+    token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+  });
 }
 
-function getLimiter(prefix: string, maxRequests: number, window: string): Ratelimit | null {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function getLimiter(prefix: string, maxRequests: number, window: string): Promise<any | null> {
   const key = `${prefix}:${maxRequests}:${window}`;
   if (rateLimiters.has(key)) return rateLimiters.get(key)!;
 
-  const redis = getRedis();
+  const redis = await getRedis();
   if (!redis) return null;
 
+  const { Ratelimit } = await import('@upstash/ratelimit');
   const limiter = new Ratelimit({
     redis,
     limiter: Ratelimit.slidingWindow(maxRequests, window as `${number} ${'s' | 'ms' | 'm' | 'h' | 'd'}`),
@@ -50,7 +58,7 @@ function noopResult(maxRequests: number): RateLimitResult {
 }
 
 export async function checkRateLimit(identifier: string): Promise<RateLimitResult> {
-  const limiter = getLimiter('default', 5, '1 m');
+  const limiter = await getLimiter('default', 5, '1 m');
   if (!limiter) return noopResult(5);
 
   const result = await limiter.limit(identifier);
@@ -63,7 +71,7 @@ export async function checkConfiguredRateLimit(
   maxRequests: number,
   window: string = '1 m'
 ): Promise<RateLimitResult> {
-  const limiter = getLimiter(prefix, maxRequests, window);
+  const limiter = await getLimiter(prefix, maxRequests, window);
   if (!limiter) return noopResult(maxRequests);
 
   const result = await limiter.limit(identifier);
