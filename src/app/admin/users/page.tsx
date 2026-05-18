@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { UserPlus, Pencil, Trash2 } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { UserPlus, Pencil, Trash2, LogIn } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -50,6 +51,7 @@ interface UserForm {
 const EMPTY_FORM: UserForm = { name: '', email: '', password: '', role: 'setter' };
 
 export default function UsersPage() {
+  const router = useRouter();
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentUserId, setCurrentUserId] = useState<string>('');
@@ -132,6 +134,22 @@ export default function UsersPage() {
     }
   }
 
+  async function handleImpersonate(user: AdminUser) {
+    try {
+      const res = await fetch(`/api/admin/users/${user.id}/impersonate`, { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        toast.success(`Switched to ${user.name}`);
+        router.push('/admin');
+        router.refresh();
+      } else {
+        toast.error(data.error || 'Failed to switch user');
+      }
+    } catch {
+      toast.error('Network error');
+    }
+  }
+
   async function handleDelete(user: AdminUser) {
     try {
       const res = await fetch(`/api/admin/users/${user.id}`, { method: 'DELETE' });
@@ -199,6 +217,15 @@ export default function UsersPage() {
                     <TableCell>
                       {user.id !== currentUserId && (
                         <div className="flex gap-1">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-muted-foreground"
+                            title={`Switch to ${user.name}`}
+                            onClick={() => handleImpersonate(user)}
+                          >
+                            <LogIn className="h-3.5 w-3.5" />
+                          </Button>
                           <Button
                             variant="ghost"
                             size="icon"

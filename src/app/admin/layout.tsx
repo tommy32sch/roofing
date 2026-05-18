@@ -72,6 +72,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [adminName, setAdminName] = useState('');
   const [userRole, setUserRole] = useState<UserRole>('admin');
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [isImpersonating, setIsImpersonating] = useState(false);
 
   useEffect(() => {
     fetch('/api/admin/auth/me')
@@ -81,10 +82,21 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           setCompanyName(data.companyName || 'Roof Leads');
           setAdminName(data.admin?.name || '');
           setUserRole(data.admin?.role || 'admin');
+          setIsImpersonating(data.isImpersonating || false);
         }
       })
       .catch(() => {});
   }, []);
+
+  async function handleRestoreAdmin() {
+    try {
+      await fetch('/api/admin/auth/restore', { method: 'POST' });
+      router.push('/admin/users');
+      router.refresh();
+    } catch {
+      toast.error('Failed to restore admin session');
+    }
+  }
 
   const navItems = getNavItems(userRole);
   const bottomTabs = getBottomTabs(userRole);
@@ -110,6 +122,17 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   return (
     <div className="min-h-screen pb-16 md:pb-0">
+      {isImpersonating && (
+        <div className="sticky top-0 z-50 flex items-center justify-between bg-amber-500 px-4 py-2 text-sm font-medium text-white">
+          <span>Viewing as <strong>{adminName}</strong> ({userRole})</span>
+          <button
+            onClick={handleRestoreAdmin}
+            className="rounded bg-white/20 px-3 py-1 text-xs hover:bg-white/30 transition-colors"
+          >
+            Return to Admin
+          </button>
+        </div>
+      )}
       <header className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="flex h-14 items-center px-4 md:px-6">
           {/* Mobile hamburger */}
