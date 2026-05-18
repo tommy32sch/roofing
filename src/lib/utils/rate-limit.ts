@@ -58,11 +58,14 @@ function noopResult(maxRequests: number): RateLimitResult {
 }
 
 export async function checkRateLimit(identifier: string): Promise<RateLimitResult> {
-  const limiter = await getLimiter('default', 5, '1 m');
-  if (!limiter) return noopResult(5);
-
-  const result = await limiter.limit(identifier);
-  return { success: result.success, limit: result.limit, remaining: result.remaining, reset: result.reset };
+  try {
+    const limiter = await getLimiter('default', 5, '1 m');
+    if (!limiter) return noopResult(5);
+    const result = await limiter.limit(identifier);
+    return { success: result.success, limit: result.limit, remaining: result.remaining, reset: result.reset };
+  } catch {
+    return noopResult(5);
+  }
 }
 
 export async function checkConfiguredRateLimit(
@@ -71,11 +74,14 @@ export async function checkConfiguredRateLimit(
   maxRequests: number,
   window: string = '1 m'
 ): Promise<RateLimitResult> {
-  const limiter = await getLimiter(prefix, maxRequests, window);
-  if (!limiter) return noopResult(maxRequests);
-
-  const result = await limiter.limit(identifier);
-  return { success: result.success, limit: result.limit, remaining: result.remaining, reset: result.reset };
+  try {
+    const limiter = await getLimiter(prefix, maxRequests, window);
+    if (!limiter) return noopResult(maxRequests);
+    const result = await limiter.limit(identifier);
+    return { success: result.success, limit: result.limit, remaining: result.remaining, reset: result.reset };
+  } catch {
+    return noopResult(maxRequests);
+  }
 }
 
 export function getClientIP(headers: Headers): string {
