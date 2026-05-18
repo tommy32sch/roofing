@@ -7,7 +7,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
-import type { DashboardStats, LeadStatus } from '@/types';
+import { DuplicateReviewPanel } from '@/components/leads/DuplicateReviewPanel';
+import type { DashboardStats, LeadStatus, UserRole } from '@/types';
 
 const STATUS_COLORS: Record<LeadStatus, string> = {
   new: 'bg-pipeline-new text-white',
@@ -32,6 +33,7 @@ const STATUS_LABELS: Record<LeadStatus, string> = {
 export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [userRole, setUserRole] = useState<UserRole>('admin');
 
   useEffect(() => {
     fetch('/api/admin/stats')
@@ -41,6 +43,11 @@ export default function DashboardPage() {
       })
       .catch(() => {})
       .finally(() => setLoading(false));
+
+    fetch('/api/admin/auth/me')
+      .then(r => r.json())
+      .then(d => { if (d.success) setUserRole(d.admin.role); })
+      .catch(() => {});
   }, []);
 
   if (loading) {
@@ -131,6 +138,9 @@ export default function DashboardPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Duplicate review (admin only) */}
+      {userRole === 'admin' && <DuplicateReviewPanel />}
 
       {/* Recent leads */}
       <Card>

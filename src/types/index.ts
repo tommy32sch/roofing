@@ -2,6 +2,7 @@ export type LeadStatus = 'new' | 'contacted' | 'appointment_set' | 'inspected' |
 export type LeadPriority = 'low' | 'medium' | 'high' | 'hot';
 export type RoofType = 'asphalt_shingle' | 'metal' | 'tile' | 'slate' | 'wood_shake' | 'flat' | 'other' | 'unknown';
 export type ActivityType = 'note' | 'status_change' | 'call' | 'email' | 'visit' | 'created' | 'updated';
+export type UserRole = 'admin' | 'setter' | 'closer';
 
 export const LEAD_STATUS_OPTIONS: { value: LeadStatus; label: string }[] = [
   { value: 'new', label: 'New' },
@@ -79,6 +80,21 @@ export interface Lead {
   source_id: number | null;
   source_notes: string | null;
   assigned_to: string | null;
+  // Won-lead demographics
+  career: string | null;
+  family_size: number | null;
+  marital_status: string | null;
+  age_range: string | null;
+  household_income_range: string | null;
+  education_level: string | null;
+  years_in_home: number | null;
+  insurance_carrier: string | null;
+  decision_maker: string | null;
+  referral_source: string | null;
+  demographic_captured_at: string | null;
+  // Duplicate flagging
+  is_flagged_duplicate: boolean;
+  duplicate_of_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -112,7 +128,18 @@ export interface AdminUser {
   email: string;
   password_hash: string;
   name: string;
+  role: UserRole;
+  created_at: string;
 }
+
+export const MARITAL_STATUS_OPTIONS = ['Single', 'Married', 'Divorced', 'Widowed', 'Separated'];
+export const AGE_RANGE_OPTIONS = ['18-24', '25-34', '35-44', '45-54', '55-64', '65+'];
+export const INCOME_RANGE_OPTIONS = ['<$35k', '$35k-$50k', '$50k-$75k', '$75k-$100k', '$100k-$150k', '$150k+'];
+export const EDUCATION_OPTIONS = ['High School', 'Some College', 'Associate', "Bachelor's", "Master's", 'Doctorate'];
+export const DECISION_MAKER_OPTIONS = [
+  { value: 'sole', label: 'Sole Decision Maker' },
+  { value: 'joint', label: 'Joint Decision Maker' },
+];
 
 export interface AppSettings {
   id: string;
@@ -162,6 +189,7 @@ export interface CSVImportResult {
   success: boolean;
   imported: number;
   skipped: number;
+  flagged: number;
   errors: string[];
 }
 

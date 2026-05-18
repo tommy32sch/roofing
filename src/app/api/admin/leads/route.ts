@@ -6,6 +6,11 @@ import { enrichLead } from '@/lib/integrations/regrid';
 
 export async function GET(request: NextRequest) {
   try {
+    const admin = await getAuthenticatedAdmin();
+    if (!admin) {
+      return NextResponse.json({ success: false, error: 'Not authenticated' }, { status: 401 });
+    }
+
     const supabase = db();
     const { searchParams } = new URL(request.url);
 
@@ -18,14 +23,31 @@ export async function GET(request: NextRequest) {
     const page = parseInt(searchParams.get('page') || '1', 10);
     const limit = Math.min(parseInt(searchParams.get('limit') || '25', 10), 100);
     const offset = (page - 1) * limit;
+    const showDuplicates = searchParams.get('show_duplicates') === 'true';
+    const isFlaggedDuplicate = searchParams.get('is_flagged_duplicate');
 
     let query = supabase
       .from('leads')
       .select('*, lead_sources(id, display_name)', { count: 'exact' });
 
-    if (status) query = query.eq('status', status);
-    if (priority) query = query.eq('priority', priority);
-    if (sourceId) query = query.eq('source_id', parseInt(sourceId, 10));
+    // Closers only see sold leads
+    if (admin.role === 'closer') {
+      query = query.eq('status', 'sold');
+    } else if (status) {
+      query = query.eq('status', status);
+    }
+
+    // Exclude flagged duplicates from main list unless explicitly requested
+    if (!showDuplicates) {
+      query = query.eq('is_flagged_duplicate', false);
+    } else if (isFlaggedDuplicate !== null) {
+      query = query.eq('is_flagged_duplicate', isFlaggedDuplicate === 'true');
+    }
+
+    if (admin.role !== 'closer') {
+      if (priority) query = query.eq('priority', priority);
+      if (sourceId) query = query.eq('source_id', parseInt(sourceId, 10));
+    }
 
     if (search) {
       query = query.or(
@@ -60,6 +82,9 @@ export async function POST(request: NextRequest) {
     const admin = await getAuthenticatedAdmin();
     if (!admin) {
       return NextResponse.json({ success: false, error: 'Not authenticated' }, { status: 401 });
+    }
+    if (admin.role === 'closer') {
+      return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
     }
 
     const supabase = db();

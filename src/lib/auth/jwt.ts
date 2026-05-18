@@ -11,6 +11,7 @@ export interface JWTPayload {
   sub: string;
   email: string;
   name: string;
+  role: 'admin' | 'setter' | 'closer';
   iat: number;
   exp: number;
 }
@@ -19,11 +20,13 @@ export async function createToken(user: {
   id: string;
   email: string;
   name: string;
+  role: 'admin' | 'setter' | 'closer';
 }): Promise<string> {
   const token = await new SignJWT({
     sub: user.id,
     email: user.email,
     name: user.name,
+    role: user.role,
   })
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
@@ -68,7 +71,7 @@ export async function refreshTokenIfNeeded(payload: JWTPayload): Promise<string 
   if (!payload.iat) return null;
   const age = Date.now() - payload.iat * 1000;
   if (age > REFRESH_THRESHOLD_MS) {
-    return createToken({ id: payload.sub, email: payload.email, name: payload.name });
+    return createToken({ id: payload.sub, email: payload.email, name: payload.name, role: payload.role });
   }
   return null;
 }

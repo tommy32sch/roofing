@@ -4,11 +4,23 @@ import { getAuthenticatedAdmin } from '@/lib/auth/jwt';
 import { isValidUUID } from '@/lib/utils/validation';
 import { parsePhoneNumber } from 'libphonenumber-js';
 
+const STATUS_ORDER: string[] = ['new', 'contacted', 'appointment_set', 'inspected', 'proposal_sent', 'sold', 'lost'];
+const SETTER_ALLOWED_STATUSES = new Set(['new', 'contacted', 'appointment_set', 'lost']);
+const DEMOGRAPHIC_REQUIRED_FIELDS = [
+  'career', 'family_size', 'marital_status', 'age_range', 'household_income_range',
+  'education_level', 'years_in_home', 'insurance_carrier', 'decision_maker', 'referral_source',
+] as const;
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ leadId: string }> }
 ) {
   try {
+    const admin = await getAuthenticatedAdmin();
+    if (!admin) {
+      return NextResponse.json({ success: false, error: 'Not authenticated' }, { status: 401 });
+    }
+
     const { leadId } = await params;
     if (!isValidUUID(leadId)) {
       return NextResponse.json({ success: false, error: 'Invalid lead ID' }, { status: 400 });
@@ -24,6 +36,11 @@ export async function GET(
 
     if (error || !lead) {
       return NextResponse.json({ success: false, error: 'Lead not found' }, { status: 404 });
+    }
+
+    // Closers can only view sold leads
+    if (admin.role === 'closer' && lead.status !== 'sold') {
+      return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
     }
 
     // Get activities
@@ -69,6 +86,36 @@ export async function PATCH(
 
     if (!currentLead) {
       return NextResponse.json({ success: false, error: 'Lead not found' }, { status: 404 });
+    }
+
+    // Enforce role-based status transition rules
+    if (body.status && body.status !== currentLead.status) {
+      if (admin.role === 'setter' && !SETTER_ALLOWED_STATUSES.has(body.status)) {
+        return NextResponse.json(
+          { success: false, error: 'Setters cannot set this status' },
+          { status: 403 }
+        );
+      }
+      if (admin.role !== 'closer' && body.status === 'sold') {
+        return NextResponse.json(
+          { success: false, error: 'Only closers can mark a lead as sold' },
+          { status: 403 }
+        );
+      }
+    }
+
+    // When marking as sold, demographic form must be complete
+    if (body.status === 'sold' && admin.role === 'closer') {
+      const missing = DEMOGRAPHIC_REQUIRED_FIELDS.filter(
+        f => body[f] === undefined || body[f] === null || body[f] === ''
+      );
+      if (missing.length > 0) {
+        return NextResponse.json(
+          { success: false, error: 'demographic_form_required', missing },
+          { status: 400 }
+        );
+      }
+      body.demographic_captured_at = new Date().toISOString();
     }
 
     // Normalize phone if being updated
@@ -125,6 +172,14 @@ export async function DELETE(
   { params }: { params: Promise<{ leadId: string }> }
 ) {
   try {
+    const admin = await getAuthenticatedAdmin();
+    if (!admin) {
+      return NextResponse.json({ success: false, error: 'Not authenticated' }, { status: 401 });
+    }
+    if (admin.role !== 'admin') {
+      return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
+    }
+
     const { leadId } = await params;
     if (!isValidUUID(leadId)) {
       return NextResponse.json({ success: false, error: 'Invalid lead ID' }, { status: 400 });

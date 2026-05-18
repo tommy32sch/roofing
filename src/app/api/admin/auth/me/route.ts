@@ -12,11 +12,10 @@ export async function GET() {
   }
 
   const supabase = db();
-  const { data: settings } = await supabase
-    .from('app_settings')
-    .select('company_name')
-    .eq('id', 'default')
-    .single();
+  const [{ data: settings }, { data: user }] = await Promise.all([
+    supabase.from('app_settings').select('company_name').eq('id', 'default').single(),
+    supabase.from('admin_users').select('role').eq('id', admin.sub).single(),
+  ]);
 
   return NextResponse.json({
     success: true,
@@ -24,6 +23,7 @@ export async function GET() {
       id: admin.sub,
       email: admin.email,
       name: admin.name,
+      role: user?.role ?? admin.role,
     },
     companyName: settings?.company_name || 'Roof Leads',
   });

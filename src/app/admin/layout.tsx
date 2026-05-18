@@ -15,6 +15,8 @@ import {
   Moon,
   Sun,
   Webhook,
+  BarChart2,
+  UserCog,
 } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { toast } from 'sonner';
@@ -27,21 +29,40 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
+import type { UserRole } from '@/types';
 
-const navItems = [
-  { href: '/admin', label: 'Dashboard', icon: Home },
-  { href: '/admin/leads', label: 'Leads', icon: Users },
-  { href: '/admin/leads/import', label: 'Import', icon: Upload },
-  { href: '/admin/integrations', label: 'Integrations', icon: Webhook },
-  { href: '/admin/settings', label: 'Settings', icon: Settings },
-];
+function getNavItems(role: UserRole) {
+  const items = [
+    { href: '/admin', label: 'Dashboard', icon: Home },
+    { href: '/admin/leads', label: 'Leads', icon: Users },
+  ];
+  if (role !== 'closer') {
+    items.push({ href: '/admin/leads/import', label: 'Import', icon: Upload });
+  }
+  if (role === 'admin') {
+    items.push(
+      { href: '/admin/users', label: 'Users', icon: UserCog },
+      { href: '/admin/analytics', label: 'Analytics', icon: BarChart2 },
+      { href: '/admin/integrations', label: 'Integrations', icon: Webhook },
+      { href: '/admin/settings', label: 'Settings', icon: Settings },
+    );
+  }
+  return items;
+}
 
-const bottomTabs = [
-  { href: '/admin', label: 'Dashboard', icon: Home },
-  { href: '/admin/leads', label: 'Leads', icon: Users },
-  { href: '/admin/leads/new', label: 'Add', icon: PlusCircle },
-  { href: '/admin/settings', label: 'Settings', icon: Settings },
-];
+function getBottomTabs(role: UserRole) {
+  const tabs = [
+    { href: '/admin', label: 'Dashboard', icon: Home },
+    { href: '/admin/leads', label: 'Leads', icon: Users },
+  ];
+  if (role !== 'closer') {
+    tabs.push({ href: '/admin/leads/new', label: 'Add', icon: PlusCircle });
+  }
+  if (role === 'admin') {
+    tabs.push({ href: '/admin/settings', label: 'Settings', icon: Settings });
+  }
+  return tabs;
+}
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -49,6 +70,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const { theme, setTheme } = useTheme();
   const [companyName, setCompanyName] = useState('Roof Leads');
   const [adminName, setAdminName] = useState('');
+  const [userRole, setUserRole] = useState<UserRole>('admin');
   const [mobileOpen, setMobileOpen] = useState(false);
 
   useEffect(() => {
@@ -58,10 +80,14 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         if (data.success) {
           setCompanyName(data.companyName || 'Roof Leads');
           setAdminName(data.admin?.name || '');
+          setUserRole(data.admin?.role || 'admin');
         }
       })
       .catch(() => {});
   }, []);
+
+  const navItems = getNavItems(userRole);
+  const bottomTabs = getBottomTabs(userRole);
 
   async function handleLogout() {
     try {
@@ -143,12 +169,14 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           </nav>
 
           <div className="ml-auto flex items-center gap-2">
-            <Link href="/admin/leads/new">
-              <Button size="sm" className="hidden md:flex gap-1">
-                <PlusCircle className="h-4 w-4" />
-                Add Lead
-              </Button>
-            </Link>
+            {userRole !== 'closer' && (
+              <Link href="/admin/leads/new">
+                <Button size="sm" className="hidden md:flex gap-1">
+                  <PlusCircle className="h-4 w-4" />
+                  Add Lead
+                </Button>
+              </Link>
+            )}
 
             <DropdownMenu>
               <DropdownMenuTrigger className="inline-flex items-center justify-center rounded-md p-2 text-muted-foreground hover:bg-muted hover:text-foreground">

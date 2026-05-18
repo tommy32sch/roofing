@@ -48,8 +48,12 @@ import {
 } from '@/components/ui/dialog';
 import { LeadStatusBadge } from '@/components/leads/lead-status-badge';
 import { LeadPriorityBadge } from '@/components/leads/lead-priority-badge';
+import { WonLeadModal } from '@/components/leads/WonLeadModal';
 import { LEAD_STATUS_OPTIONS, LEAD_PRIORITY_OPTIONS } from '@/types';
-import type { LeadWithActivities, LeadActivity, ActivityType } from '@/types';
+import type { LeadWithActivities, LeadActivity, ActivityType, UserRole } from '@/types';
+
+const SETTER_ALLOWED_STATUSES = new Set(['new', 'contacted', 'appointment_set', 'lost']);
+const CLOSER_ALLOWED_STATUSES = new Set(['sold', 'lost']);
 
 const ACTIVITY_ICONS: Record<string, React.ElementType> = {
   note: MessageSquare,
@@ -74,6 +78,8 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
   const [lead, setLead] = useState<LeadWithActivities | null>(null);
   const [loading, setLoading] = useState(true);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [userRole, setUserRole] = useState<UserRole>('admin');
+  const [wonModalOpen, setWonModalOpen] = useState(false);
 
   // Activity form
   const [activityType, setActivityType] = useState<ActivityType>('note');
@@ -99,11 +105,20 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
 
   useEffect(() => {
     fetchLead();
+    fetch('/api/admin/auth/me')
+      .then(r => r.json())
+      .then(d => { if (d.success) setUserRole(d.admin.role); })
+      .catch(() => {});
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [leadId]);
 
   async function handleStatusChange(newStatus: string | null) {
     if (!newStatus) return;
+    // Closers marking as sold must complete the demographic form first
+    if (newStatus === 'sold' && userRole === 'closer') {
+      setWonModalOpen(true);
+      return;
+    }
     try {
       const res = await fetch(`/api/admin/leads/${leadId}`, {
         method: 'PATCH',
@@ -114,6 +129,8 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
       if (data.success) {
         toast.success('Status updated');
         fetchLead();
+      } else {
+        toast.error(data.error || 'Failed to update status');
       }
     } catch {
       toast.error('Failed to update status');
@@ -216,12 +233,15 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
           </div>
         </div>
         <div className="flex gap-2">
-          <Link href={`/admin/leads/${leadId}/edit`}>
-            <Button variant="outline" size="sm">
-              <Edit2 className="h-4 w-4 mr-1" />
-              Edit
-            </Button>
-          </Link>
+          {userRole !== 'closer' && (
+            <Link href={`/admin/leads/${leadId}/edit`}>
+              <Button variant="outline" size="sm">
+                <Edit2 className="h-4 w-4 mr-1" />
+                Edit
+              </Button>
+            </Link>
+          )}
+          {userRole === 'admin' && (
           <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
             <DialogTrigger
               className="inline-flex items-center justify-center rounded-md bg-destructive px-3 py-1.5 text-sm text-white hover:bg-destructive/90"
@@ -241,6 +261,7 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
               </DialogFooter>
             </DialogContent>
           </Dialog>
+          )}
         </div>
       </div>
 
@@ -253,7 +274,11 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {LEAD_STATUS_OPTIONS.map((opt) => (
+              {LEAD_STATUS_OPTIONS.filter(opt =>
+                userRole === 'admin' ? true :
+                userRole === 'setter' ? SETTER_ALLOWED_STATUSES.has(opt.value) :
+                CLOSER_ALLOWED_STATUSES.has(opt.value)
+              ).map((opt) => (
                 <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
               ))}
             </SelectContent>
@@ -527,6 +552,12 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
           </div>
         </TabsContent>
       </Tabs>
+      <WonLeadModal
+        leadId={leadId}
+        open={wonModalOpen}
+        onOpenChange={setWonModalOpen}
+        onSuccess={() => { toast.success('Lead marked as won!'); fetchLead(); }}
+      />
     </div>
   );
 }

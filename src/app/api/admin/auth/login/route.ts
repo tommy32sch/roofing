@@ -28,7 +28,7 @@ export async function POST(request: NextRequest) {
     const supabase = db();
     const { data: admin, error } = await supabase
       .from('admin_users')
-      .select('id, email, name, password_hash')
+      .select('id, email, name, password_hash, role')
       .eq('email', email.toLowerCase().trim())
       .single();
 
@@ -51,13 +51,14 @@ export async function POST(request: NextRequest) {
       id: admin.id,
       email: admin.email,
       name: admin.name,
+      role: admin.role,
     });
 
     await setAuthCookie(token);
 
     return NextResponse.json({
       success: true,
-      admin: { id: admin.id, email: admin.email, name: admin.name },
+      admin: { id: admin.id, email: admin.email, name: admin.name, role: admin.role },
     });
   } catch {
     return NextResponse.json(
