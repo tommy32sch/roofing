@@ -10,11 +10,6 @@ function getRedis(): Redis | null {
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
 
   if (!url || !token || !url.startsWith('https://') || url.includes('your_')) {
-    if (process.env.NODE_ENV === 'production') {
-      throw new Error(
-        'Rate limiting is required in production. Configure UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN.'
-      );
-    }
     if (!hasWarnedNoUpstash) {
       console.warn('[SECURITY] Rate limiting disabled — Upstash not configured');
       hasWarnedNoUpstash = true;
