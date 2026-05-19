@@ -30,9 +30,14 @@ export async function GET(request: NextRequest) {
       .from('leads')
       .select('*, lead_sources(id, display_name)', { count: 'exact' });
 
-    // Closers only see sold leads
+    // Closers see leads from appointment_set onwards (their working pipeline + history)
+    const CLOSER_STATUSES = ['appointment_set', 'inspected', 'proposal_sent', 'sold', 'lost'];
     if (admin.role === 'closer') {
-      query = query.eq('status', 'sold');
+      if (status && CLOSER_STATUSES.includes(status)) {
+        query = query.eq('status', status);
+      } else {
+        query = query.in('status', CLOSER_STATUSES);
+      }
     } else if (status) {
       query = query.eq('status', status);
     }
