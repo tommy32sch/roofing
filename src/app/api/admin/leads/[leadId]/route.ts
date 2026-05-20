@@ -30,7 +30,7 @@ export async function GET(
 
     const { data: lead, error } = await supabase
       .from('leads')
-      .select('*, lead_sources(id, name, display_name)')
+      .select('*, lead_sources!source_id(id, name, display_name)')
       .eq('id', leadId)
       .single();
 

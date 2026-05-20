@@ -17,6 +17,7 @@ import {
   Webhook,
   BarChart2,
   UserCog,
+  ScrollText,
 } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { toast } from 'sonner';
@@ -35,6 +36,7 @@ function getNavItems(role: UserRole) {
   const items = [
     { href: '/admin', label: 'Dashboard', icon: Home },
     { href: '/admin/leads', label: 'Leads', icon: Users },
+    { href: '/admin/activity', label: 'Activity', icon: ScrollText },
   ];
   if (role !== 'closer') {
     items.push({ href: '/admin/leads/import', label: 'Import', icon: Upload });

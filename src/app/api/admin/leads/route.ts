@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
 
     let query = supabase
       .from('leads')
-      .select('*, lead_sources(id, display_name)', { count: 'exact' });
+      .select('*, lead_sources!source_id(id, display_name)', { count: 'exact' });
 
     // Closers see leads from appointment_set onwards (their working pipeline + history)
     const CLOSER_STATUSES = ['appointment_set', 'inspected', 'proposal_sent', 'sold', 'lost'];
