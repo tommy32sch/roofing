@@ -57,7 +57,9 @@ export function WonLeadModal({ leadId, open, onOpenChange, onSuccess }: WonLeadM
   const set = (field: keyof DemographicForm) => (value: string | null) =>
     setForm(prev => ({ ...prev, [field]: value ?? '' }));
 
-  const isValid = Object.values(form).every(v => v.trim() !== '');
+  const filledCount = Object.values(form).filter(v => v.trim() !== '').length;
+  const totalFields = Object.keys(EMPTY_FORM).length;
+  const isValid = filledCount === totalFields;
 
   async function handleSubmit() {
     if (!isValid) return;
@@ -113,11 +115,17 @@ export function WonLeadModal({ leadId, open, onOpenChange, onSuccess }: WonLeadM
           <p className="text-sm text-muted-foreground">
             Complete the homeowner profile before closing this lead.
           </p>
+          <div className="flex items-center gap-2 mt-2">
+            <div className="flex-1 bg-muted rounded-full h-1.5">
+              <div className="bg-primary h-1.5 rounded-full transition-all" style={{ width: `${(filledCount / totalFields) * 100}%` }} />
+            </div>
+            <span className="text-xs text-muted-foreground shrink-0">{filledCount}/{totalFields}</span>
+          </div>
         </DialogHeader>
 
         <div className="grid grid-cols-2 gap-4 py-2">
           <div className="col-span-2 space-y-1">
-            <Label htmlFor="career">Career / Occupation</Label>
+            <Label htmlFor="career">Career / Occupation<span className="text-destructive ml-0.5">*</span></Label>
             <Input
               id="career"
               placeholder="e.g. Teacher, Contractor, Nurse"
@@ -127,7 +135,7 @@ export function WonLeadModal({ leadId, open, onOpenChange, onSuccess }: WonLeadM
           </div>
 
           <div className="space-y-1">
-            <Label>Marital Status</Label>
+            <Label>Marital Status<span className="text-destructive ml-0.5">*</span></Label>
             <Select value={form.marital_status} onValueChange={set('marital_status')}>
               <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
               <SelectContent>
@@ -139,7 +147,7 @@ export function WonLeadModal({ leadId, open, onOpenChange, onSuccess }: WonLeadM
           </div>
 
           <div className="space-y-1">
-            <Label>Family Size</Label>
+            <Label>Family Size<span className="text-destructive ml-0.5">*</span></Label>
             <Select value={form.family_size} onValueChange={set('family_size')}>
               <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
               <SelectContent>
@@ -151,7 +159,7 @@ export function WonLeadModal({ leadId, open, onOpenChange, onSuccess }: WonLeadM
           </div>
 
           <div className="space-y-1">
-            <Label>Age Range</Label>
+            <Label>Age Range<span className="text-destructive ml-0.5">*</span></Label>
             <Select value={form.age_range} onValueChange={set('age_range')}>
               <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
               <SelectContent>
@@ -163,7 +171,7 @@ export function WonLeadModal({ leadId, open, onOpenChange, onSuccess }: WonLeadM
           </div>
 
           <div className="space-y-1">
-            <Label>Household Income</Label>
+            <Label>Household Income<span className="text-destructive ml-0.5">*</span></Label>
             <Select value={form.household_income_range} onValueChange={set('household_income_range')}>
               <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
               <SelectContent>
@@ -175,7 +183,7 @@ export function WonLeadModal({ leadId, open, onOpenChange, onSuccess }: WonLeadM
           </div>
 
           <div className="space-y-1">
-            <Label>Education Level</Label>
+            <Label>Education Level<span className="text-destructive ml-0.5">*</span></Label>
             <Select value={form.education_level} onValueChange={set('education_level')}>
               <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
               <SelectContent>
@@ -187,7 +195,7 @@ export function WonLeadModal({ leadId, open, onOpenChange, onSuccess }: WonLeadM
           </div>
 
           <div className="space-y-1">
-            <Label>Decision Maker</Label>
+            <Label>Decision Maker<span className="text-destructive ml-0.5">*</span></Label>
             <Select value={form.decision_maker} onValueChange={set('decision_maker')}>
               <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
               <SelectContent>
@@ -199,7 +207,7 @@ export function WonLeadModal({ leadId, open, onOpenChange, onSuccess }: WonLeadM
           </div>
 
           <div className="space-y-1">
-            <Label htmlFor="years_in_home">Years in Home</Label>
+            <Label htmlFor="years_in_home">Years in Home<span className="text-destructive ml-0.5">*</span></Label>
             <Input
               id="years_in_home"
               type="number"
@@ -211,7 +219,7 @@ export function WonLeadModal({ leadId, open, onOpenChange, onSuccess }: WonLeadM
           </div>
 
           <div className="space-y-1">
-            <Label htmlFor="insurance_carrier">Insurance Carrier</Label>
+            <Label htmlFor="insurance_carrier">Insurance Carrier<span className="text-destructive ml-0.5">*</span></Label>
             <Input
               id="insurance_carrier"
               placeholder="e.g. State Farm"
@@ -221,7 +229,7 @@ export function WonLeadModal({ leadId, open, onOpenChange, onSuccess }: WonLeadM
           </div>
 
           <div className="col-span-2 space-y-1">
-            <Label htmlFor="referral_source">How Did They Hear About You?</Label>
+            <Label htmlFor="referral_source">How Did They Hear About You?<span className="text-destructive ml-0.5">*</span></Label>
             <Input
               id="referral_source"
               placeholder="e.g. Door knock, Neighbor referral, Facebook ad"
@@ -240,7 +248,7 @@ export function WonLeadModal({ leadId, open, onOpenChange, onSuccess }: WonLeadM
             Cancel
           </Button>
           <Button onClick={handleSubmit} disabled={!isValid || loading}>
-            {loading ? 'Saving...' : 'Mark as Won'}
+            {loading ? 'Saving...' : !isValid ? `${totalFields - filledCount} field${totalFields - filledCount !== 1 ? 's' : ''} remaining` : 'Mark as Won'}
           </Button>
         </DialogFooter>
       </DialogContent>

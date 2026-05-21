@@ -63,6 +63,7 @@ export default function UsersPage() {
   const [editLoading, setEditLoading] = useState(false);
 
   const [deleteTarget, setDeleteTarget] = useState<AdminUser | null>(null);
+  const [impersonateTarget, setImpersonateTarget] = useState<AdminUser | null>(null);
 
   async function fetchUsers() {
     try {
@@ -218,7 +219,7 @@ export default function UsersPage() {
                             size="icon"
                             className="h-7 w-7 text-muted-foreground"
                             title={`Switch to ${user.name}`}
-                            onClick={() => handleImpersonate(user)}
+                            onClick={() => setImpersonateTarget(user)}
                           >
                             <LogIn className="h-3.5 w-3.5" />
                           </Button>
@@ -226,7 +227,7 @@ export default function UsersPage() {
                             variant="ghost"
                             size="icon"
                             className="h-7 w-7"
-                            onClick={() => { setEditTarget(user); setEditForm({ name: user.name, role: user.role as 'setter' | 'closer' }); }}
+                            onClick={() => { setEditTarget(user); setEditForm({ name: user.name, email: user.email, role: user.role as 'setter' | 'closer' }); }}
                           >
                             <Pencil className="h-3.5 w-3.5" />
                           </Button>
@@ -307,6 +308,10 @@ export default function UsersPage() {
               <Input id="edit-name" value={editForm.name || ''} onChange={e => setEditForm(p => ({ ...p, name: e.target.value }))} />
             </div>
             <div className="space-y-1">
+              <Label htmlFor="edit-email">Email</Label>
+              <Input id="edit-email" type="email" value={editForm.email || ''} onChange={e => setEditForm(p => ({ ...p, email: e.target.value }))} />
+            </div>
+            <div className="space-y-1">
               <Label>Role</Label>
               <Select value={editForm.role || editTarget?.role || 'setter'} onValueChange={v => setEditForm(p => ({ ...p, role: v as 'setter' | 'closer' }))}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
@@ -343,6 +348,24 @@ export default function UsersPage() {
             <Button variant="outline" onClick={() => setDeleteTarget(null)}>Cancel</Button>
             <Button variant="destructive" onClick={() => deleteTarget && handleDelete(deleteTarget)}>
               Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Impersonate confirmation dialog */}
+      <Dialog open={!!impersonateTarget} onOpenChange={open => !open && setImpersonateTarget(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Switch to {impersonateTarget?.name}?</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            You&apos;ll view the app as {impersonateTarget?.name} ({impersonateTarget?.role}). An amber banner will appear — click Return to Admin to switch back.
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setImpersonateTarget(null)}>Cancel</Button>
+            <Button onClick={() => { handleImpersonate(impersonateTarget!); setImpersonateTarget(null); }}>
+              Switch
             </Button>
           </DialogFooter>
         </DialogContent>

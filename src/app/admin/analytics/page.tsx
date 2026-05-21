@@ -5,6 +5,13 @@ import { Target, TrendingUp } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 interface Breakdown {
   value: string;
@@ -75,14 +82,16 @@ function BreakdownCard({ title, items }: { title: string; items: Breakdown[] }) 
 export default function AnalyticsPage() {
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [range, setRange] = useState('all');
 
   useEffect(() => {
-    fetch('/api/admin/analytics')
+    setLoading(true);
+    fetch(`/api/admin/analytics?range=${range}`)
       .then(r => r.json())
       .then(d => { if (d.success) setData(d); })
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, []);
+  }, [range]);
 
   if (loading) {
     return (
@@ -98,11 +107,22 @@ export default function AnalyticsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">Analytics</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Based on {data?.total ?? 0} won lead{data?.total !== 1 ? 's' : ''} with demographic profiles
-        </p>
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h1 className="text-2xl font-bold">Analytics</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Based on {data?.total ?? 0} won lead{data?.total !== 1 ? 's' : ''} with demographic profiles
+          </p>
+        </div>
+        <Select value={range} onValueChange={v => { setRange(v ?? 'all'); setLoading(true); }}>
+          <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Time</SelectItem>
+            <SelectItem value="30d">Last 30 days</SelectItem>
+            <SelectItem value="90d">Last 90 days</SelectItem>
+            <SelectItem value="365d">Last 12 months</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
       {/* FB Targeting Recommendation */}

@@ -297,8 +297,6 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
             </SelectContent>
           </Select>
         </div>
-        <LeadStatusBadge status={lead.status} />
-        <LeadPriorityBadge priority={lead.priority} />
       </div>
 
       <Tabs defaultValue="overview">

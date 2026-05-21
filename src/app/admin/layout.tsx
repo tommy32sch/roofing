@@ -75,6 +75,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [userRole, setUserRole] = useState<UserRole>('admin');
   const [mobileOpen, setMobileOpen] = useState(false);
   const [isImpersonating, setIsImpersonating] = useState(false);
+  const [duplicateCount, setDuplicateCount] = useState(0);
 
   useEffect(() => {
     fetch('/api/admin/auth/me')
@@ -85,6 +86,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           setAdminName(data.admin?.name || '');
           setUserRole(data.admin?.role || 'admin');
           setIsImpersonating(data.isImpersonating || false);
+          if (data.admin?.role === 'admin') {
+            fetch('/api/admin/leads?show_duplicates=true&is_flagged_duplicate=true&limit=1')
+              .then(r => r.json())
+              .then(d => { if (d.success) setDuplicateCount(d.total || 0); })
+              .catch(() => {});
+          }
         }
       })
       .catch(() => {});
@@ -162,6 +169,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                   >
                     <item.icon className="h-4 w-4" />
                     {item.label}
+                    {item.href === '/admin/leads' && duplicateCount > 0 && userRole === 'admin' && (
+                      <span className="ml-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold text-white leading-none">
+                        {duplicateCount}
+                      </span>
+                    )}
                   </Link>
                 ))}
               </nav>
@@ -188,6 +200,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               >
                 <item.icon className="h-4 w-4" />
                 {item.label}
+                {item.href === '/admin/leads' && duplicateCount > 0 && userRole === 'admin' && (
+                  <span className="ml-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold text-white leading-none">
+                    {duplicateCount}
+                  </span>
+                )}
               </Link>
             ))}
           </nav>

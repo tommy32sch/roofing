@@ -206,7 +206,7 @@ function LeadsListContent() {
                         {lead.enriched_at && <span title="Enriched"><Sparkles className="h-3 w-3 text-amber-500" /></span>}
                       </p>
                       <p className="text-xs text-muted-foreground md:hidden">
-                        {[lead.address_city, lead.address_state].filter(Boolean).join(', ')}
+                        {[lead.address_street, lead.address_city, lead.address_state].filter(Boolean).join(', ')}
                       </p>
                     </div>
                   </TableCell>
@@ -233,11 +233,11 @@ function LeadsListContent() {
       </div>
 
       {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between">
-          <p className="text-sm text-muted-foreground">
-            {total} lead{total !== 1 ? 's' : ''} total
-          </p>
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-muted-foreground">
+          Showing {total === 0 ? 0 : (page - 1) * 25 + 1}–{Math.min(page * 25, total)} of {total} lead{total !== 1 ? 's' : ''}
+        </p>
+        {totalPages > 1 && (
           <div className="flex gap-2">
             <Button
               variant="outline"
@@ -267,8 +267,8 @@ function LeadsListContent() {
               Next
             </Button>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }

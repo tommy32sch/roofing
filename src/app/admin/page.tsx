@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
-import { Users, TrendingUp, Flame, CalendarDays, ArrowRight } from 'lucide-react';
+import { Users, TrendingUp, Flame, CalendarDays, ArrowRight, RefreshCw } from 'lucide-react';
+import { formatDistanceToNow } from 'date-fns';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -34,21 +35,44 @@ export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [userRole, setUserRole] = useState<UserRole>('admin');
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const fetchStats = useCallback(async (isRefresh = false) => {
+    if (isRefresh) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+    }
+    try {
+      const res = await fetch('/api/admin/stats');
+      const data = await res.json();
+      if (data.success) {
+        setStats(data.stats);
+        setLastUpdated(new Date());
+      }
+    } catch {
+      // silent
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
 
   useEffect(() => {
-    fetch('/api/admin/stats')
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.success) setStats(data.stats);
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
+    fetchStats();
 
     fetch('/api/admin/auth/me')
       .then(r => r.json())
       .then(d => { if (d.success) setUserRole(d.admin.role); })
       .catch(() => {});
-  }, []);
+  }, [fetchStats]);
+
+  useEffect(() => {
+    function onFocus() { fetchStats(true); }
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, [fetchStats]);
 
   if (loading) {
     return (
@@ -70,8 +94,19 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
         <h1 className="text-2xl font-bold">Dashboard</h1>
+        <div className="flex items-center gap-2">
+          {lastUpdated && (
+            <span className="text-xs text-muted-foreground">
+              Updated {formatDistanceToNow(lastUpdated, { addSuffix: true })}
+            </span>
+          )}
+          <Button variant="outline" size="sm" onClick={() => fetchStats(true)} disabled={refreshing}>
+            <RefreshCw className={`h-3.5 w-3.5 mr-1 ${refreshing ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
+        </div>
       </div>
 
       {/* Stat cards */}

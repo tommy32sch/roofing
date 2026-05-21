@@ -14,8 +14,11 @@ export async function GET(request: NextRequest) {
     const limit = Math.min(parseInt(searchParams.get('limit') || '50', 10), 100);
     const offset = (page - 1) * limit;
 
+    const type = searchParams.get('type');
+    const userId = searchParams.get('user_id');
+
     const supabase = db();
-    const { data, error, count } = await supabase
+    let query = supabase
       .from('lead_activities')
       .select(
         'id, activity_type, content, old_status, new_status, created_at, ' +
@@ -23,8 +26,14 @@ export async function GET(request: NextRequest) {
         'admin_users!created_by(name)',
         { count: 'exact' }
       )
-      .order('created_at', { ascending: false })
-      .range(offset, offset + limit - 1);
+      .order('created_at', { ascending: false });
+
+    if (type) query = query.eq('activity_type', type);
+    if (userId) query = query.eq('created_by', userId);
+
+    query = query.range(offset, offset + limit - 1);
+
+    const { data, error, count } = await query;
 
     if (error) {
       return NextResponse.json({ success: false, error: error.message }, { status: 500 });

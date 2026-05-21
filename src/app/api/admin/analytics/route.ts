@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/supabase/server';
 import { getAuthenticatedAdmin } from '@/lib/auth/jwt';
 
@@ -44,7 +44,7 @@ function generateRecommendation(
   );
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const admin = await getAuthenticatedAdmin();
     if (!admin) {
@@ -53,6 +53,9 @@ export async function GET() {
     if (admin.role !== 'admin') {
       return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
     }
+
+    const { searchParams } = new URL(request.url);
+    const range = searchParams.get('range') || 'all';
 
     const supabase = db();
     interface WonLead {
@@ -68,7 +71,7 @@ export async function GET() {
       demographic_captured_at: string | null;
     }
 
-    const { data: rawLeads, error } = await supabase
+    let dbQuery = supabase
       .from('leads')
       .select(
         'career, family_size, marital_status, age_range, household_income_range, ' +
@@ -76,6 +79,15 @@ export async function GET() {
       )
       .eq('status', 'sold')
       .not('demographic_captured_at', 'is', null);
+
+    if (range !== 'all') {
+      const days = range === '30d' ? 30 : range === '90d' ? 90 : 365;
+      const since = new Date();
+      since.setDate(since.getDate() - days);
+      dbQuery = dbQuery.gte('demographic_captured_at', since.toISOString());
+    }
+
+    const { data: rawLeads, error } = await dbQuery;
 
     const leads = rawLeads as WonLead[] | null;
 

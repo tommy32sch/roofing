@@ -8,6 +8,13 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 const ACTIVITY_ICONS: Record<string, React.ElementType> = {
   note: MessageSquare,
@@ -50,12 +57,27 @@ export default function ActivityPage() {
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
+  const [typeFilter, setTypeFilter] = useState('');
+  const [userFilter, setUserFilter] = useState('');
+  const [activityUsers, setActivityUsers] = useState<{id: string, name: string}[]>([]);
   const limit = 50;
+
+  useEffect(() => {
+    fetch('/api/admin/users')
+      .then(r => r.json())
+      .then(d => { if (d.success) setActivityUsers(d.users); })
+      .catch(() => {});
+  }, []);
 
   const fetchActivities = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/admin/activity?page=${page}&limit=${limit}`);
+      const params = new URLSearchParams();
+      params.set('page', page.toString());
+      params.set('limit', limit.toString());
+      if (typeFilter) params.set('type', typeFilter);
+      if (userFilter) params.set('user_id', userFilter);
+      const res = await fetch(`/api/admin/activity?${params}`);
       const data = await res.json();
       if (data.success) {
         setActivities(data.activities);
@@ -66,7 +88,7 @@ export default function ActivityPage() {
     } finally {
       setLoading(false);
     }
-  }, [page]);
+  }, [page, typeFilter, userFilter]);
 
   useEffect(() => { fetchActivities(); }, [fetchActivities]);
 
@@ -79,6 +101,38 @@ export default function ActivityPage() {
         <p className="text-sm text-muted-foreground mt-1">
           {total} total events across all leads
         </p>
+      </div>
+
+      {/* Filters */}
+      <div className="flex flex-wrap gap-3">
+        <Select value={typeFilter || 'all'} onValueChange={v => { setTypeFilter(v === 'all' ? '' : (v ?? '')); setPage(1); }}>
+          <SelectTrigger className="w-[160px]">
+            <SelectValue placeholder="All Types" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Types</SelectItem>
+            <SelectItem value="note">Note</SelectItem>
+            <SelectItem value="call">Call</SelectItem>
+            <SelectItem value="email">Email</SelectItem>
+            <SelectItem value="visit">Visit</SelectItem>
+            <SelectItem value="status_change">Status Change</SelectItem>
+            <SelectItem value="created">Created</SelectItem>
+            <SelectItem value="updated">Updated</SelectItem>
+          </SelectContent>
+        </Select>
+        {activityUsers.length > 0 && (
+          <Select value={userFilter || 'all'} onValueChange={v => { setUserFilter(v === 'all' ? '' : (v ?? '')); setPage(1); }}>
+            <SelectTrigger className="w-[180px]">
+              <SelectValue placeholder="All Users" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Users</SelectItem>
+              {activityUsers.map(u => (
+                <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
       </div>
 
       {loading ? (
