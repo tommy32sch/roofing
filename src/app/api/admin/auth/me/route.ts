@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getAuthenticatedAdmin } from '@/lib/auth/jwt';
 import { db } from '@/lib/supabase/server';
-import { cookies } from 'next/headers';
 
 export async function GET() {
   const admin = await getAuthenticatedAdmin();
@@ -13,8 +12,7 @@ export async function GET() {
   }
 
   const supabase = db();
-  const cookieStore = await cookies();
-  const isImpersonating = !!cookieStore.get('admin_original_token')?.value;
+  const isImpersonating = !!admin.impersonatedBy;
 
   const [{ data: settings }, { data: user }] = await Promise.all([
     supabase.from('app_settings').select('company_name').eq('id', 'default').single(),

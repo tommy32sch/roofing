@@ -58,6 +58,7 @@ export async function POST(
       email: targetUser.email,
       name: targetUser.name,
       role: targetUser.role as 'admin' | 'setter' | 'closer',
+      impersonatedBy: admin.sub,
     });
 
     await setAuthCookie(newToken);

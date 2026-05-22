@@ -99,8 +99,13 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   async function handleRestoreAdmin() {
     try {
-      await fetch('/api/admin/auth/restore', { method: 'POST' });
-      window.location.href = '/admin/users';
+      const res = await fetch('/api/admin/auth/restore', { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        window.location.href = '/admin/users';
+      } else {
+        toast.error('Could not restore admin session — try logging out and back in');
+      }
     } catch {
       toast.error('Failed to restore admin session');
     }

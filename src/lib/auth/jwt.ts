@@ -12,6 +12,7 @@ export interface JWTPayload {
   email: string;
   name: string;
   role: 'admin' | 'setter' | 'closer';
+  impersonatedBy?: string;
   iat: number;
   exp: number;
 }
@@ -21,13 +22,17 @@ export async function createToken(user: {
   email: string;
   name: string;
   role: 'admin' | 'setter' | 'closer';
+  impersonatedBy?: string;
 }): Promise<string> {
-  const token = await new SignJWT({
+  const payload: Record<string, unknown> = {
     sub: user.id,
     email: user.email,
     name: user.name,
     role: user.role,
-  })
+  };
+  if (user.impersonatedBy) payload.impersonatedBy = user.impersonatedBy;
+
+  const token = await new SignJWT(payload)
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
     .setExpirationTime(TOKEN_EXPIRY)
