@@ -22,6 +22,8 @@ import {
   Building,
   Sparkles,
   MailOpen,
+  DollarSign,
+  UserCheck,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatDistanceToNow, format } from 'date-fns';
@@ -46,11 +48,12 @@ import {
   DialogTrigger,
   DialogFooter,
 } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
 import { LeadStatusBadge } from '@/components/leads/lead-status-badge';
 import { LeadPriorityBadge } from '@/components/leads/lead-priority-badge';
 import { WonLeadModal } from '@/components/leads/WonLeadModal';
 import { LEAD_STATUS_OPTIONS, LEAD_PRIORITY_OPTIONS } from '@/types';
-import type { LeadWithActivities, LeadActivity, ActivityType, UserRole } from '@/types';
+import type { LeadWithActivities, LeadActivity, ActivityType, UserRole, AdminUser } from '@/types';
 
 const SETTER_ALLOWED_STATUSES = new Set(['new', 'contacted', 'appointment_set', 'lost']);
 const CLOSER_ALLOWED_STATUSES = new Set(['sold', 'lost']);
@@ -80,6 +83,8 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [userRole, setUserRole] = useState<UserRole>('admin');
   const [wonModalOpen, setWonModalOpen] = useState(false);
+  const [users, setUsers] = useState<AdminUser[]>([]);
+  const [dealValueInput, setDealValueInput] = useState('');
 
   // Activity form
   const [activityType, setActivityType] = useState<ActivityType>('note');
@@ -92,6 +97,7 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
       const data = await res.json();
       if (data.success) {
         setLead(data.lead);
+        setDealValueInput(data.lead.deal_value != null ? String(data.lead.deal_value) : '');
       } else {
         toast.error('Lead not found');
         router.push('/admin/leads');
@@ -105,12 +111,58 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
 
   useEffect(() => {
     fetchLead();
-    fetch('/api/admin/auth/me')
-      .then(r => r.json())
-      .then(d => { if (d.success) setUserRole(d.admin.role); })
-      .catch(() => {});
+    Promise.all([
+      fetch('/api/admin/auth/me').then(r => r.json()),
+      fetch('/api/admin/users').then(r => r.json()),
+    ]).then(([me, usersData]) => {
+      if (me.success) setUserRole(me.admin.role);
+      if (usersData.success) setUsers(usersData.users);
+    }).catch(() => {});
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [leadId]);
+
+  async function handleAssignment(field: 'assigned_setter_id' | 'assigned_closer_id', value: string | null) {
+    try {
+      const res = await fetch(`/api/admin/leads/${leadId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ [field]: value }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success('Assignment updated');
+        fetchLead();
+      } else {
+        toast.error(data.error || 'Failed to update assignment');
+      }
+    } catch {
+      toast.error('Failed to update assignment');
+    }
+  }
+
+  async function handleDealValueSave() {
+    const parsed = dealValueInput.trim() === '' ? null : parseFloat(dealValueInput);
+    if (dealValueInput.trim() !== '' && (isNaN(parsed!) || parsed! < 0)) {
+      toast.error('Invalid deal value');
+      return;
+    }
+    try {
+      const res = await fetch(`/api/admin/leads/${leadId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ deal_value: parsed }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success('Deal value saved');
+        fetchLead();
+      } else {
+        toast.error(data.error || 'Failed to save deal value');
+      }
+    } catch {
+      toast.error('Failed to save deal value');
+    }
+  }
 
   async function handleStatusChange(newStatus: string | null) {
     if (!newStatus) return;
@@ -490,6 +542,87 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
                 <p className="text-muted-foreground mt-2">
                   Created {format(new Date(lead.created_at), 'MMM d, yyyy')}
                 </p>
+              </CardContent>
+            </Card>
+
+            {/* Assignment & Deal Value */}
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1">
+                  <UserCheck className="h-3.5 w-3.5" />
+                  Assignment &amp; Deal
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3 text-sm">
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground">Setter</p>
+                  {userRole === 'admin' ? (
+                    <Select
+                      value={lead.assigned_setter_id || 'none'}
+                      onValueChange={(v) => handleAssignment('assigned_setter_id', v === 'none' ? null : v)}
+                    >
+                      <SelectTrigger className="h-8">
+                        <SelectValue placeholder="Unassigned" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Unassigned</SelectItem>
+                        {users.filter(u => u.role === 'setter' || u.role === 'admin').map(u => (
+                          <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <p>{users.find(u => u.id === lead.assigned_setter_id)?.name || <span className="text-muted-foreground">Unassigned</span>}</p>
+                  )}
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground">Closer</p>
+                  {userRole === 'admin' ? (
+                    <Select
+                      value={lead.assigned_closer_id || 'none'}
+                      onValueChange={(v) => handleAssignment('assigned_closer_id', v === 'none' ? null : v)}
+                    >
+                      <SelectTrigger className="h-8">
+                        <SelectValue placeholder="Unassigned" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Unassigned</SelectItem>
+                        {users.filter(u => u.role === 'closer' || u.role === 'admin').map(u => (
+                          <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <p>{users.find(u => u.id === lead.assigned_closer_id)?.name || <span className="text-muted-foreground">Unassigned</span>}</p>
+                  )}
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground flex items-center gap-1">
+                    <DollarSign className="h-3 w-3" />
+                    Deal Value
+                  </p>
+                  {userRole === 'admin' || userRole === 'closer' ? (
+                    <div className="flex gap-2">
+                      <Input
+                        type="number"
+                        min="0"
+                        step="100"
+                        placeholder="0.00"
+                        value={dealValueInput}
+                        onChange={(e) => setDealValueInput(e.target.value)}
+                        onBlur={handleDealValueSave}
+                        onKeyDown={(e) => { if (e.key === 'Enter') handleDealValueSave(); }}
+                        className="h-8"
+                      />
+                    </div>
+                  ) : (
+                    <p>
+                      {lead.deal_value != null
+                        ? `$${Number(lead.deal_value).toLocaleString()}`
+                        : <span className="text-muted-foreground">Not set</span>}
+                    </p>
+                  )}
+                </div>
               </CardContent>
             </Card>
           </div>

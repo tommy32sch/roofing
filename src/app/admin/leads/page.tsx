@@ -171,6 +171,7 @@ function LeadsListContent() {
               <TableHead>Status</TableHead>
               <TableHead className="hidden sm:table-cell">Priority</TableHead>
               <TableHead className="hidden lg:table-cell">Source</TableHead>
+              <TableHead className="hidden lg:table-cell">Deal Value</TableHead>
               <TableHead className="hidden md:table-cell">Added</TableHead>
             </TableRow>
           </TableHeader>
@@ -183,12 +184,13 @@ function LeadsListContent() {
                   <TableCell><Skeleton className="h-5 w-16" /></TableCell>
                   <TableCell className="hidden sm:table-cell"><Skeleton className="h-5 w-14" /></TableCell>
                   <TableCell className="hidden lg:table-cell"><Skeleton className="h-4 w-20" /></TableCell>
+                  <TableCell className="hidden lg:table-cell"><Skeleton className="h-4 w-16" /></TableCell>
                   <TableCell className="hidden md:table-cell"><Skeleton className="h-4 w-16" /></TableCell>
                 </TableRow>
               ))
             ) : leads.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                   {search || status || priority ? 'No leads match your filters.' : 'No leads yet. Add your first lead to get started.'}
                 </TableCell>
               </TableRow>
@@ -221,6 +223,9 @@ function LeadsListContent() {
                   </TableCell>
                   <TableCell className="hidden lg:table-cell text-sm text-muted-foreground">
                     {(lead.lead_sources as { display_name: string } | undefined)?.display_name || '-'}
+                  </TableCell>
+                  <TableCell className="hidden lg:table-cell text-sm font-medium">
+                    {lead.deal_value != null ? `$${Number(lead.deal_value).toLocaleString()}` : <span className="text-muted-foreground">-</span>}
                   </TableCell>
                   <TableCell className="hidden md:table-cell text-sm text-muted-foreground">
                     {formatDistanceToNow(new Date(lead.created_at), { addSuffix: true })}

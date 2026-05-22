@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
-import { Users, TrendingUp, Flame, CalendarDays, ArrowRight, RefreshCw } from 'lucide-react';
+import { Users, TrendingUp, Flame, CalendarDays, ArrowRight, RefreshCw, DollarSign } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -148,6 +148,34 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Revenue cards (only shown when deal values exist) */}
+      {((stats?.totalPipelineValue ?? 0) > 0 || (stats?.totalWonValue ?? 0) > 0) && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <Card className="border-green-200 dark:border-green-900">
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2 text-muted-foreground text-sm">
+                <DollarSign className="h-4 w-4 text-green-600" />
+                Won Revenue
+              </div>
+              <p className="text-2xl font-bold mt-1 text-green-600">
+                ${(stats?.totalWonValue ?? 0).toLocaleString()}
+              </p>
+            </CardContent>
+          </Card>
+          <Card className="border-blue-200 dark:border-blue-900">
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2 text-muted-foreground text-sm">
+                <DollarSign className="h-4 w-4 text-blue-600" />
+                Pipeline Value
+              </div>
+              <p className="text-2xl font-bold mt-1 text-blue-600">
+                ${(stats?.totalPipelineValue ?? 0).toLocaleString()}
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       {/* Pipeline */}
       <Card>

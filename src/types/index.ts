@@ -92,6 +92,13 @@ export interface Lead {
   decision_maker: string | null;
   referral_source: string | null;
   demographic_captured_at: string | null;
+  // Assignment
+  assigned_setter_id: string | null;
+  assigned_closer_id: string | null;
+  // Deal value
+  deal_value: number | null;
+  // Follow-up
+  follow_up_date: string | null;
   // Duplicate flagging
   is_flagged_duplicate: boolean;
   duplicate_of_id: string | null;
@@ -183,6 +190,8 @@ export interface DashboardStats {
   conversionRate: number;
   recentLeads: LeadWithSource[];
   leadsBySource: { source: string; count: number }[];
+  totalPipelineValue: number;
+  totalWonValue: number;
 }
 
 export interface CSVImportResult {
