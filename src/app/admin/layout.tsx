@@ -18,6 +18,7 @@ import {
   BarChart2,
   UserCog,
   ScrollText,
+  TrendingUp,
 } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { toast } from 'sonner';
@@ -37,6 +38,7 @@ function getNavItems(role: UserRole) {
     { href: '/admin', label: 'Dashboard', icon: Home },
     { href: '/admin/leads', label: 'Leads', icon: Users },
     { href: '/admin/activity', label: 'Activity', icon: ScrollText },
+    { href: '/admin/performance', label: 'Performance', icon: TrendingUp },
   ];
   if (role !== 'closer') {
     items.push({ href: '/admin/leads/import', label: 'Import', icon: Upload });
