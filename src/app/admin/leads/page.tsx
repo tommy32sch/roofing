@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Search, PlusCircle, Upload, Sparkles } from 'lucide-react';
+import { Search, PlusCircle, Upload, Sparkles, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -48,6 +48,14 @@ function LeadsListContent() {
   const priority = searchParams.get('priority') || '';
   const search = searchParams.get('search') || '';
   const page = parseInt(searchParams.get('page') || '1', 10);
+
+  function handleExport() {
+    const params = new URLSearchParams();
+    if (status) params.set('status', status);
+    if (priority) params.set('priority', priority);
+    if (search) params.set('search', search);
+    window.location.href = `/api/admin/leads/export?${params}`;
+  }
 
   const fetchLeads = useCallback(async () => {
     setLoading(true);
@@ -104,6 +112,10 @@ function LeadsListContent() {
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Leads</h1>
         <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={handleExport}>
+            <Download className="h-4 w-4 mr-1" />
+            Export
+          </Button>
           <Link href="/admin/leads/import">
             <Button variant="outline" size="sm">
               <Upload className="h-4 w-4 mr-1" />
