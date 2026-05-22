@@ -25,6 +25,7 @@ export async function GET(request: NextRequest) {
     const offset = (page - 1) * limit;
     const showDuplicates = searchParams.get('show_duplicates') === 'true';
     const isFlaggedDuplicate = searchParams.get('is_flagged_duplicate');
+    const followUpBefore = searchParams.get('follow_up_before'); // ISO date string, e.g. today
 
     let query = supabase
       .from('leads')
@@ -52,6 +53,13 @@ export async function GET(request: NextRequest) {
     if (admin.role !== 'closer') {
       if (priority) query = query.eq('priority', priority);
       if (sourceId) query = query.eq('source_id', parseInt(sourceId, 10));
+    }
+
+    if (followUpBefore) {
+      query = query
+        .lte('follow_up_date', followUpBefore)
+        .not('follow_up_date', 'is', null)
+        .not('status', 'in', '("sold","lost")');
     }
 
     if (search) {

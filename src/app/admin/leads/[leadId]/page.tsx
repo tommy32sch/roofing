@@ -24,6 +24,7 @@ import {
   MailOpen,
   DollarSign,
   UserCheck,
+  CalendarClock,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatDistanceToNow, format } from 'date-fns';
@@ -120,6 +121,25 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
     }).catch(() => {});
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [leadId]);
+
+  async function handleFollowUpChange(date: string) {
+    try {
+      const res = await fetch(`/api/admin/leads/${leadId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ follow_up_date: date || null }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success(date ? 'Follow-up date set' : 'Follow-up cleared');
+        fetchLead();
+      } else {
+        toast.error(data.error || 'Failed to update follow-up date');
+      }
+    } catch {
+      toast.error('Failed to update follow-up date');
+    }
+  }
 
   async function handleAssignment(field: 'assigned_setter_id' | 'assigned_closer_id', value: string | null) {
     try {
@@ -349,6 +369,27 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
             </SelectContent>
           </Select>
         </div>
+        {userRole !== 'closer' && (
+          <div className="flex items-center gap-2">
+            <CalendarClock className="h-4 w-4 text-muted-foreground" />
+            <span className="text-sm text-muted-foreground">Follow-up:</span>
+            <Input
+              type="date"
+              value={lead.follow_up_date || ''}
+              onChange={(e) => handleFollowUpChange(e.target.value)}
+              className="h-8 w-[150px] text-sm"
+            />
+            {lead.follow_up_date && (
+              <button
+                onClick={() => handleFollowUpChange('')}
+                className="text-xs text-muted-foreground hover:text-destructive"
+                title="Clear follow-up"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       <Tabs defaultValue="overview">

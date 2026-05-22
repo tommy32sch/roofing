@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Search, PlusCircle, Upload, Sparkles, Download } from 'lucide-react';
+import { Search, PlusCircle, Upload, Sparkles, Download, CalendarClock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -26,7 +26,7 @@ import { LeadStatusBadge } from '@/components/leads/lead-status-badge';
 import { LeadPriorityBadge } from '@/components/leads/lead-priority-badge';
 import { LEAD_STATUS_OPTIONS, LEAD_PRIORITY_OPTIONS } from '@/types';
 import type { LeadWithSource } from '@/types';
-import { formatDistanceToNow } from 'date-fns';
+import { formatDistanceToNow, isPast, isToday } from 'date-fns';
 
 export default function LeadsListPage() {
   return (
@@ -218,6 +218,15 @@ function LeadsListContent() {
                       <p className="font-medium text-sm flex items-center gap-1">
                         {lead.first_name} {lead.last_name}
                         {lead.enriched_at && <span title="Enriched"><Sparkles className="h-3 w-3 text-amber-500" /></span>}
+                        {lead.follow_up_date && (() => {
+                          const d = new Date(lead.follow_up_date + 'T00:00:00');
+                          const overdue = isPast(d) && !isToday(d);
+                          return (
+                            <span title={`Follow-up: ${lead.follow_up_date}`}>
+                              <CalendarClock className={`h-3 w-3 ${overdue ? 'text-destructive' : 'text-amber-500'}`} />
+                            </span>
+                          );
+                        })()}
                       </p>
                       <p className="text-xs text-muted-foreground md:hidden">
                         {[lead.address_street, lead.address_city, lead.address_state].filter(Boolean).join(', ')}

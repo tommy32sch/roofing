@@ -192,6 +192,7 @@ export interface DashboardStats {
   leadsBySource: { source: string; count: number }[];
   totalPipelineValue: number;
   totalWonValue: number;
+  overdueFollowUps: number;
 }
 
 export interface CSVImportResult {

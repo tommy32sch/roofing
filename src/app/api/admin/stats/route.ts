@@ -8,6 +8,16 @@ export async function GET() {
   try {
     const supabase = db();
 
+    const today = new Date().toISOString().slice(0, 10);
+
+    // Overdue follow-ups count
+    const { count: overdueFollowUps } = await supabase
+      .from('leads')
+      .select('id', { count: 'exact', head: true })
+      .lte('follow_up_date', today)
+      .not('follow_up_date', 'is', null)
+      .not('status', 'in', '("sold","lost")');
+
     // Get all leads with source
     const { data: leads, error } = await supabase
       .from('leads')
@@ -81,6 +91,7 @@ export async function GET() {
         leadsBySource,
         totalPipelineValue,
         totalWonValue,
+        overdueFollowUps: overdueFollowUps ?? 0,
       },
     });
   } catch {
