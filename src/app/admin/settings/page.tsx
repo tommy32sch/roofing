@@ -28,6 +28,8 @@ export default function SettingsPage() {
   const [autoEnrich, setAutoEnrich] = useState(false);
   const [testingRegrid, setTestingRegrid] = useState(false);
   const [savingRegrid, setSavingRegrid] = useState(false);
+  const [roofPricePerSquare, setRoofPricePerSquare] = useState('');
+  const [savingRoofPrice, setSavingRoofPrice] = useState(false);
 
   // Email import state
   const [emailEnabled, setEmailEnabled] = useState(false);
@@ -46,6 +48,9 @@ export default function SettingsPage() {
           setDefaultPriority(data.settings.default_lead_priority || 'medium');
           setRegridApiKey(data.settings.regrid_api_key || '');
           setAutoEnrich(data.settings.auto_enrich_enabled || false);
+          setRoofPricePerSquare(
+            data.settings.roof_price_per_square != null ? String(data.settings.roof_price_per_square) : ''
+          );
           setEmailEnabled(data.settings.email_import_enabled || false);
           setAllowedEmails((data.settings.allowed_sender_emails || []).join('\n'));
         }
@@ -149,6 +154,61 @@ export default function SettingsPage() {
           </div>
           <Button onClick={handleSave} disabled={saving}>
             {saving ? 'Saving...' : 'Save Settings'}
+          </Button>
+        </CardContent>
+      </Card>
+
+      {/* Roof Pricing */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Roof Pricing</CardTitle>
+          <CardDescription>
+            Used to estimate each lead&apos;s roof replacement value from its property data
+            (sqft, stories, roof type). This drives prioritization and pipeline totals.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="roof_price_per_square">Base price per square ($)</Label>
+            <Input
+              id="roof_price_per_square"
+              type="number"
+              min="0"
+              step="25"
+              value={roofPricePerSquare}
+              onChange={(e) => setRoofPricePerSquare(e.target.value)}
+              placeholder="400"
+            />
+            <p className="text-xs text-muted-foreground">
+              Asphalt shingle baseline (per 100 sq ft of roof). Metal, tile, and slate are
+              auto-scaled from this. Leave blank to use the default (~$400/square).
+            </p>
+          </div>
+          <Button
+            onClick={async () => {
+              setSavingRoofPrice(true);
+              try {
+                const res = await fetch('/api/admin/settings', {
+                  method: 'PATCH',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ roof_price_per_square: roofPricePerSquare.trim() }),
+                });
+                const data = await res.json();
+                if (data.success) {
+                  toast.success('Roof pricing saved');
+                  setSettings(data.settings);
+                } else {
+                  toast.error(data.error || 'Failed to save');
+                }
+              } catch {
+                toast.error('Failed to save roof pricing');
+              } finally {
+                setSavingRoofPrice(false);
+              }
+            }}
+            disabled={savingRoofPrice}
+          >
+            {savingRoofPrice ? 'Saving...' : 'Save Roof Pricing'}
           </Button>
         </CardContent>
       </Card>

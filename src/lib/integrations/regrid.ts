@@ -1,4 +1,5 @@
 import { db } from '@/lib/supabase/server';
+import { estimateRoofValue } from '@/lib/leads/roof-value';
 
 const REGRID_API_BASE = 'https://app.regrid.com/api/v2/parcels';
 
@@ -27,17 +28,18 @@ export interface RegridParcelData {
 /**
  * Get the Regrid API key and auto-enrich setting from app_settings.
  */
-async function getRegridConfig(): Promise<{ apiKey: string | null; autoEnrich: boolean }> {
+async function getRegridConfig(): Promise<{ apiKey: string | null; autoEnrich: boolean; roofPricePerSquare: number | null }> {
   const supabase = db();
   const { data } = await supabase
     .from('app_settings')
-    .select('regrid_api_key, auto_enrich_enabled')
+    .select('regrid_api_key, auto_enrich_enabled, roof_price_per_square')
     .eq('id', 'default')
     .single();
 
   return {
     apiKey: data?.regrid_api_key || null,
     autoEnrich: data?.auto_enrich_enabled ?? false,
+    roofPricePerSquare: data?.roof_price_per_square ?? null,
   };
 }
 
@@ -116,7 +118,7 @@ export async function enrichLead(leadId: string, lead: {
   address_state: string | null;
   address_zip: string | null;
 }): Promise<boolean> {
-  const { apiKey, autoEnrich } = await getRegridConfig();
+  const { apiKey, autoEnrich, roofPricePerSquare } = await getRegridConfig();
   if (!apiKey || !autoEnrich) return false;
 
   const address = buildAddress(lead.address_street, lead.address_city, lead.address_state, lead.address_zip);
@@ -149,10 +151,28 @@ export async function enrichLead(leadId: string, lead: {
 
   if (Object.keys(updates).length === 0) return false;
 
+  const supabase = db();
+
+  // Recompute the estimated roof value from the resulting property data
+  // (newly enriched fields take precedence over the lead's current values).
+  const { data: current } = await supabase
+    .from('leads')
+    .select('sqft, stories, roof_type')
+    .eq('id', leadId)
+    .single();
+  const estimate = estimateRoofValue(
+    {
+      sqft: (updates.sqft as number | undefined) ?? current?.sqft ?? null,
+      stories: (updates.stories as number | undefined) ?? current?.stories ?? null,
+      roof_type: (updates.roof_type as string | undefined) ?? current?.roof_type ?? null,
+    },
+    { basePricePerSquare: roofPricePerSquare }
+  );
+  if (estimate) updates.estimated_roof_value = estimate.value;
+
   updates.enriched_at = new Date().toISOString();
   updates.enrichment_source = 'regrid';
 
-  const supabase = db();
   const { error } = await supabase
     .from('leads')
     .update(updates)

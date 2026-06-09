@@ -55,6 +55,7 @@ import { LeadPriorityBadge } from '@/components/leads/lead-priority-badge';
 import { WonLeadModal } from '@/components/leads/WonLeadModal';
 import { LEAD_STATUS_OPTIONS, LEAD_PRIORITY_OPTIONS } from '@/types';
 import type { LeadWithActivities, LeadActivity, ActivityType, UserRole, AdminUser } from '@/types';
+import { estimateRoofValue } from '@/lib/leads/roof-value';
 
 const SETTER_ALLOWED_STATUSES = new Set(['new', 'contacted', 'appointment_set', 'lost']);
 const CLOSER_ALLOWED_STATUSES = new Set(['sold', 'lost']);
@@ -534,6 +535,22 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
                   <div>
                     <span className="text-muted-foreground">Score:</span>{' '}
                     {lead.roof_score !== null ? `${lead.roof_score}/100` : '-'}
+                  </div>
+                  <div className="col-span-2">
+                    <span className="text-muted-foreground">Est. value:</span>{' '}
+                    {lead.estimated_roof_value != null ? (
+                      <>
+                        <span className="font-medium">${Number(lead.estimated_roof_value).toLocaleString()}</span>
+                        {(() => {
+                          const est = estimateRoofValue({ sqft: lead.sqft, stories: lead.stories, roof_type: lead.roof_type });
+                          return est ? (
+                            <span className="text-muted-foreground"> (~{est.squares} squares)</span>
+                          ) : null;
+                        })()}
+                      </>
+                    ) : (
+                      '-'
+                    )}
                   </div>
                   {lead.roof_material_notes && (
                     <div className="col-span-2">

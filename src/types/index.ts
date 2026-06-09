@@ -97,6 +97,8 @@ export interface Lead {
   assigned_closer_id: string | null;
   // Deal value
   deal_value: number | null;
+  // System-estimated roof replacement value (derived from property data)
+  estimated_roof_value: number | null;
   // Follow-up
   follow_up_date: string | null;
   // Duplicate flagging
@@ -155,6 +157,7 @@ export interface AppSettings {
   default_lead_priority: LeadPriority;
   regrid_api_key: string | null;
   auto_enrich_enabled: boolean;
+  roof_price_per_square: number | null;
   email_import_enabled: boolean;
   allowed_sender_emails: string[] | null;
   updated_at: string;
@@ -192,6 +195,7 @@ export interface DashboardStats {
   leadsBySource: { source: string; count: number }[];
   totalPipelineValue: number;
   totalWonValue: number;
+  totalEstimatedRoofValue: number;
   overdueFollowUps: number;
 }
 

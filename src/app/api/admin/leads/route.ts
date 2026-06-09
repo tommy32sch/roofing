@@ -3,6 +3,8 @@ import { db } from '@/lib/supabase/server';
 import { getAuthenticatedAdmin } from '@/lib/auth/jwt';
 import { parsePhoneNumber } from 'libphonenumber-js';
 import { enrichLead } from '@/lib/integrations/regrid';
+import { estimateRoofValue } from '@/lib/leads/roof-value';
+import { getRoofPricePerSquare } from '@/lib/leads/roof-value.server';
 
 export async function GET(request: NextRequest) {
   try {
@@ -125,6 +127,13 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Estimate roof value from any property data supplied at creation. If the
+    // lead is later auto-enriched, enrichLead recomputes this from richer data.
+    const estimate = estimateRoofValue(
+      { sqft: rest.sqft ?? null, stories: rest.stories ?? null, roof_type: rest.roof_type ?? null },
+      { basePricePerSquare: await getRoofPricePerSquare() }
+    );
+
     const { data: lead, error } = await supabase
       .from('leads')
       .insert({
@@ -134,6 +143,7 @@ export async function POST(request: NextRequest) {
         phone_normalized,
         email: email?.trim()?.toLowerCase() || null,
         ...rest,
+        estimated_roof_value: estimate?.value ?? null,
       })
       .select('*')
       .single();

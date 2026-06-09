@@ -3,6 +3,8 @@ import { db } from '@/lib/supabase/server';
 import { getAuthenticatedAdmin } from '@/lib/auth/jwt';
 import { isValidUUID } from '@/lib/utils/validation';
 import { parsePhoneNumber } from 'libphonenumber-js';
+import { estimateRoofValue } from '@/lib/leads/roof-value';
+import { getRoofPricePerSquare } from '@/lib/leads/roof-value.server';
 
 const STATUS_ORDER: string[] = ['new', 'contacted', 'appointment_set', 'inspected', 'proposal_sent', 'sold', 'lost'];
 const SETTER_ALLOWED_STATUSES = new Set(['new', 'contacted', 'appointment_set', 'lost']);
@@ -77,10 +79,10 @@ export async function PATCH(
     const supabase = db();
     const body = await request.json();
 
-    // Get current lead for status change tracking
+    // Get current lead for status change tracking + roof-value recompute inputs
     const { data: currentLead } = await supabase
       .from('leads')
-      .select('status')
+      .select('status, sqft, stories, roof_type')
       .eq('id', leadId)
       .single();
 
@@ -136,6 +138,21 @@ export async function PATCH(
     // Normalize email
     if (body.email !== undefined) {
       body.email = body.email?.trim()?.toLowerCase() || null;
+    }
+
+    // Recompute the estimated roof value when any input field changes.
+    if (body.sqft !== undefined || body.stories !== undefined || body.roof_type !== undefined) {
+      // Use the incoming value when the field is present (including an explicit
+      // clear to null), otherwise fall back to the lead's current value.
+      const estimate = estimateRoofValue(
+        {
+          sqft: body.sqft !== undefined ? body.sqft : currentLead.sqft,
+          stories: body.stories !== undefined ? body.stories : currentLead.stories,
+          roof_type: body.roof_type !== undefined ? body.roof_type : currentLead.roof_type,
+        },
+        { basePricePerSquare: await getRoofPricePerSquare() }
+      );
+      body.estimated_roof_value = estimate?.value ?? null;
     }
 
     const { data: lead, error } = await supabase

@@ -74,7 +74,7 @@ export async function GET(request: NextRequest) {
     const headers = [
       'First Name', 'Last Name', 'Phone', 'Email',
       'Address', 'City', 'State', 'ZIP',
-      'Status', 'Priority', 'Source', 'Deal Value',
+      'Status', 'Priority', 'Source', 'Est. Roof Value', 'Deal Value',
       'Assigned Setter', 'Assigned Closer',
       'Hail Date', 'Hail Size (in)', 'Roof Type', 'Roof Age',
       'Home Value', 'Year Built', 'Sqft',
@@ -97,6 +97,7 @@ export async function GET(request: NextRequest) {
         lead.status,
         lead.priority,
         source,
+        lead.estimated_roof_value != null ? lead.estimated_roof_value : '',
         lead.deal_value != null ? lead.deal_value : '',
         lead.assigned_setter_id ? (userMap.get(lead.assigned_setter_id) ?? lead.assigned_setter_id) : '',
         lead.assigned_closer_id ? (userMap.get(lead.assigned_closer_id) ?? lead.assigned_closer_id) : '',

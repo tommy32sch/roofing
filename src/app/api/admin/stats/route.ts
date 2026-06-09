@@ -21,7 +21,7 @@ export async function GET() {
     // Get all leads with source
     const { data: leads, error } = await supabase
       .from('leads')
-      .select('id, first_name, last_name, address_city, address_state, status, priority, source_id, deal_value, created_at, lead_sources(display_name)')
+      .select('id, first_name, last_name, address_city, address_state, status, priority, source_id, deal_value, estimated_roof_value, created_at, lead_sources(display_name)')
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -77,6 +77,10 @@ export async function GET() {
     const totalWonValue = allLeads
       .filter((l) => l.status === 'sold' && l.deal_value)
       .reduce((sum, l) => sum + Number(l.deal_value), 0);
+    // Estimated roof value across active (still-open) leads.
+    const totalEstimatedRoofValue = allLeads
+      .filter((l) => ACTIVE_STATUSES.has(l.status) && l.estimated_roof_value)
+      .reduce((sum, l) => sum + Number(l.estimated_roof_value), 0);
 
     return NextResponse.json({
       success: true,
@@ -91,6 +95,7 @@ export async function GET() {
         leadsBySource,
         totalPipelineValue,
         totalWonValue,
+        totalEstimatedRoofValue,
         overdueFollowUps: overdueFollowUps ?? 0,
       },
     });

@@ -157,31 +157,50 @@ export default function DashboardPage() {
         </Card>
       </div>
 
-      {/* Revenue cards (only shown when deal values exist) */}
-      {((stats?.totalPipelineValue ?? 0) > 0 || (stats?.totalWonValue ?? 0) > 0) && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Card className="border-green-200 dark:border-green-900">
-            <CardContent className="p-4">
-              <div className="flex items-center gap-2 text-muted-foreground text-sm">
-                <DollarSign className="h-4 w-4 text-green-600" />
-                Won Revenue
-              </div>
-              <p className="text-2xl font-bold mt-1 text-green-600">
-                ${(stats?.totalWonValue ?? 0).toLocaleString()}
-              </p>
-            </CardContent>
-          </Card>
-          <Card className="border-blue-200 dark:border-blue-900">
-            <CardContent className="p-4">
-              <div className="flex items-center gap-2 text-muted-foreground text-sm">
-                <DollarSign className="h-4 w-4 text-blue-600" />
-                Pipeline Value
-              </div>
-              <p className="text-2xl font-bold mt-1 text-blue-600">
-                ${(stats?.totalPipelineValue ?? 0).toLocaleString()}
-              </p>
-            </CardContent>
-          </Card>
+      {/* Revenue cards (only shown when values exist) */}
+      {((stats?.totalPipelineValue ?? 0) > 0 ||
+        (stats?.totalWonValue ?? 0) > 0 ||
+        (stats?.totalEstimatedRoofValue ?? 0) > 0) && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {(stats?.totalWonValue ?? 0) > 0 && (
+            <Card className="border-green-200 dark:border-green-900">
+              <CardContent className="p-4">
+                <div className="flex items-center gap-2 text-muted-foreground text-sm">
+                  <DollarSign className="h-4 w-4 text-green-600" />
+                  Won Revenue
+                </div>
+                <p className="text-2xl font-bold mt-1 text-green-600">
+                  ${(stats?.totalWonValue ?? 0).toLocaleString()}
+                </p>
+              </CardContent>
+            </Card>
+          )}
+          {(stats?.totalPipelineValue ?? 0) > 0 && (
+            <Card className="border-blue-200 dark:border-blue-900">
+              <CardContent className="p-4">
+                <div className="flex items-center gap-2 text-muted-foreground text-sm">
+                  <DollarSign className="h-4 w-4 text-blue-600" />
+                  Pipeline Value
+                </div>
+                <p className="text-2xl font-bold mt-1 text-blue-600">
+                  ${(stats?.totalPipelineValue ?? 0).toLocaleString()}
+                </p>
+              </CardContent>
+            </Card>
+          )}
+          {(stats?.totalEstimatedRoofValue ?? 0) > 0 && (
+            <Card className="border-amber-200 dark:border-amber-900">
+              <CardContent className="p-4">
+                <div className="flex items-center gap-2 text-muted-foreground text-sm">
+                  <DollarSign className="h-4 w-4 text-amber-600" />
+                  Est. Roof Value
+                </div>
+                <p className="text-2xl font-bold mt-1 text-amber-600">
+                  ${(stats?.totalEstimatedRoofValue ?? 0).toLocaleString()}
+                </p>
+              </CardContent>
+            </Card>
+          )}
         </div>
       )}
 
