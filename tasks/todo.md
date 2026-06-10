@@ -1,52 +1,41 @@
-# Estimated Roof Replacement Value
+# Advanced Bulk Lead Assignment (list-first)
 
 Plan: `/Users/tommyschwieger/.claude/plans/gentle-dazzling-storm.md`
-Branch: `feat/estimated-roof-value`
+Branch: `feat/bulk-assignment`
 
 ## Tasks
-- [x] Migration 008: `estimated_roof_value` on leads + index; `roof_price_per_square` on app_settings
-- [x] Pure calc lib `src/lib/leads/roof-value.ts` (material multipliers, pitch, waste)
-- [x] Types: `Lead.estimated_roof_value`, `AppSettings.roof_price_per_square`, `DashboardStats.totalEstimatedRoofValue`
-- [x] Regrid `enrichLead`: read base price + current sqft/stories/roof_type, compute, store
-- [x] Create route: compute estimate from insert payload
-- [x] PATCH route: recompute when sqft/stories/roof_type change (respects explicit clear)
-- [x] Settings API: accept `roof_price_per_square`
-- [x] Settings page: "Roof Pricing" card
-- [x] Stats route: sum `totalEstimatedRoofValue` over active statuses
-- [x] Dashboard: Est. roof value card
-- [x] Leads list: Est. Value column
-- [x] CSV export: Est. Value column
-- [x] Backfill script `scripts/backfill-roof-value.ts`
-- [x] Verify: tsc (clean), lint (no new issues), build (exit 0), calc sanity check
+- [x] `LIMITS.BULK_ASSIGN_MAX: 500` in validation.ts
+- [x] Pure deterministic distribution algorithm `src/lib/leads/distribute.ts` (LPT greedy; count = round-robin)
+- [x] POST `/api/admin/leads/bulk-assign` — single + distribute modes, dry_run preview, chunked .in(), bulk activity log
+- [x] GET `/api/admin/leads/streets` — filter-aware street grouping with per-lead values
+- [x] `BulkAssignDialog` — role, rep checkboxes, unassign, strategy, dry-run preview table
+- [x] `StreetSelectSheet` — street list w/ counts + $, indeterminate checkboxes, no-street hint
+- [x] Leads page — admin-only checkbox column, select-all header, sticky action bar, By Street button
+- [x] Verify: tsc, lint (no new issues), build, algorithm spot-checks, live API e2e
 
 ## Review
 
-**Status:** code complete + statically verified on branch `feat/estimated-roof-value`.
+**Status:** complete + verified on branch `feat/bulk-assignment` (NOT yet deployed).
 
-**What was built:** a derived `estimated_roof_value` per lead, computed from
-`sqft / stories / roof_type` and an admin-set base $/square. Auto-populates on create,
-update, and Regrid enrichment. Surfaced on lead detail (Roof card, with "~N squares"),
-leads list, dashboard revenue cards, and CSV export. Lives alongside `deal_value`.
+**What was built:** admins can select leads on the list (individually, whole page, or
+by street via a side panel) and bulk-assign them to setters/closers — to one rep,
+unassign, or auto-distribute among 2+ reps balanced by # of leads or by estimated
+roof value, with an exact dry-run preview before committing. Setters/closers see no
+UI change; both new endpoints return 403 for them. No schema changes.
 
-**Calc** (`src/lib/leads/roof-value.ts`, pure/no-DB): footprint = sqft/stories →
-×1.3 pitch → /100 → ×1.10 waste → × (base × material multiplier), rounded to $100.
-Verified: 2000sqft/1story/asphalt @$400 → **$11,400 / 28.6 squares** (matches plan).
+**Verification (all green):**
+- `tsc --noEmit` clean; lint has zero new issues (same 2 pre-existing errors in
+  untouched webhooks/email); `next build` exit 0 with both new routes registered
+- Algorithm spot-checks: 7/2 count → 4/3; value balance $37k/$33k; all-null → 2/2/2;
+  deterministic across runs
+- Live e2e against dev server with minted JWTs: 401 (no cookie), 403 (setter token)
+  on both routes; streets grouping correct; dry-run single ($67,200/5 leads) and
+  distribute-by-value ($33,700 vs $33,500) correct; all validation errors (bad uuid,
+  bad mode, 1-user distribute, wrong-role target) return clean 400s; ghost lead →
+  skipped:1; REAL write test on test lead "123 main st": assign → column set +
+  "Bulk assigned setter" activity → unassign → reverted to null
 
-**Verification:**
-- `npx tsc --noEmit` → clean
-- `npm run build` → exit 0, "Compiled successfully"
-- `npm run lint` → only PRE-EXISTING issues; the 2 errors are in
-  `src/app/api/webhooks/email/route.ts` (untouched by this branch)
-- Calc spot-checks (default, base-price scaling, multi-story metal, null sqft) all correct
-
-**Manual steps the user must run (writes to real Supabase):**
-1. Apply `supabase/migrations/008_estimated_roof_value.sql`
-2. `npx tsx --env-file=.env.local scripts/backfill-roof-value.ts`
-3. (optional) set a base $/square in Admin → Settings → Roof Pricing
-
-**Live e2e deferred** until the migration is applied — the stats/leads queries select
-the new column, which won't exist on the DB until step 1.
-
-**Design notes:** server-only base-price read kept in `roof-value.server.ts` so the
-pure calc stays client-safe; PATCH recompute respects an explicit `null` (clearing
-sqft zeroes the estimate rather than reusing the stale value).
+**Notes:**
+- Distribution preview uses server dry_run so preview always equals commit
+- The future map view reuses POST /bulk-assign unchanged
+- Deploy = push main (Vercel auto-deploys); no migrations needed this time

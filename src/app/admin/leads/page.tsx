@@ -3,8 +3,9 @@
 import { Suspense, useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Search, PlusCircle, Upload, Sparkles, Download, CalendarClock } from 'lucide-react';
+import { Search, PlusCircle, Upload, Sparkles, Download, CalendarClock, MapPin, UserCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import {
   Select,
@@ -24,8 +25,11 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { LeadStatusBadge } from '@/components/leads/lead-status-badge';
 import { LeadPriorityBadge } from '@/components/leads/lead-priority-badge';
+import { BulkAssignDialog } from '@/components/leads/BulkAssignDialog';
+import { StreetSelectSheet } from '@/components/leads/StreetSelectSheet';
 import { LEAD_STATUS_OPTIONS, LEAD_PRIORITY_OPTIONS } from '@/types';
-import type { LeadWithSource } from '@/types';
+import type { LeadWithSource, UserRole } from '@/types';
+import { LIMITS } from '@/lib/utils/validation';
 import { formatDistanceToNow, isPast, isToday } from 'date-fns';
 
 export default function LeadsListPage() {
@@ -43,6 +47,12 @@ function LeadsListContent() {
   const [loading, setLoading] = useState(true);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
+  // Default to least-privileged so admin-only selection UI never flashes for reps
+  const [userRole, setUserRole] = useState<UserRole>('setter');
+  const [selection, setSelection] = useState<Map<string, number>>(new Map());
+  const [assignOpen, setAssignOpen] = useState(false);
+  const [streetsOpen, setStreetsOpen] = useState(false);
+  const isAdmin = userRole === 'admin';
 
   const status = searchParams.get('status') || '';
   const priority = searchParams.get('priority') || '';
@@ -85,6 +95,28 @@ function LeadsListContent() {
     fetchLeads();
   }, [fetchLeads]);
 
+  useEffect(() => {
+    fetch('/api/admin/auth/me')
+      .then((r) => r.json())
+      .then((d) => { if (d.success) setUserRole(d.admin.role); })
+      .catch(() => {});
+  }, []);
+
+  function setSelected(entries: { id: string; value: number | null }[], selected: boolean) {
+    setSelection((prev) => {
+      const next = new Map(prev);
+      for (const e of entries) {
+        if (selected) next.set(e.id, Number(e.value) || 0);
+        else next.delete(e.id);
+      }
+      return next;
+    });
+  }
+
+  const pageAllSelected = leads.length > 0 && leads.every((l) => selection.has(l.id));
+  const pageSomeSelected = !pageAllSelected && leads.some((l) => selection.has(l.id));
+  const selectionTotal = [...selection.values()].reduce((sum, v) => sum + v, 0);
+
   function updateFilter(key: string, value: string) {
     const params = new URLSearchParams(searchParams.toString());
     if (value) {
@@ -112,6 +144,12 @@ function LeadsListContent() {
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Leads</h1>
         <div className="flex gap-2">
+          {isAdmin && (
+            <Button variant="outline" size="sm" onClick={() => setStreetsOpen(true)}>
+              <MapPin className="h-4 w-4 mr-1" />
+              By Street
+            </Button>
+          )}
           <Button variant="outline" size="sm" onClick={handleExport}>
             <Download className="h-4 w-4 mr-1" />
             Export
@@ -178,6 +216,19 @@ function LeadsListContent() {
         <Table>
           <TableHeader>
             <TableRow>
+              {isAdmin && (
+                <TableHead className="w-10">
+                  <Checkbox
+                    checked={pageAllSelected}
+                    indeterminate={pageSomeSelected}
+                    onCheckedChange={(checked) =>
+                      setSelected(leads.map((l) => ({ id: l.id, value: l.estimated_roof_value })), checked === true)
+                    }
+                    className="data-indeterminate:border-primary data-indeterminate:bg-primary/30"
+                    aria-label="Select all on page"
+                  />
+                </TableHead>
+              )}
               <TableHead>Name</TableHead>
               <TableHead className="hidden md:table-cell">Location</TableHead>
               <TableHead>Status</TableHead>
@@ -192,6 +243,7 @@ function LeadsListContent() {
             {loading ? (
               [...Array(5)].map((_, i) => (
                 <TableRow key={i}>
+                  {isAdmin && <TableCell className="w-10"><Skeleton className="h-4 w-4" /></TableCell>}
                   <TableCell><Skeleton className="h-4 w-32" /></TableCell>
                   <TableCell className="hidden md:table-cell"><Skeleton className="h-4 w-24" /></TableCell>
                   <TableCell><Skeleton className="h-5 w-16" /></TableCell>
@@ -204,7 +256,7 @@ function LeadsListContent() {
               ))
             ) : leads.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                <TableCell colSpan={isAdmin ? 9 : 8} className="text-center py-8 text-muted-foreground">
                   {search || status || priority ? 'No leads match your filters.' : 'No leads yet. Add your first lead to get started.'}
                 </TableCell>
               </TableRow>
@@ -215,6 +267,17 @@ function LeadsListContent() {
                   className="cursor-pointer hover:bg-muted/50"
                   onClick={() => router.push(`/admin/leads/${lead.id}`)}
                 >
+                  {isAdmin && (
+                    <TableCell className="w-10" onClick={(e) => e.stopPropagation()}>
+                      <Checkbox
+                        checked={selection.has(lead.id)}
+                        onCheckedChange={(checked) =>
+                          setSelected([{ id: lead.id, value: lead.estimated_roof_value }], checked === true)
+                        }
+                        aria-label={`Select ${lead.first_name} ${lead.last_name}`}
+                      />
+                    </TableCell>
+                  )}
                   <TableCell>
                     <div>
                       <p className="font-medium text-sm flex items-center gap-1">
@@ -300,6 +363,56 @@ function LeadsListContent() {
           </div>
         )}
       </div>
+
+      {/* Bulk selection action bar */}
+      {isAdmin && selection.size > 0 && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 rounded-lg border bg-background px-4 py-2.5 shadow-lg">
+          <p className="text-sm whitespace-nowrap">
+            <span className="font-medium">{selection.size}</span> selected
+            {selectionTotal > 0 && (
+              <span className="text-muted-foreground"> · ${selectionTotal.toLocaleString()} est.</span>
+            )}
+          </p>
+          {selection.size > LIMITS.BULK_ASSIGN_MAX && (
+            <p className="text-xs text-destructive whitespace-nowrap">
+              Max {LIMITS.BULK_ASSIGN_MAX} per assignment
+            </p>
+          )}
+          <Button
+            size="sm"
+            onClick={() => setAssignOpen(true)}
+            disabled={selection.size > LIMITS.BULK_ASSIGN_MAX}
+          >
+            <UserCheck className="h-4 w-4 mr-1" />
+            Assign
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => setSelection(new Map())}>
+            Clear
+          </Button>
+        </div>
+      )}
+
+      {isAdmin && (
+        <>
+          <BulkAssignDialog
+            open={assignOpen}
+            onOpenChange={setAssignOpen}
+            leadIds={[...selection.keys()]}
+            onAssigned={() => {
+              setSelection(new Map());
+              setAssignOpen(false);
+              fetchLeads();
+            }}
+          />
+          <StreetSelectSheet
+            open={streetsOpen}
+            onOpenChange={setStreetsOpen}
+            filters={{ status, priority, search }}
+            selection={selection}
+            onToggleStreet={setSelected}
+          />
+        </>
+      )}
     </div>
   );
 }

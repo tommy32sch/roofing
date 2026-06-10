@@ -26,4 +26,5 @@ export const LIMITS = {
   SEARCH_QUERY: 200,
   CSV_FILE_SIZE: 5 * 1024 * 1024, // 5MB
   BULK_IMPORT_MAX: 5000,
+  BULK_ASSIGN_MAX: 500,
 } as const;
