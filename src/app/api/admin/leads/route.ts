@@ -3,6 +3,7 @@ import { db } from '@/lib/supabase/server';
 import { getAuthenticatedAdmin } from '@/lib/auth/jwt';
 import { parsePhoneNumber } from 'libphonenumber-js';
 import { enrichLead } from '@/lib/integrations/regrid';
+import { geocodeLeadIfNeeded } from '@/lib/integrations/geocode';
 import { estimateRoofValue } from '@/lib/leads/roof-value';
 import { getRoofPricePerSquare } from '@/lib/leads/roof-value.server';
 
@@ -162,6 +163,14 @@ export async function POST(request: NextRequest) {
 
     // Auto-enrich with Regrid in the background (non-blocking)
     enrichLead(lead.id, {
+      address_street: lead.address_street,
+      address_city: lead.address_city,
+      address_state: lead.address_state,
+      address_zip: lead.address_zip,
+    }).catch(() => {});
+
+    // Geocode for the map in the background (only fills if coords still null)
+    geocodeLeadIfNeeded(lead.id, {
       address_street: lead.address_street,
       address_city: lead.address_city,
       address_state: lead.address_state,

@@ -19,6 +19,7 @@ import {
   UserCog,
   ScrollText,
   TrendingUp,
+  Map,
 } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { toast } from 'sonner';
@@ -37,6 +38,7 @@ function getNavItems(role: UserRole) {
   const items = [
     { href: '/admin', label: 'Dashboard', icon: Home },
     { href: '/admin/leads', label: 'Leads', icon: Users },
+    { href: '/admin/map', label: 'Map', icon: Map },
     { href: '/admin/activity', label: 'Activity', icon: ScrollText },
     { href: '/admin/performance', label: 'Performance', icon: TrendingUp },
   ];
@@ -58,6 +60,7 @@ function getBottomTabs(role: UserRole) {
   const tabs = [
     { href: '/admin', label: 'Dashboard', icon: Home },
     { href: '/admin/leads', label: 'Leads', icon: Users },
+    { href: '/admin/map', label: 'Map', icon: Map },
   ];
   if (role !== 'closer') {
     tabs.push({ href: '/admin/leads/new', label: 'Add', icon: PlusCircle });
