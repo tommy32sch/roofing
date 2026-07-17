@@ -13,6 +13,28 @@ const DEMOGRAPHIC_REQUIRED_FIELDS = [
   'education_level', 'years_in_home', 'insurance_carrier', 'decision_maker', 'referral_source',
 ] as const;
 
+// Fields only an admin may set. Everything financial/assignment-related lives here
+// so a setter/closer can't award themselves leads or edit deal value via the API.
+const LEAD_ADMIN_ONLY_FIELDS = new Set(['deal_value', 'assigned_setter_id', 'assigned_closer_id']);
+
+// The complete set of lead columns a client may write. Anything not listed
+// (id, coordinates, enrichment/estimate/normalized fields, timestamps, duplicate
+// flags) is server-controlled and silently ignored on update — this is the guard
+// against mass assignment, since the route uses the service-role key (no RLS).
+const LEAD_EDITABLE_FIELDS = new Set<string>([
+  'first_name', 'last_name', 'phone', 'phone2', 'phone3', 'email', 'email2',
+  'address_street', 'address_city', 'address_state', 'address_zip',
+  'mailing_street', 'mailing_city', 'mailing_state', 'mailing_zip',
+  'home_value', 'year_built', 'sqft', 'lot_size', 'bedrooms', 'bathrooms', 'stories',
+  'assessed_value', 'last_sale_date', 'last_sale_price', 'owner_type', 'apn',
+  'roof_age', 'roof_type', 'roof_score', 'roof_material_notes',
+  'hail_date', 'hail_size_inches', 'storm_id',
+  'status', 'priority', 'source_id', 'source_notes', 'follow_up_date',
+  'career', 'family_size', 'marital_status', 'age_range', 'household_income_range',
+  'education_level', 'years_in_home', 'insurance_carrier', 'decision_maker', 'referral_source',
+  ...LEAD_ADMIN_ONLY_FIELDS,
+]);
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ leadId: string }> }
@@ -107,6 +129,7 @@ export async function PATCH(
     }
 
     // When marking as sold, demographic form must be complete
+    let demographicCapturedAt: string | null = null;
     if (body.status === 'sold' && (admin.role === 'closer' || admin.role === 'admin')) {
       const missing = DEMOGRAPHIC_REQUIRED_FIELDS.filter(
         f => body[f] === undefined || body[f] === null || body[f] === ''
@@ -117,17 +140,27 @@ export async function PATCH(
           { status: 400 }
         );
       }
-      body.demographic_captured_at = new Date().toISOString();
+      demographicCapturedAt = new Date().toISOString();
+    }
+
+    // Whitelist editable fields — anything else in the payload is ignored, and
+    // admin-only fields (deal value, assignments) are dropped for non-admins.
+    const update: Record<string, unknown> = {};
+    for (const key of Object.keys(body)) {
+      if (!LEAD_EDITABLE_FIELDS.has(key)) continue;
+      if (LEAD_ADMIN_ONLY_FIELDS.has(key) && admin.role !== 'admin') continue;
+      update[key] = body[key];
     }
 
     // Normalize phone if being updated
-    if (body.phone !== undefined) {
-      body.phone_normalized = null;
-      if (body.phone?.trim()) {
+    if (update.phone !== undefined) {
+      update.phone_normalized = null;
+      const phone = typeof update.phone === 'string' ? update.phone.trim() : '';
+      if (phone) {
         try {
-          const parsed = parsePhoneNumber(body.phone.trim(), 'US');
+          const parsed = parsePhoneNumber(phone, 'US');
           if (parsed?.isValid()) {
-            body.phone_normalized = parsed.format('E.164');
+            update.phone_normalized = parsed.format('E.164');
           }
         } catch {
           // Keep raw phone
@@ -136,28 +169,35 @@ export async function PATCH(
     }
 
     // Normalize email
-    if (body.email !== undefined) {
-      body.email = body.email?.trim()?.toLowerCase() || null;
+    if (update.email !== undefined) {
+      update.email = typeof update.email === 'string' ? update.email.trim().toLowerCase() || null : null;
     }
 
     // Recompute the estimated roof value when any input field changes.
-    if (body.sqft !== undefined || body.stories !== undefined || body.roof_type !== undefined) {
+    if (update.sqft !== undefined || update.stories !== undefined || update.roof_type !== undefined) {
       // Use the incoming value when the field is present (including an explicit
       // clear to null), otherwise fall back to the lead's current value.
       const estimate = estimateRoofValue(
         {
-          sqft: body.sqft !== undefined ? body.sqft : currentLead.sqft,
-          stories: body.stories !== undefined ? body.stories : currentLead.stories,
-          roof_type: body.roof_type !== undefined ? body.roof_type : currentLead.roof_type,
+          sqft: update.sqft !== undefined ? (update.sqft as number | null) : currentLead.sqft,
+          stories: update.stories !== undefined ? (update.stories as number | null) : currentLead.stories,
+          roof_type: update.roof_type !== undefined ? (update.roof_type as string | null) : currentLead.roof_type,
         },
         { basePricePerSquare: await getRoofPricePerSquare() }
       );
-      body.estimated_roof_value = estimate?.value ?? null;
+      update.estimated_roof_value = estimate?.value ?? null;
+    }
+
+    // Server-controlled timestamp, never taken from the client payload
+    if (demographicCapturedAt) update.demographic_captured_at = demographicCapturedAt;
+
+    if (Object.keys(update).length === 0) {
+      return NextResponse.json({ success: false, error: 'No editable fields provided' }, { status: 400 });
     }
 
     const { data: lead, error } = await supabase
       .from('leads')
-      .update(body)
+      .update(update)
       .eq('id', leadId)
       .select('*')
       .single();
