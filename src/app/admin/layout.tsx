@@ -20,6 +20,7 @@ import {
   ScrollText,
   TrendingUp,
   Map,
+  CalendarDays,
 } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { toast } from 'sonner';
@@ -39,6 +40,7 @@ function getNavItems(role: UserRole) {
     { href: '/admin', label: 'Dashboard', icon: Home },
     { href: '/admin/leads', label: 'Leads', icon: Users },
     { href: '/admin/map', label: 'Map', icon: Map },
+    { href: '/admin/calendar', label: 'Calendar', icon: CalendarDays },
     { href: '/admin/activity', label: 'Activity', icon: ScrollText },
     { href: '/admin/performance', label: 'Performance', icon: TrendingUp },
   ];
