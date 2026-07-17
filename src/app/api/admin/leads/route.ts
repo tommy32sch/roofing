@@ -4,6 +4,7 @@ import { getAuthenticatedAdmin } from '@/lib/auth/jwt';
 import { parsePhoneNumber } from 'libphonenumber-js';
 import { enrichLead } from '@/lib/integrations/regrid';
 import { geocodeLeadIfNeeded } from '@/lib/integrations/geocode';
+import { buildLeadSearchFilter, safeSortColumn } from '@/lib/utils/lead-query';
 import { estimateRoofValue } from '@/lib/leads/roof-value';
 import { getRoofPricePerSquare } from '@/lib/leads/roof-value.server';
 
@@ -65,14 +66,13 @@ export async function GET(request: NextRequest) {
         .not('status', 'in', '("sold","lost")');
     }
 
-    if (search) {
-      query = query.or(
-        `first_name.ilike.%${search}%,last_name.ilike.%${search}%,email.ilike.%${search}%,phone.ilike.%${search}%,address_street.ilike.%${search}%,address_city.ilike.%${search}%`
-      );
+    const searchFilter = buildLeadSearchFilter(search);
+    if (searchFilter) {
+      query = query.or(searchFilter);
     }
 
     const ascending = order === 'asc';
-    query = query.order(sort, { ascending }).range(offset, offset + limit - 1);
+    query = query.order(safeSortColumn(sort), { ascending }).range(offset, offset + limit - 1);
 
     const { data: leads, error, count } = await query;
 

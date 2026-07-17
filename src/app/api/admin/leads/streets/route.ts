@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/supabase/server';
 import { getAuthenticatedAdmin } from '@/lib/auth/jwt';
+import { buildLeadSearchFilter } from '@/lib/utils/lead-query';
 
 interface StreetGroup {
   street: string;
@@ -38,10 +39,9 @@ export async function GET(request: NextRequest) {
     if (status) query = query.eq('status', status);
     if (priority) query = query.eq('priority', priority);
     if (sourceId) query = query.eq('source_id', parseInt(sourceId, 10));
-    if (search) {
-      query = query.or(
-        `first_name.ilike.%${search}%,last_name.ilike.%${search}%,email.ilike.%${search}%,phone.ilike.%${search}%,address_street.ilike.%${search}%,address_city.ilike.%${search}%`
-      );
+    const searchFilter = buildLeadSearchFilter(search);
+    if (searchFilter) {
+      query = query.or(searchFilter);
     }
 
     const { data: leads, error } = await query;
