@@ -2,6 +2,11 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   async headers() {
+    // Next/React production bundles don't use eval; keep 'unsafe-eval' only in
+    // dev (React Refresh / source maps need it). 'unsafe-inline' stays because
+    // Next injects inline hydration scripts without a nonce.
+    const isDev = process.env.NODE_ENV !== 'production';
+    const scriptSrc = `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ''}`;
     return [
       {
         source: '/(.*)',
@@ -15,11 +20,12 @@ const nextConfig: NextConfig = {
             key: 'Content-Security-Policy',
             value: [
               "default-src 'self'",
-              "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+              scriptSrc,
               "style-src 'self' 'unsafe-inline'",
               "img-src 'self' data: blob: https://tile.openstreetmap.org https://*.tile.openstreetmap.org",
               "font-src 'self'",
               "connect-src 'self' https://*.supabase.co",
+              "object-src 'none'",
               "frame-ancestors 'none'",
               "base-uri 'self'",
               "form-action 'self'",
