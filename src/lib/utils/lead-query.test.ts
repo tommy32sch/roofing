@@ -7,6 +7,7 @@ import {
   directionRegex,
   sanitizeStreetNumber,
   STREET_DIRECTIONS,
+  streetName,
 } from './lead-query';
 
 describe('sanitizeSearch', () => {
@@ -99,5 +100,24 @@ describe('sanitizeStreetNumber', () => {
     expect(sanitizeStreetNumber(null)).toBe('');
     expect(sanitizeStreetNumber(undefined)).toBe('');
     expect(sanitizeStreetNumber('Main')).toBe('');
+  });
+});
+
+describe('streetName', () => {
+  it('drops the leading house number so houses group by street', () => {
+    expect(streetName('1039 N 35th St')).toBe('N 35th St');
+    expect(streetName('1101 N 35th St')).toBe('N 35th St');
+    expect(streetName('4604 E Crescent Ave')).toBe('E Crescent Ave');
+    expect(streetName('123 main st')).toBe('main st');
+  });
+
+  it('keeps addresses that have no leading number', () => {
+    expect(streetName('Main St')).toBe('Main St');
+  });
+
+  it('handles empty / null input', () => {
+    expect(streetName('')).toBe('');
+    expect(streetName(null)).toBe('');
+    expect(streetName(undefined)).toBe('');
   });
 });

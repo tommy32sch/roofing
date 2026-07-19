@@ -49,6 +49,19 @@ export function sanitizeStreetNumber(raw: string | null | undefined): string {
   return (raw ?? '').replace(/\D/g, '');
 }
 
+/**
+ * Extract the street name from a full address by dropping the leading house
+ * number, so "1039 N 35th St" and "1101 N 35th St" both group under
+ * "N 35th St". Falls back to the whole trimmed value when there's no leading
+ * number (e.g. a bare "Main St").
+ */
+export function streetName(address: string | null | undefined): string {
+  const trimmed = (address ?? '').trim();
+  if (!trimmed) return '';
+  const stripped = trimmed.replace(/^\d[\d/-]*[a-z]?\s+/i, '').trim();
+  return stripped || trimmed;
+}
+
 /** Columns a client is allowed to sort the leads list by. */
 export const LEAD_SORT_COLUMNS = new Set<string>([
   'created_at',

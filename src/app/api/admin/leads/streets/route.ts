@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/supabase/server';
 import { getAuthenticatedAdmin } from '@/lib/auth/jwt';
-import { buildLeadSearchFilter } from '@/lib/utils/lead-query';
+import { buildLeadSearchFilter, streetName } from '@/lib/utils/lead-query';
 
 interface StreetGroup {
   street: string;
@@ -53,7 +53,9 @@ export async function GET(request: NextRequest) {
     let noStreetCount = 0;
 
     for (const lead of leads || []) {
-      const street = lead.address_street?.trim();
+      // Group by street NAME (house number dropped) so every house on the same
+      // street collapses into one selectable street.
+      const street = streetName(lead.address_street);
       if (!street) {
         noStreetCount++;
         continue;
