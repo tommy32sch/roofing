@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/supabase/server';
 import { getAuthenticatedAdmin } from '@/lib/auth/jwt';
-import { buildLeadSearchFilter, sanitizeSearch, sanitizeStreetNumber, directionRegex } from '@/lib/utils/lead-query';
+import { buildLeadSearchFilter, sanitizeSearch, sanitizeStreetNumber, directionRegex, buildStreetNamesFilter } from '@/lib/utils/lead-query';
 
 function escapeCsv(value: unknown): string {
   if (value === null || value === undefined) return '';
@@ -67,6 +67,8 @@ export async function GET(request: NextRequest) {
     if (streetName) query = query.ilike('address_street', `%${streetName}%`);
     const dirRegex = directionRegex(searchParams.get('street_dir'));
     if (dirRegex) query = query.filter('address_street', 'imatch', dirRegex);
+    const streetsFilter = buildStreetNamesFilter(searchParams.get('streets'));
+    if (streetsFilter) query = query.or(streetsFilter);
 
     const { data: leads, error } = await query;
     if (error) {

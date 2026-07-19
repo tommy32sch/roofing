@@ -61,6 +61,8 @@ function LeadsListContent() {
   const streetNumber = searchParams.get('street_number') || '';
   const streetDir = searchParams.get('street_dir') || '';
   const streetName = searchParams.get('street_name') || '';
+  const streetsParam = searchParams.get('streets') || '';
+  const selectedStreets = streetsParam ? streetsParam.split('|').filter(Boolean) : [];
   const page = parseInt(searchParams.get('page') || '1', 10);
 
   function applyFilterParams(params: URLSearchParams) {
@@ -70,6 +72,14 @@ function LeadsListContent() {
     if (streetNumber) params.set('street_number', streetNumber);
     if (streetDir) params.set('street_dir', streetDir);
     if (streetName) params.set('street_name', streetName);
+    if (streetsParam) params.set('streets', streetsParam);
+  }
+
+  function toggleStreetFilter(name: string, selected: boolean) {
+    const next = selected
+      ? [...selectedStreets, name]
+      : selectedStreets.filter((s) => s !== name);
+    updateFilter('streets', next.join('|'));
   }
 
   function handleExport() {
@@ -87,6 +97,7 @@ function LeadsListContent() {
     if (streetNumber) params.set('street_number', streetNumber);
     if (streetDir) params.set('street_dir', streetDir);
     if (streetName) params.set('street_name', streetName);
+    if (streetsParam) params.set('streets', streetsParam);
     params.set('page', page.toString());
     params.set('limit', '25');
 
@@ -103,7 +114,7 @@ function LeadsListContent() {
     } finally {
       setLoading(false);
     }
-  }, [status, priority, search, streetNumber, streetDir, streetName, page]);
+  }, [status, priority, search, streetNumber, streetDir, streetName, streetsParam, page]);
 
   useEffect(() => {
     fetchLeads();
@@ -165,9 +176,13 @@ function LeadsListContent() {
         <h1 className="text-2xl font-bold">Leads</h1>
         <div className="flex gap-2">
           {isAdmin && (
-            <Button variant="outline" size="sm" onClick={() => setStreetsOpen(true)}>
+            <Button
+              variant={selectedStreets.length > 0 ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setStreetsOpen(true)}
+            >
               <MapPin className="h-4 w-4 mr-1" />
-              By Street
+              By Street{selectedStreets.length > 0 ? ` (${selectedStreets.length})` : ''}
             </Button>
           )}
           <Button variant="outline" size="sm" onClick={handleExport}>
@@ -456,8 +471,9 @@ function LeadsListContent() {
             open={streetsOpen}
             onOpenChange={setStreetsOpen}
             filters={{ status, priority, search }}
-            selection={selection}
-            onToggleStreet={setSelected}
+            selectedStreets={selectedStreets}
+            onToggleStreet={toggleStreetFilter}
+            onClear={() => updateFilter('streets', '')}
           />
         </>
       )}

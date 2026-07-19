@@ -12,28 +12,31 @@ import {
   SheetDescription,
 } from '@/components/ui/sheet';
 
-interface StreetLead {
-  id: string;
-  value: number | null;
-}
-
 interface StreetGroup {
   street: string;
   city: string | null;
   count: number;
   total_value: number;
-  leads: StreetLead[];
 }
 
 interface StreetSelectSheetProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   filters: { status: string; priority: string; search: string };
-  selection: Map<string, number>;
-  onToggleStreet: (leads: StreetLead[], selected: boolean) => void;
+  /** Street names currently in the active filter */
+  selectedStreets: string[];
+  onToggleStreet: (streetName: string, selected: boolean) => void;
+  onClear: () => void;
 }
 
-export function StreetSelectSheet({ open, onOpenChange, filters, selection, onToggleStreet }: StreetSelectSheetProps) {
+export function StreetSelectSheet({
+  open,
+  onOpenChange,
+  filters,
+  selectedStreets,
+  onToggleStreet,
+  onClear,
+}: StreetSelectSheetProps) {
   const [streets, setStreets] = useState<StreetGroup[]>([]);
   const [noStreetCount, setNoStreetCount] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -61,27 +64,22 @@ export function StreetSelectSheet({ open, onOpenChange, filters, selection, onTo
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
+  const selected = new Set(selectedStreets);
   const visibleStreets = filter
-    ? streets.filter((s) =>
-        `${s.street} ${s.city ?? ''}`.toLowerCase().includes(filter.toLowerCase())
-      )
+    ? streets.filter((s) => `${s.street} ${s.city ?? ''}`.toLowerCase().includes(filter.toLowerCase()))
     : streets;
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="p-4">
         <SheetHeader className="p-0">
-          <SheetTitle>Select by street</SheetTitle>
+          <SheetTitle>Filter by street</SheetTitle>
           <SheetDescription>
-            Streets matching your current filters. Check a street to select all its leads.
+            Check streets to show only their leads. Combines with your other filters.
           </SheetDescription>
         </SheetHeader>
 
-        <Input
-          placeholder="Filter streets..."
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-        />
+        <Input placeholder="Find a street..." value={filter} onChange={(e) => setFilter(e.target.value)} />
 
         <div className="flex-1 overflow-y-auto rounded-md border divide-y">
           {loading && <p className="p-3 text-sm text-muted-foreground">Loading...</p>}
@@ -91,41 +89,38 @@ export function StreetSelectSheet({ open, onOpenChange, filters, selection, onTo
             </p>
           )}
           {!loading &&
-            visibleStreets.map((s) => {
-              const selectedCount = s.leads.filter((l) => selection.has(l.id)).length;
-              const allSelected = selectedCount === s.count;
-              const someSelected = selectedCount > 0 && !allSelected;
-              return (
-                <label
-                  key={`${s.street}|${s.city ?? ''}`}
-                  className="flex items-center gap-3 px-3 py-2 text-sm cursor-pointer hover:bg-muted/50"
-                >
-                  <Checkbox
-                    checked={allSelected}
-                    indeterminate={someSelected}
-                    onCheckedChange={(checked) => onToggleStreet(s.leads, checked === true)}
-                    className="data-indeterminate:border-primary data-indeterminate:bg-primary/30"
-                  />
-                  <span className="min-w-0 flex-1 truncate">
-                    {s.street}
-                    {s.city ? `, ${s.city}` : ''}
-                  </span>
-                  <span className="shrink-0 text-xs text-muted-foreground">
-                    {s.count} lead{s.count !== 1 ? 's' : ''}
-                    {s.total_value > 0 ? ` · $${s.total_value.toLocaleString()}` : ''}
-                  </span>
-                </label>
-              );
-            })}
+            visibleStreets.map((s) => (
+              <label
+                key={`${s.street}|${s.city ?? ''}`}
+                className="flex items-center gap-3 px-3 py-2 text-sm cursor-pointer hover:bg-muted/50"
+              >
+                <Checkbox
+                  checked={selected.has(s.street)}
+                  onCheckedChange={(checked) => onToggleStreet(s.street, checked === true)}
+                />
+                <span className="min-w-0 flex-1 truncate">
+                  {s.street}
+                  {s.city ? `, ${s.city}` : ''}
+                </span>
+                <span className="shrink-0 text-xs text-muted-foreground">
+                  {s.count} lead{s.count !== 1 ? 's' : ''}
+                  {s.total_value > 0 ? ` · $${s.total_value.toLocaleString()}` : ''}
+                </span>
+              </label>
+            ))}
         </div>
 
-        <div className="text-xs text-muted-foreground space-y-1">
-          <p>{selection.size} lead{selection.size !== 1 ? 's' : ''} selected total</p>
-          {noStreetCount > 0 && (
-            <p>
-              {noStreetCount} lead{noStreetCount !== 1 ? 's' : ''} without a street address — select them
-              individually from the list.
-            </p>
+        <div className="flex items-center justify-between text-xs text-muted-foreground">
+          <span>
+            {selectedStreets.length > 0
+              ? `${selectedStreets.length} street${selectedStreets.length !== 1 ? 's' : ''} filtered`
+              : 'No street filter active'}
+            {noStreetCount > 0 ? ` · ${noStreetCount} lead${noStreetCount !== 1 ? 's' : ''} without a street` : ''}
+          </span>
+          {selectedStreets.length > 0 && (
+            <button onClick={onClear} className="underline hover:text-foreground">
+              Clear
+            </button>
           )}
         </div>
       </SheetContent>

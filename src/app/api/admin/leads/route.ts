@@ -4,7 +4,7 @@ import { getAuthenticatedAdmin } from '@/lib/auth/jwt';
 import { parsePhoneNumber } from 'libphonenumber-js';
 import { enrichLead } from '@/lib/integrations/regrid';
 import { geocodeLeadIfNeeded } from '@/lib/integrations/geocode';
-import { buildLeadSearchFilter, safeSortColumn, sanitizeSearch, sanitizeStreetNumber, directionRegex } from '@/lib/utils/lead-query';
+import { buildLeadSearchFilter, safeSortColumn, sanitizeSearch, sanitizeStreetNumber, directionRegex, buildStreetNamesFilter } from '@/lib/utils/lead-query';
 import { estimateRoofValue } from '@/lib/leads/roof-value';
 import { getRoofPricePerSquare } from '@/lib/leads/roof-value.server';
 
@@ -78,6 +78,9 @@ export async function GET(request: NextRequest) {
     if (streetName) query = query.ilike('address_street', `%${streetName}%`);
     const dirRegex = directionRegex(searchParams.get('street_dir'));
     if (dirRegex) query = query.filter('address_street', 'imatch', dirRegex);
+    // Restrict to specific streets picked in the "By Street" panel
+    const streetsFilter = buildStreetNamesFilter(searchParams.get('streets'));
+    if (streetsFilter) query = query.or(streetsFilter);
 
     const ascending = order === 'asc';
     query = query.order(safeSortColumn(sort), { ascending }).range(offset, offset + limit - 1);

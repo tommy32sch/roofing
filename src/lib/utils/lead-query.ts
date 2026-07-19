@@ -62,6 +62,24 @@ export function streetName(address: string | null | undefined): string {
   return stripped || trimmed;
 }
 
+/**
+ * Build an OR filter that matches leads on any of the given street names.
+ * Names arrive `|`-separated (from the URL). Because streetName() only strips
+ * the leading house number, each name is the exact suffix of its addresses, so
+ * an "ends-with" ILIKE (`%<name>`) matches every house on that street and
+ * nothing else ("N 35th St" won't catch "N 35th Street"). Returns null when
+ * there is nothing to filter.
+ */
+export function buildStreetNamesFilter(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const names = raw
+    .split('|')
+    .map((n) => sanitizeSearch(n))
+    .filter(Boolean);
+  if (names.length === 0) return null;
+  return names.map((n) => `address_street.ilike.%${n}`).join(',');
+}
+
 /** Columns a client is allowed to sort the leads list by. */
 export const LEAD_SORT_COLUMNS = new Set<string>([
   'created_at',

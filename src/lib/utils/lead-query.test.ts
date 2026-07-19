@@ -8,6 +8,7 @@ import {
   sanitizeStreetNumber,
   STREET_DIRECTIONS,
   streetName,
+  buildStreetNamesFilter,
 } from './lead-query';
 
 describe('sanitizeSearch', () => {
@@ -119,5 +120,26 @@ describe('streetName', () => {
     expect(streetName('')).toBe('');
     expect(streetName(null)).toBe('');
     expect(streetName(undefined)).toBe('');
+  });
+});
+
+describe('buildStreetNamesFilter', () => {
+  it('returns null when there is nothing selected', () => {
+    expect(buildStreetNamesFilter(null)).toBeNull();
+    expect(buildStreetNamesFilter('')).toBeNull();
+    expect(buildStreetNamesFilter('|')).toBeNull();
+  });
+
+  it('builds one ends-with ILIKE per street, OR-joined', () => {
+    const f = buildStreetNamesFilter('N 35th St|E Coronado Rd')!;
+    expect(f.split(',')).toHaveLength(2);
+    expect(f).toContain('address_street.ilike.%N 35th St');
+    expect(f).toContain('address_street.ilike.%E Coronado Rd');
+  });
+
+  it('sanitizes injection chars so no extra predicate is created', () => {
+    const parts = buildStreetNamesFilter('Main),status.eq.sold')!.split(',');
+    expect(parts).toHaveLength(1);
+    expect(parts[0].startsWith('address_street.ilike.%')).toBe(true);
   });
 });
