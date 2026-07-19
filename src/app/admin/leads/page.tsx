@@ -3,10 +3,12 @@
 import { Suspense, useEffect, useState, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Search, PlusCircle, Upload, Sparkles, Download, CalendarClock, MapPin, UserCheck } from 'lucide-react';
+import { Search, PlusCircle, Upload, Sparkles, Download, CalendarClock, MapPin, UserCheck, PhoneOff, Trash2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import {
   Select,
   SelectContent,
@@ -53,6 +55,9 @@ function LeadsListContent() {
   const [selection, setSelection] = useState<Map<string, number>>(new Map());
   const [assignOpen, setAssignOpen] = useState(false);
   const [streetsOpen, setStreetsOpen] = useState(false);
+  const [dncCount, setDncCount] = useState(0);
+  const [dncDeleteOpen, setDncDeleteOpen] = useState(false);
+  const [dncDeleting, setDncDeleting] = useState(false);
   const isAdmin = userRole === 'admin';
 
   const status = searchParams.get('status') || '';
@@ -63,6 +68,7 @@ function LeadsListContent() {
   const streetName = searchParams.get('street_name') || '';
   const streetsParam = searchParams.get('streets') || '';
   const selectedStreets = streetsParam ? streetsParam.split('|').filter(Boolean) : [];
+  const dncOnly = searchParams.get('is_dnc') === 'true';
   const page = parseInt(searchParams.get('page') || '1', 10);
 
   function applyFilterParams(params: URLSearchParams) {
@@ -73,6 +79,7 @@ function LeadsListContent() {
     if (streetDir) params.set('street_dir', streetDir);
     if (streetName) params.set('street_name', streetName);
     if (streetsParam) params.set('streets', streetsParam);
+    if (dncOnly) params.set('is_dnc', 'true');
   }
 
   function toggleStreetFilter(name: string, selected: boolean) {
@@ -98,6 +105,7 @@ function LeadsListContent() {
     if (streetDir) params.set('street_dir', streetDir);
     if (streetName) params.set('street_name', streetName);
     if (streetsParam) params.set('streets', streetsParam);
+    if (dncOnly) params.set('is_dnc', 'true');
     params.set('page', page.toString());
     params.set('limit', '25');
 
@@ -114,7 +122,38 @@ function LeadsListContent() {
     } finally {
       setLoading(false);
     }
-  }, [status, priority, search, streetNumber, streetDir, streetName, streetsParam, page]);
+  }, [status, priority, search, streetNumber, streetDir, streetName, streetsParam, dncOnly, page]);
+
+  const fetchDncCount = useCallback(async () => {
+    try {
+      const res = await fetch('/api/admin/leads?is_dnc=true&limit=1');
+      const data = await res.json();
+      if (data.success) setDncCount(data.total);
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  async function handleDeleteDnc() {
+    setDncDeleting(true);
+    try {
+      const res = await fetch('/api/admin/leads/purge-dnc', { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        toast.success(`Deleted ${data.deleted} Do Not Call lead${data.deleted !== 1 ? 's' : ''}`);
+        setDncCount(0);
+        setDncDeleteOpen(false);
+        if (dncOnly) updateFilter('is_dnc', '');
+        else fetchLeads();
+      } else {
+        toast.error(data.error || 'Failed to delete');
+      }
+    } catch {
+      toast.error('Failed to delete');
+    } finally {
+      setDncDeleting(false);
+    }
+  }
 
   useEffect(() => {
     fetchLeads();
@@ -123,9 +162,14 @@ function LeadsListContent() {
   useEffect(() => {
     fetch('/api/admin/auth/me')
       .then((r) => r.json())
-      .then((d) => { if (d.success) setUserRole(d.admin.role); })
+      .then((d) => {
+        if (d.success) {
+          setUserRole(d.admin.role);
+          if (d.admin.role === 'admin') fetchDncCount();
+        }
+      })
       .catch(() => {});
-  }, []);
+  }, [fetchDncCount]);
 
   function setSelected(entries: { id: string; value: number | null }[], selected: boolean) {
     setSelection((prev) => {
@@ -274,6 +318,28 @@ function LeadsListContent() {
         />
       </div>
 
+      {/* Do Not Call banner */}
+      {isAdmin && dncCount > 0 && (
+        <div className="flex items-center justify-between gap-3 rounded-md border border-destructive/30 bg-destructive/5 px-4 py-2.5 text-sm flex-wrap">
+          <span className="flex items-center gap-2">
+            <PhoneOff className="h-4 w-4 text-destructive" />
+            <span>
+              <strong>{dncCount}</strong> lead{dncCount !== 1 ? 's' : ''} flagged{' '}
+              <span className="font-medium">Do Not Call</span>
+            </span>
+          </span>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={() => updateFilter('is_dnc', dncOnly ? '' : 'true')}>
+              {dncOnly ? 'Show all leads' : 'Show only DNC'}
+            </Button>
+            <Button variant="destructive" size="sm" onClick={() => setDncDeleteOpen(true)}>
+              <Trash2 className="h-4 w-4 mr-1" />
+              Delete all
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Table */}
       <div className="rounded-md border">
         <Table>
@@ -345,6 +411,14 @@ function LeadsListContent() {
                     <div>
                       <p className="font-medium text-sm flex items-center gap-1">
                         {lead.first_name} {lead.last_name}
+                        {lead.is_dnc && (
+                          <span
+                            title="Do Not Call"
+                            className="inline-flex items-center rounded bg-destructive/10 px-1.5 py-0.5 text-[10px] font-semibold text-destructive leading-none"
+                          >
+                            DNC
+                          </span>
+                        )}
                         {lead.enriched_at && <span title="Enriched"><Sparkles className="h-3 w-3 text-amber-500" /></span>}
                         {lead.follow_up_date && (() => {
                           const d = new Date(lead.follow_up_date + 'T00:00:00');
@@ -475,6 +549,25 @@ function LeadsListContent() {
             onToggleStreet={toggleStreetFilter}
             onClear={() => updateFilter('streets', '')}
           />
+          <Dialog open={dncDeleteOpen} onOpenChange={setDncDeleteOpen}>
+            <DialogContent className="max-w-md">
+              <DialogHeader>
+                <DialogTitle>Delete all Do Not Call leads?</DialogTitle>
+              </DialogHeader>
+              <p className="text-sm text-muted-foreground">
+                This permanently deletes all {dncCount} lead{dncCount !== 1 ? 's' : ''} flagged Do Not Call,
+                along with their activity and appointments. This can&apos;t be undone.
+              </p>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setDncDeleteOpen(false)} disabled={dncDeleting}>
+                  Cancel
+                </Button>
+                <Button variant="destructive" onClick={handleDeleteDnc} disabled={dncDeleting}>
+                  {dncDeleting ? 'Deleting...' : `Delete ${dncCount}`}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </>
       )}
     </div>

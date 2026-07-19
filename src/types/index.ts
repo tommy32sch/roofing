@@ -104,6 +104,8 @@ export interface Lead {
   // Duplicate flagging
   is_flagged_duplicate: boolean;
   duplicate_of_id: string | null;
+  // Do Not Call (flagged from the source CSV on import)
+  is_dnc: boolean;
   created_at: string;
   updated_at: string;
 }

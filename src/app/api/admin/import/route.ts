@@ -143,6 +143,7 @@ export async function POST(request: NextRequest) {
     // Insert leads in batches of 100
     let imported = 0;
     let flagged = 0;
+    let dnc = 0;
     const batchSize = 100;
     const importErrors: string[] = [...errors];
 
@@ -152,19 +153,24 @@ export async function POST(request: NextRequest) {
       const { data: insertedLeads, error } = await supabase
         .from('leads')
         .insert(batch)
-        .select('id, is_flagged_duplicate');
+        .select('id, is_flagged_duplicate, is_dnc');
 
       if (error) {
         importErrors.push(`Batch ${Math.floor(i / batchSize) + 1}: ${error.message}`);
       } else if (insertedLeads) {
         imported += insertedLeads.length;
         flagged += insertedLeads.filter(l => l.is_flagged_duplicate).length;
+        dnc += insertedLeads.filter(l => l.is_dnc).length;
 
         // Create "created" activities for imported leads
         const activities = insertedLeads.map((lead) => ({
           lead_id: lead.id,
           activity_type: 'created' as const,
-          content: lead.is_flagged_duplicate ? 'Imported from CSV (flagged as duplicate)' : 'Imported from CSV',
+          content: lead.is_dnc
+            ? 'Imported from CSV (flagged Do Not Call)'
+            : lead.is_flagged_duplicate
+              ? 'Imported from CSV (flagged as duplicate)'
+              : 'Imported from CSV',
           created_by: admin.sub,
         }));
 
@@ -177,6 +183,7 @@ export async function POST(request: NextRequest) {
       imported,
       skipped,
       flagged,
+      dnc,
       errors: importErrors,
     });
   } catch {

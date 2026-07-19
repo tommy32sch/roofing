@@ -5,6 +5,7 @@ import {
   parseDecimal,
   normalizePhone,
   normalizeLeadData,
+  parseDncFlag,
 } from './normalize';
 
 describe('mapFieldName', () => {
@@ -100,5 +101,31 @@ describe('normalizeLeadData', () => {
     expect(lead!.home_value).toBe(300000);
     expect(lead!.roof_type).toBe('asphalt shingle'); // lowercased
     expect(lead!.address_zip).toBe('85001');
+  });
+});
+
+describe('parseDncFlag', () => {
+  it('treats affirmative tokens as Do Not Call', () => {
+    for (const v of ['yes', 'Y', 'true', 'T', '1', 'x', 'DNC', ' Yes ']) {
+      expect(parseDncFlag(v)).toBe(true);
+    }
+  });
+
+  it('treats negatives / blanks as callable', () => {
+    for (const v of ['no', 'n', 'false', '0', '', 'N/A', null, undefined]) {
+      expect(parseDncFlag(v)).toBe(false);
+    }
+  });
+});
+
+describe('normalizeLeadData — DNC flag', () => {
+  it('flags a lead when the source row marks Do Not Call', () => {
+    expect(normalizeLeadData({ first_name: 'A', last_name: 'B', DNC: 'Yes' })!.is_dnc).toBe(true);
+    expect(normalizeLeadData({ first_name: 'A', last_name: 'B', 'Do Not Call': 'true' })!.is_dnc).toBe(true);
+  });
+
+  it('leaves is_dnc false when absent or negative', () => {
+    expect(normalizeLeadData({ first_name: 'A', last_name: 'B' })!.is_dnc).toBe(false);
+    expect(normalizeLeadData({ first_name: 'A', last_name: 'B', DNC: 'no' })!.is_dnc).toBe(false);
   });
 });

@@ -213,6 +213,18 @@ export const FIELD_MAP: Record<string, string> = {
   'notes': 'notes',
   'source_notes': 'notes',
   'source notes': 'notes',
+
+  // Do Not Call flag (BatchLeads / PropStream / etc. include this)
+  'dnc': 'dnc',
+  'do not call': 'dnc',
+  'do_not_call': 'dnc',
+  'donotcall': 'dnc',
+  'dnc flag': 'dnc',
+  'dnc_flag': 'dnc',
+  'do not call flag': 'dnc',
+  'phone dnc': 'dnc',
+  'phone_dnc': 'dnc',
+  'on dnc': 'dnc',
 };
 
 export interface NormalizedLead {
@@ -254,6 +266,7 @@ export interface NormalizedLead {
   latitude: number | null;
   longitude: number | null;
   source_notes: string | null;
+  is_dnc: boolean;
 }
 
 /**
@@ -326,6 +339,17 @@ export function parseDecimal(value: string | null | undefined): number | null {
   if (!cleaned) return null;
   const num = parseFloat(cleaned);
   return isNaN(num) ? null : num;
+}
+
+/**
+ * Interpret a Do Not Call cell from a source CSV. Truthy tokens
+ * (yes/true/1/y/x/t/dnc) flag the lead; everything else (no/false/0/blank)
+ * does not.
+ */
+export function parseDncFlag(value: string | null | undefined): boolean {
+  if (!value) return false;
+  const v = value.trim().toLowerCase();
+  return v === 'true' || v === 't' || v === 'yes' || v === 'y' || v === '1' || v === 'x' || v === 'dnc';
 }
 
 export function normalizeLeadData(raw: Record<string, unknown>): NormalizedLead | null {
@@ -409,5 +433,6 @@ export function normalizeLeadData(raw: Record<string, unknown>): NormalizedLead 
     latitude: parseDecimal(mapped.latitude),
     longitude: parseDecimal(mapped.longitude),
     source_notes: mapped.notes?.trim() || mapped.source?.trim() || null,
+    is_dnc: parseDncFlag(mapped.dnc),
   };
 }

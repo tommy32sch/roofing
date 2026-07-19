@@ -54,6 +54,11 @@ export async function GET(request: NextRequest) {
       query = query.eq('is_flagged_duplicate', isFlaggedDuplicate === 'true');
     }
 
+    // Do Not Call filter (leads stay visible normally; this isolates them)
+    if (searchParams.get('is_dnc') === 'true') {
+      query = query.eq('is_dnc', true);
+    }
+
     if (admin.role !== 'closer') {
       if (priority) query = query.eq('priority', priority);
       if (sourceId) query = query.eq('source_id', parseInt(sourceId, 10));
