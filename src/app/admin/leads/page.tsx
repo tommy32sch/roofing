@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useEffect, useState, useCallback } from 'react';
+import { Suspense, useEffect, useState, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Search, PlusCircle, Upload, Sparkles, Download, CalendarClock, MapPin, UserCheck } from 'lucide-react';
@@ -30,6 +30,7 @@ import { StreetSelectSheet } from '@/components/leads/StreetSelectSheet';
 import { LEAD_STATUS_OPTIONS, LEAD_PRIORITY_OPTIONS } from '@/types';
 import type { LeadWithSource, UserRole } from '@/types';
 import { LIMITS } from '@/lib/utils/validation';
+import { STREET_DIRECTIONS } from '@/lib/utils/lead-query';
 import { formatDistanceToNow, isPast, isToday } from 'date-fns';
 
 export default function LeadsListPage() {
@@ -57,13 +58,23 @@ function LeadsListContent() {
   const status = searchParams.get('status') || '';
   const priority = searchParams.get('priority') || '';
   const search = searchParams.get('search') || '';
+  const streetNumber = searchParams.get('street_number') || '';
+  const streetDir = searchParams.get('street_dir') || '';
+  const streetName = searchParams.get('street_name') || '';
   const page = parseInt(searchParams.get('page') || '1', 10);
 
-  function handleExport() {
-    const params = new URLSearchParams();
+  function applyFilterParams(params: URLSearchParams) {
     if (status) params.set('status', status);
     if (priority) params.set('priority', priority);
     if (search) params.set('search', search);
+    if (streetNumber) params.set('street_number', streetNumber);
+    if (streetDir) params.set('street_dir', streetDir);
+    if (streetName) params.set('street_name', streetName);
+  }
+
+  function handleExport() {
+    const params = new URLSearchParams();
+    applyFilterParams(params);
     window.location.href = `/api/admin/leads/export?${params}`;
   }
 
@@ -73,6 +84,9 @@ function LeadsListContent() {
     if (status) params.set('status', status);
     if (priority) params.set('priority', priority);
     if (search) params.set('search', search);
+    if (streetNumber) params.set('street_number', streetNumber);
+    if (streetDir) params.set('street_dir', streetDir);
+    if (streetName) params.set('street_name', streetName);
     params.set('page', page.toString());
     params.set('limit', '25');
 
@@ -89,7 +103,7 @@ function LeadsListContent() {
     } finally {
       setLoading(false);
     }
-  }, [status, priority, search, page]);
+  }, [status, priority, search, streetNumber, streetDir, streetName, page]);
 
   useEffect(() => {
     fetchLeads();
@@ -126,6 +140,12 @@ function LeadsListContent() {
     }
     params.set('page', '1');
     router.push(`/admin/leads?${params}`);
+  }
+
+  const debounceRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  function debouncedFilter(key: string, value: string) {
+    clearTimeout(debounceRef.current[key]);
+    debounceRef.current[key] = setTimeout(() => updateFilter(key, value), 350);
   }
 
   function handleSearch(value: string) {
@@ -209,6 +229,34 @@ function LeadsListContent() {
             ))}
           </SelectContent>
         </Select>
+      </div>
+
+      {/* Street filters */}
+      <div className="flex flex-col sm:flex-row gap-3">
+        <Input
+          placeholder="Street #"
+          inputMode="numeric"
+          defaultValue={streetNumber}
+          onChange={(e) => debouncedFilter('street_number', e.target.value)}
+          className="sm:w-28"
+        />
+        <Select value={streetDir || 'any'} onValueChange={(v) => updateFilter('street_dir', v === 'any' ? '' : v ?? '')}>
+          <SelectTrigger className="sm:w-[150px]">
+            <SelectValue placeholder="Any direction" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="any">Any direction</SelectItem>
+            {STREET_DIRECTIONS.map((d) => (
+              <SelectItem key={d} value={d}>{d}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Input
+          placeholder="Street name (e.g. Crescent)"
+          defaultValue={streetName}
+          onChange={(e) => debouncedFilter('street_name', e.target.value)}
+          className="flex-1"
+        />
       </div>
 
       {/* Table */}

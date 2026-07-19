@@ -1,5 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import { sanitizeSearch, safeSortColumn, buildLeadSearchFilter, LEAD_SORT_COLUMNS } from './lead-query';
+import {
+  sanitizeSearch,
+  safeSortColumn,
+  buildLeadSearchFilter,
+  LEAD_SORT_COLUMNS,
+  directionRegex,
+  sanitizeStreetNumber,
+  STREET_DIRECTIONS,
+} from './lead-query';
 
 describe('sanitizeSearch', () => {
   it('strips PostgREST filter grammar characters', () => {
@@ -56,5 +64,40 @@ describe('buildLeadSearchFilter', () => {
     const parts = buildLeadSearchFilter('x,status.eq.sold')!.split(',');
     expect(parts).toHaveLength(6);
     expect(parts.every((p) => /^[a-z_]+\.ilike\.%.*%$/.test(p))).toBe(true);
+  });
+});
+
+describe('directionRegex', () => {
+  it('matches a direction as a whole word (abbrev or spelled out)', () => {
+    expect(directionRegex('E')).toBe('\\y(E|East)\\y');
+    expect(directionRegex('nw')).toBe('\\y(NW|Northwest)\\y');
+  });
+
+  it('returns null for unknown / empty input (untrusted input never reaches the regex)', () => {
+    expect(directionRegex('X')).toBeNull();
+    expect(directionRegex('')).toBeNull();
+    expect(directionRegex(null)).toBeNull();
+    expect(directionRegex('.*')).toBeNull();
+  });
+
+  it('covers all eight dropdown directions', () => {
+    for (const d of STREET_DIRECTIONS) {
+      expect(directionRegex(d)).not.toBeNull();
+    }
+    expect(STREET_DIRECTIONS).toEqual(['N', 'S', 'E', 'W', 'NE', 'NW', 'SE', 'SW']);
+  });
+});
+
+describe('sanitizeStreetNumber', () => {
+  it('keeps only digits', () => {
+    expect(sanitizeStreetNumber('4604')).toBe('4604');
+    expect(sanitizeStreetNumber('46 E')).toBe('46');
+    expect(sanitizeStreetNumber("12'; drop--")).toBe('12');
+  });
+
+  it('returns empty string for null/undefined/no digits', () => {
+    expect(sanitizeStreetNumber(null)).toBe('');
+    expect(sanitizeStreetNumber(undefined)).toBe('');
+    expect(sanitizeStreetNumber('Main')).toBe('');
   });
 });

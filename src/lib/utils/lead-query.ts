@@ -14,6 +14,41 @@ export function sanitizeSearch(raw: string): string {
     .trim();
 }
 
+// Directional designations → the abbreviation plus its spelled-out word, so a
+// filter for "E" matches both "123 E Main St" and "123 East Main St".
+const DIRECTION_WORDS: Record<string, string> = {
+  N: 'North',
+  S: 'South',
+  E: 'East',
+  W: 'West',
+  NE: 'Northeast',
+  NW: 'Northwest',
+  SE: 'Southeast',
+  SW: 'Southwest',
+};
+
+/** Directional options for the street filter dropdown, in compass order. */
+export const STREET_DIRECTIONS = Object.keys(DIRECTION_WORDS);
+
+/**
+ * Build a case-insensitive Postgres regex (for the `imatch` operator) that
+ * matches a directional token as a whole word — so "E" hits the direction in
+ * "123 E Main St" but not the "e" inside "Crescent". Returns null for anything
+ * that isn't a known direction, so untrusted input can never reach the regex.
+ */
+export function directionRegex(dir: string | null | undefined): string | null {
+  if (!dir) return null;
+  const d = dir.trim().toUpperCase();
+  const word = DIRECTION_WORDS[d];
+  if (!word) return null;
+  return `\\y(${d}|${word})\\y`;
+}
+
+/** Reduce a house-number filter to digits only (safe for a prefix ILIKE). */
+export function sanitizeStreetNumber(raw: string | null | undefined): string {
+  return (raw ?? '').replace(/\D/g, '');
+}
+
 /** Columns a client is allowed to sort the leads list by. */
 export const LEAD_SORT_COLUMNS = new Set<string>([
   'created_at',
