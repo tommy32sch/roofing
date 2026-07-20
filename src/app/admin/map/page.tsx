@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
-import { BoxSelect, UserCheck, LocateFixed, CloudHail, Wind } from 'lucide-react';
+import { BoxSelect, UserCheck, LocateFixed, CloudHail, Wind, Pencil } from 'lucide-react';
 import { toast } from 'sonner';
 import type { Map as LeafletMap } from 'leaflet';
 import { Button } from '@/components/ui/button';
@@ -19,6 +19,7 @@ import { STATUS_COLORS, DNC_RING_COLOR, stormColor, type GeoLead, type StormRepo
 import { LEAD_STATUS_OPTIONS, LEAD_PRIORITY_OPTIONS } from '@/types';
 import type { UserRole } from '@/types';
 import { LIMITS } from '@/lib/utils/validation';
+import { pointInPolygon } from '@/lib/leads/geo-polygon';
 
 // Leaflet touches `window` at import time — client-only
 const LeadMap = dynamic(() => import('@/components/leads/LeadMap'), {
@@ -43,6 +44,8 @@ export default function MapPage() {
   const [stormReports, setStormReports] = useState<StormReport[]>([]);
   const [stormLoading, setStormLoading] = useState(false);
   const [mapInstance, setMapInstance] = useState<LeafletMap | null>(null);
+  const [drawing, setDrawing] = useState(false);
+  const [drawPoints, setDrawPoints] = useState<[number, number][]>([]);
   const mapRef = useRef<LeafletMap | null>(null);
   const isAdmin = userRole === 'admin';
 
@@ -183,6 +186,31 @@ export default function MapPage() {
     return () => { clearTimeout(t); mapInstance.off('moveend', onMove); };
   }, [mapInstance, stormOn, fetchStorm]);
 
+  function finishDraw() {
+    if (drawPoints.length < 3) {
+      toast.error('Add at least 3 points to make an area');
+      return;
+    }
+    const inside = leads.filter((l) => pointInPolygon([l.latitude, l.longitude], drawPoints));
+    if (inside.length === 0) {
+      toast.info('No leads inside that area');
+    } else {
+      setSelection((prev) => {
+        const next = new Map(prev);
+        for (const l of inside) next.set(l.id, Number(l.estimated_roof_value) || 0);
+        return next;
+      });
+      toast.success(`${inside.length} lead${inside.length !== 1 ? 's' : ''} selected in the area`);
+    }
+    setDrawing(false);
+    setDrawPoints([]);
+  }
+
+  function cancelDraw() {
+    setDrawing(false);
+    setDrawPoints([]);
+  }
+
   const selectionTotal = [...selection.values()].reduce((sum, v) => sum + v, 0);
 
   return (
@@ -195,6 +223,22 @@ export default function MapPage() {
               <BoxSelect className="h-4 w-4 mr-1" />
               Select visible
             </Button>
+          )}
+          {isAdmin && !drawing && (
+            <Button variant="outline" size="sm" onClick={() => setDrawing(true)} disabled={loading || leads.length === 0}>
+              <Pencil className="h-4 w-4 mr-1" />
+              Draw area
+            </Button>
+          )}
+          {isAdmin && drawing && (
+            <>
+              <Button variant="default" size="sm" onClick={finishDraw}>
+                Finish{drawPoints.length > 0 ? ` (${drawPoints.length})` : ''}
+              </Button>
+              <Button variant="ghost" size="sm" onClick={cancelDraw}>
+                Cancel
+              </Button>
+            </>
           )}
           <Button
             variant={stormOn ? 'default' : 'outline'}
@@ -256,6 +300,12 @@ export default function MapPage() {
           </Select>
         </div>
       </div>
+
+      {drawing && (
+        <div className="rounded-md border border-blue-300 bg-blue-50 dark:bg-blue-950/30 px-3 py-2 text-xs text-blue-700 dark:text-blue-300">
+          Click the map to drop corners around a neighborhood, then <strong>Finish</strong> to select every lead inside — the assign bar appears so you can hand the territory to a rep.
+        </div>
+      )}
 
       {(missingCoords > 0 || geocoding) && (
         <div className="flex items-center justify-between gap-3 rounded-md border bg-muted/40 px-3 py-2 text-xs flex-wrap">
@@ -320,6 +370,9 @@ export default function MapPage() {
             onToggleSelect={isAdmin ? toggleSelect : undefined}
             stormReports={stormReports}
             stormType={stormType}
+            drawing={drawing}
+            drawPoints={drawPoints}
+            onDrawPoint={isAdmin ? (lat, lng) => setDrawPoints((p) => [...p, [lat, lng]]) : undefined}
             onMapReady={(map) => { mapRef.current = map; setMapInstance(map); }}
           />
         )}

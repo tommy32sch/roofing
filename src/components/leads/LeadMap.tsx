@@ -2,7 +2,7 @@
 
 import { useEffect } from 'react';
 import Link from 'next/link';
-import { MapContainer, TileLayer, CircleMarker, Popup, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, CircleMarker, Popup, Polygon, Polyline, useMap, useMapEvents } from 'react-leaflet';
 import type { Map as LeafletMap } from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { Button } from '@/components/ui/button';
@@ -21,10 +21,20 @@ function FitBounds({ leads }: { leads: GeoLead[] }) {
   const key = leads.length > 0 ? `${leads.length}:${leads[0].id}` : '';
   useEffect(() => {
     if (leads.length === 0) return;
-    map.fitBounds(
-      leads.map((l) => [l.latitude, l.longitude] as [number, number]),
-      { padding: [40, 40], maxZoom: 16 }
-    );
+    // Defer to the next frame so the container has its final size, then
+    // re-measure before fitting — otherwise it over-zooms to fit the bounds
+    // into a stale (small) viewport.
+    const id = requestAnimationFrame(() => {
+      map.invalidateSize();
+      map.fitBounds(
+        leads.map((l) => [l.latitude, l.longitude] as [number, number]),
+        { padding: [40, 40], maxZoom: 16 }
+      );
+      // Re-measure once more after the view settles so the tile layer requests
+      // tiles for the full container (not a stale smaller area).
+      requestAnimationFrame(() => map.invalidateSize());
+    });
+    return () => cancelAnimationFrame(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, map]);
   return null;
@@ -34,8 +44,55 @@ function MapReady({ onMapReady }: { onMapReady?: (map: LeafletMap) => void }) {
   const map = useMap();
   useEffect(() => {
     onMapReady?.(map);
+    // The container often finishes laying out after the map inits, leaving
+    // tiles sized for a stale (small) area — re-measure immediately, again once
+    // layout settles, and whenever the container actually resizes.
+    map.invalidateSize();
+    const t1 = setTimeout(() => map.invalidateSize(), 300);
+    const t2 = setTimeout(() => map.invalidateSize(), 800);
+    const ro = new ResizeObserver(() => map.invalidateSize());
+    ro.observe(map.getContainer());
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+      ro.disconnect();
+    };
   }, [map, onMapReady]);
   return null;
+}
+
+function DrawLayer({
+  drawing,
+  points,
+  onPoint,
+}: {
+  drawing: boolean;
+  points: [number, number][];
+  onPoint: (lat: number, lng: number) => void;
+}) {
+  useMapEvents({
+    click(e) {
+      if (drawing) onPoint(e.latlng.lat, e.latlng.lng);
+    },
+  });
+  if (!drawing || points.length === 0) return null;
+  return (
+    <>
+      {points.length >= 3 ? (
+        <Polygon positions={points} pathOptions={{ color: '#2563eb', weight: 2, fillOpacity: 0.1 }} />
+      ) : (
+        <Polyline positions={points} pathOptions={{ color: '#2563eb', weight: 2, dashArray: '5' }} />
+      )}
+      {points.map((p, i) => (
+        <CircleMarker
+          key={`draw-${i}`}
+          center={p}
+          radius={4}
+          pathOptions={{ fillColor: '#2563eb', fillOpacity: 1, color: '#fff', weight: 1.5 }}
+        />
+      ))}
+    </>
+  );
 }
 
 interface LeadMapProps {
@@ -47,9 +104,23 @@ interface LeadMapProps {
   /** NOAA storm reports to overlay beneath the lead pins */
   stormReports?: StormReport[];
   stormType?: StormType;
+  /** Territory-drawing mode */
+  drawing?: boolean;
+  drawPoints?: [number, number][];
+  onDrawPoint?: (lat: number, lng: number) => void;
 }
 
-export default function LeadMap({ leads, selectedIds, onToggleSelect, onMapReady, stormReports = [], stormType = 'hail' }: LeadMapProps) {
+export default function LeadMap({
+  leads,
+  selectedIds,
+  onToggleSelect,
+  onMapReady,
+  stormReports = [],
+  stormType = 'hail',
+  drawing = false,
+  drawPoints = [],
+  onDrawPoint,
+}: LeadMapProps) {
   return (
     <MapContainer
       center={DEFAULT_CENTER}
@@ -63,6 +134,7 @@ export default function LeadMap({ leads, selectedIds, onToggleSelect, onMapReady
       />
       <FitBounds leads={leads} />
       <MapReady onMapReady={onMapReady} />
+      {onDrawPoint && <DrawLayer drawing={drawing} points={drawPoints} onPoint={onDrawPoint} />}
       {/* NOAA storm reports — drawn first so lead pins sit on top */}
       {stormReports.map((r, i) => {
         const color = stormColor(stormType, r.value);
