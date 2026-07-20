@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
-import { BoxSelect, UserCheck } from 'lucide-react';
+import { BoxSelect, UserCheck, LocateFixed } from 'lucide-react';
+import { toast } from 'sonner';
 import type { Map as LeafletMap } from 'leaflet';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -34,6 +35,8 @@ export default function MapPage() {
   const [userRole, setUserRole] = useState<UserRole>('setter');
   const [selection, setSelection] = useState<Map<string, number>>(new Map());
   const [assignOpen, setAssignOpen] = useState(false);
+  const [geocoding, setGeocoding] = useState(false);
+  const [geocodeStatus, setGeocodeStatus] = useState('');
   const mapRef = useRef<LeafletMap | null>(null);
   const isAdmin = userRole === 'admin';
 
@@ -91,6 +94,50 @@ export default function MapPage() {
     });
   }
 
+  async function geocodeMissing() {
+    setGeocoding(true);
+    let cursor: string | null = null;
+    let totalGeocoded = 0;
+    try {
+      // Loop batches until the endpoint reports it reached the end
+      for (;;) {
+        const res = await fetch('/api/admin/leads/geocode-missing', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ after: cursor }),
+        });
+        const data: {
+          success: boolean;
+          geocoded: number;
+          nextCursor: string | null;
+          remaining: number;
+          done: boolean;
+          error?: string;
+        } = await res.json();
+        if (!data.success) {
+          toast.error(data.error || 'Geocoding failed');
+          break;
+        }
+        totalGeocoded += data.geocoded;
+        cursor = data.nextCursor;
+        setMissingCoords(data.remaining);
+        setGeocodeStatus(`Geocoded ${totalGeocoded}... ${data.remaining} left`);
+        if (data.done) break;
+      }
+      if (totalGeocoded > 0) {
+        toast.success(`Placed ${totalGeocoded} lead${totalGeocoded !== 1 ? 's' : ''} on the map`);
+        await fetchLeads();
+      } else {
+        toast.info('No new leads could be geocoded (check their addresses)');
+      }
+    } catch {
+      toast.error('Geocoding stopped unexpectedly');
+    } finally {
+      setGeocoding(false);
+      setGeocodeStatus('');
+    }
+  }
+
   const selectionTotal = [...selection.values()].reduce((sum, v) => sum + v, 0);
 
   return (
@@ -129,13 +176,20 @@ export default function MapPage() {
         </div>
       </div>
 
-      {missingCoords > 0 && (
-        <p className="text-xs text-muted-foreground">
-          {missingCoords} lead{missingCoords !== 1 ? 's' : ''} matching your filters{' '}
-          {missingCoords !== 1 ? 'are' : 'is'} not on the map yet (no coordinates). Run{' '}
-          <code className="bg-muted px-1 py-0.5 rounded">npx tsx --env-file=.env.local scripts/geocode-leads.ts</code>{' '}
-          after imports to geocode them.
-        </p>
+      {(missingCoords > 0 || geocoding) && (
+        <div className="flex items-center justify-between gap-3 rounded-md border bg-muted/40 px-3 py-2 text-xs flex-wrap">
+          <span className="text-muted-foreground">
+            {geocoding
+              ? geocodeStatus || 'Geocoding leads...'
+              : `${missingCoords} lead${missingCoords !== 1 ? 's' : ''} not on the map yet (no coordinates).`}
+          </span>
+          {isAdmin && (
+            <Button variant="outline" size="sm" onClick={geocodeMissing} disabled={geocoding}>
+              <LocateFixed className={`h-4 w-4 mr-1 ${geocoding ? 'animate-pulse' : ''}`} />
+              {geocoding ? 'Geocoding...' : 'Geocode missing'}
+            </Button>
+          )}
+        </div>
       )}
 
       {/* Legend */}
