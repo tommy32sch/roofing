@@ -7,7 +7,7 @@ import type { Map as LeafletMap } from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { Button } from '@/components/ui/button';
 import { LEAD_STATUS_OPTIONS } from '@/types';
-import { STATUS_COLORS, type GeoLead } from './map-constants';
+import { STATUS_COLORS, DNC_RING_COLOR, type GeoLead } from './map-constants';
 
 // Phoenix metro — sensible default for an empty map until leads load
 const DEFAULT_CENTER: [number, number] = [33.4, -111.9];
@@ -70,8 +70,9 @@ export default function LeadMap({ leads, selectedIds, onToggleSelect, onMapReady
             pathOptions={{
               fillColor: STATUS_COLORS[lead.status] ?? STATUS_COLORS.new,
               fillOpacity: 0.85,
-              color: selected ? '#111111' : '#ffffff',
-              weight: selected ? 3 : 1.5,
+              // Selected wins the ring; otherwise a red ring marks Do Not Call (knock-only)
+              color: selected ? '#111111' : lead.is_dnc ? DNC_RING_COLOR : '#ffffff',
+              weight: selected || lead.is_dnc ? 3 : 1.5,
             }}
           >
             <Popup>
@@ -87,6 +88,11 @@ export default function LeadMap({ leads, selectedIds, onToggleSelect, onMapReady
                   {lead.estimated_roof_value != null &&
                     ` · ~$${Number(lead.estimated_roof_value).toLocaleString()}`}
                 </p>
+                {lead.is_dnc && (
+                  <p className="text-xs font-semibold" style={{ color: DNC_RING_COLOR }}>
+                    Do Not Call — knock only
+                  </p>
+                )}
                 <div className="flex items-center gap-2 pt-1">
                   <Link href={`/admin/leads/${lead.id}`} className="text-xs underline">
                     View lead →

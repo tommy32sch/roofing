@@ -14,7 +14,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { BulkAssignDialog } from '@/components/leads/BulkAssignDialog';
-import { STATUS_COLORS, type GeoLead } from '@/components/leads/map-constants';
+import { STATUS_COLORS, DNC_RING_COLOR, type GeoLead } from '@/components/leads/map-constants';
 import { LEAD_STATUS_OPTIONS, LEAD_PRIORITY_OPTIONS } from '@/types';
 import type { UserRole } from '@/types';
 import { LIMITS } from '@/lib/utils/validation';
@@ -149,6 +149,13 @@ export default function MapPage() {
             {opt.label}
           </span>
         ))}
+        <span className="flex items-center gap-1.5">
+          <span
+            className="inline-block h-2.5 w-2.5 rounded-full border-2 bg-transparent"
+            style={{ borderColor: DNC_RING_COLOR }}
+          />
+          Do Not Call (knock only)
+        </span>
       </div>
 
       <div className="flex-1 min-h-0 isolate">

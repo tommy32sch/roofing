@@ -28,4 +28,8 @@ export interface GeoLead {
   estimated_roof_value: number | null;
   address_street: string | null;
   address_city: string | null;
+  is_dnc: boolean;
 }
+
+/** Stroke color used to ring Do Not Call pins (knock-only). */
+export const DNC_RING_COLOR = '#dc2626';

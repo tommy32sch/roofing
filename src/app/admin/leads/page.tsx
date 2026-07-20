@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useState, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Search, PlusCircle, Upload, Sparkles, Download, CalendarClock, MapPin, UserCheck, PhoneOff, Trash2 } from 'lucide-react';
+import { Search, PlusCircle, Upload, Sparkles, Download, CalendarClock, MapPin, UserCheck, PhoneOff } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -56,8 +56,8 @@ function LeadsListContent() {
   const [assignOpen, setAssignOpen] = useState(false);
   const [streetsOpen, setStreetsOpen] = useState(false);
   const [dncCount, setDncCount] = useState(0);
-  const [dncDeleteOpen, setDncDeleteOpen] = useState(false);
-  const [dncDeleting, setDncDeleting] = useState(false);
+  const [dncScrubOpen, setDncScrubOpen] = useState(false);
+  const [dncScrubbing, setDncScrubbing] = useState(false);
   const isAdmin = userRole === 'admin';
 
   const status = searchParams.get('status') || '';
@@ -134,24 +134,22 @@ function LeadsListContent() {
     }
   }, []);
 
-  async function handleDeleteDnc() {
-    setDncDeleting(true);
+  async function handleScrubDnc() {
+    setDncScrubbing(true);
     try {
-      const res = await fetch('/api/admin/leads/purge-dnc', { method: 'POST' });
+      const res = await fetch('/api/admin/leads/scrub-dnc', { method: 'POST' });
       const data = await res.json();
       if (data.success) {
-        toast.success(`Deleted ${data.deleted} Do Not Call lead${data.deleted !== 1 ? 's' : ''}`);
-        setDncCount(0);
-        setDncDeleteOpen(false);
-        if (dncOnly) updateFilter('is_dnc', '');
-        else fetchLeads();
+        toast.success(`Removed phone numbers from ${data.scrubbed} Do Not Call lead${data.scrubbed !== 1 ? 's' : ''}`);
+        setDncScrubOpen(false);
+        fetchLeads();
       } else {
-        toast.error(data.error || 'Failed to delete');
+        toast.error(data.error || 'Failed to remove numbers');
       }
     } catch {
-      toast.error('Failed to delete');
+      toast.error('Failed to remove numbers');
     } finally {
-      setDncDeleting(false);
+      setDncScrubbing(false);
     }
   }
 
@@ -332,9 +330,9 @@ function LeadsListContent() {
             <Button variant="outline" size="sm" onClick={() => updateFilter('is_dnc', dncOnly ? '' : 'true')}>
               {dncOnly ? 'Show all leads' : 'Show only DNC'}
             </Button>
-            <Button variant="destructive" size="sm" onClick={() => setDncDeleteOpen(true)}>
-              <Trash2 className="h-4 w-4 mr-1" />
-              Delete all
+            <Button variant="destructive" size="sm" onClick={() => setDncScrubOpen(true)}>
+              <PhoneOff className="h-4 w-4 mr-1" />
+              Remove phone #s
             </Button>
           </div>
         </div>
@@ -549,21 +547,22 @@ function LeadsListContent() {
             onToggleStreet={toggleStreetFilter}
             onClear={() => updateFilter('streets', '')}
           />
-          <Dialog open={dncDeleteOpen} onOpenChange={setDncDeleteOpen}>
+          <Dialog open={dncScrubOpen} onOpenChange={setDncScrubOpen}>
             <DialogContent className="max-w-md">
               <DialogHeader>
-                <DialogTitle>Delete all Do Not Call leads?</DialogTitle>
+                <DialogTitle>Remove phone numbers from DNC leads?</DialogTitle>
               </DialogHeader>
               <p className="text-sm text-muted-foreground">
-                This permanently deletes all {dncCount} lead{dncCount !== 1 ? 's' : ''} flagged Do Not Call,
-                along with their activity and appointments. This can&apos;t be undone.
+                Clears every phone number from the {dncCount} lead{dncCount !== 1 ? 's' : ''} flagged Do Not Call.
+                The leads stay on your list and map so you can still door-knock them — only the callable numbers
+                are removed. This can&apos;t be undone.
               </p>
               <DialogFooter>
-                <Button variant="outline" onClick={() => setDncDeleteOpen(false)} disabled={dncDeleting}>
+                <Button variant="outline" onClick={() => setDncScrubOpen(false)} disabled={dncScrubbing}>
                   Cancel
                 </Button>
-                <Button variant="destructive" onClick={handleDeleteDnc} disabled={dncDeleting}>
-                  {dncDeleting ? 'Deleting...' : `Delete ${dncCount}`}
+                <Button variant="destructive" onClick={handleScrubDnc} disabled={dncScrubbing}>
+                  {dncScrubbing ? 'Removing...' : 'Remove numbers'}
                 </Button>
               </DialogFooter>
             </DialogContent>
