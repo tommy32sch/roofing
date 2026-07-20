@@ -36,19 +36,42 @@ export interface GeoLead {
 /** Stroke color used to ring Do Not Call pins (knock-only). */
 export const DNC_RING_COLOR = '#dc2626';
 
-export interface HailReport {
+export type StormType = 'hail' | 'wind';
+
+export interface StormReport {
   lat: number;
   lon: number;
-  size: number; // inches
+  value: number | null; // hail: inches; wind: mph (null = damage report, no measured speed)
   date: string;
   location: string;
   state: string;
 }
 
-/** Marker fill for NOAA hail reports, scaled by hail size (inches). */
-export function hailColor(sizeInches: number): string {
-  if (sizeInches >= 2) return '#6d28d9'; // 2"+ violet — significant
-  if (sizeInches >= 1.5) return '#2563eb'; // 1.5"+ blue
-  if (sizeInches >= 1) return '#0891b2'; // 1"+ cyan
-  return '#67e8f9'; // sub-severe light cyan
+/** Marker fill for a NOAA storm report, scaled by severity. */
+export function stormColor(type: StormType, value: number | null): string {
+  if (type === 'hail') {
+    const v = value ?? 0;
+    if (v >= 2) return '#6d28d9'; // 2"+ violet
+    if (v >= 1.5) return '#2563eb'; // 1.5"+ blue
+    if (v >= 1) return '#0891b2'; // 1"+ cyan
+    return '#67e8f9';
+  }
+  // wind (mph) — severe is 58+; null (UNK damage) treated as baseline severe
+  const v = value ?? 58;
+  if (v >= 90) return '#b91c1c'; // 90+ red
+  if (v >= 74) return '#ea580c'; // 74+ orange
+  if (v >= 58) return '#f59e0b'; // 58+ amber
+  return '#fcd34d';
+}
+
+/** Marker radius for a storm report, scaled by severity. */
+export function stormRadius(type: StormType, value: number | null): number {
+  if (type === 'hail') return Math.min(6 + (value ?? 0) * 4, 22);
+  return value != null ? Math.min(4 + value / 8, 20) : 7;
+}
+
+/** Popup label for a storm report. */
+export function stormLabel(type: StormType, value: number | null): string {
+  if (type === 'hail') return `${(value ?? 0).toFixed(2)}" hail`;
+  return value != null ? `${value} mph wind` : 'Wind damage';
 }

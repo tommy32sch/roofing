@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
-import { BoxSelect, UserCheck, LocateFixed, CloudHail } from 'lucide-react';
+import { BoxSelect, UserCheck, LocateFixed, CloudHail, Wind } from 'lucide-react';
 import { toast } from 'sonner';
 import type { Map as LeafletMap } from 'leaflet';
 import { Button } from '@/components/ui/button';
@@ -15,7 +15,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { BulkAssignDialog } from '@/components/leads/BulkAssignDialog';
-import { STATUS_COLORS, DNC_RING_COLOR, hailColor, type GeoLead, type HailReport } from '@/components/leads/map-constants';
+import { STATUS_COLORS, DNC_RING_COLOR, stormColor, type GeoLead, type StormReport, type StormType } from '@/components/leads/map-constants';
 import { LEAD_STATUS_OPTIONS, LEAD_PRIORITY_OPTIONS } from '@/types';
 import type { UserRole } from '@/types';
 import { LIMITS } from '@/lib/utils/validation';
@@ -37,10 +37,11 @@ export default function MapPage() {
   const [assignOpen, setAssignOpen] = useState(false);
   const [geocoding, setGeocoding] = useState(false);
   const [geocodeStatus, setGeocodeStatus] = useState('');
-  const [hailOn, setHailOn] = useState(false);
-  const [hailDays, setHailDays] = useState(30);
-  const [hailReports, setHailReports] = useState<HailReport[]>([]);
-  const [hailLoading, setHailLoading] = useState(false);
+  const [stormOn, setStormOn] = useState(false);
+  const [stormType, setStormType] = useState<StormType>('wind');
+  const [stormDays, setStormDays] = useState(30);
+  const [stormReports, setStormReports] = useState<StormReport[]>([]);
+  const [stormLoading, setStormLoading] = useState(false);
   const [mapInstance, setMapInstance] = useState<LeafletMap | null>(null);
   const mapRef = useRef<LeafletMap | null>(null);
   const isAdmin = userRole === 'admin';
@@ -143,44 +144,44 @@ export default function MapPage() {
     }
   }
 
-  const fetchHail = useCallback(async () => {
+  const fetchStorm = useCallback(async () => {
     const map = mapRef.current;
     if (!map) return;
     const b = map.getBounds();
-    setHailLoading(true);
+    setStormLoading(true);
     try {
       const params = new URLSearchParams({
-        days: String(hailDays),
+        days: String(stormDays),
         n: String(b.getNorth()),
         s: String(b.getSouth()),
         e: String(b.getEast()),
         w: String(b.getWest()),
       });
-      const res = await fetch(`/api/admin/storm/hail?${params}`);
+      const res = await fetch(`/api/admin/storm/${stormType}?${params}`);
       const data = await res.json();
-      if (data.success) setHailReports(data.reports);
-      else toast.error(data.error || 'Failed to load hail data');
+      if (data.success) setStormReports(data.reports);
+      else toast.error(data.error || 'Failed to load storm data');
     } catch {
-      toast.error('Failed to load hail data');
+      toast.error('Failed to load storm data');
     } finally {
-      setHailLoading(false);
+      setStormLoading(false);
     }
-  }, [hailDays]);
+  }, [stormDays, stormType]);
 
-  // Fetch when hail mode turns on or the window changes; clear when off.
+  // Fetch when storm mode turns on or the type/window changes; clear when off.
   useEffect(() => {
-    if (hailOn) fetchHail();
-    else setHailReports([]);
-  }, [hailOn, fetchHail]);
+    if (stormOn) fetchStorm();
+    else setStormReports([]);
+  }, [stormOn, fetchStorm]);
 
-  // Keep the hail layer in sync with the map as it pans/zooms (debounced).
+  // Keep the storm layer in sync with the map as it pans/zooms (debounced).
   useEffect(() => {
-    if (!mapInstance || !hailOn) return;
+    if (!mapInstance || !stormOn) return;
     let t: ReturnType<typeof setTimeout>;
-    const onMove = () => { clearTimeout(t); t = setTimeout(() => fetchHail(), 500); };
+    const onMove = () => { clearTimeout(t); t = setTimeout(() => fetchStorm(), 500); };
     mapInstance.on('moveend', onMove);
     return () => { clearTimeout(t); mapInstance.off('moveend', onMove); };
-  }, [mapInstance, hailOn, fetchHail]);
+  }, [mapInstance, stormOn, fetchStorm]);
 
   const selectionTotal = [...selection.values()].reduce((sum, v) => sum + v, 0);
 
@@ -196,25 +197,40 @@ export default function MapPage() {
             </Button>
           )}
           <Button
-            variant={hailOn ? 'default' : 'outline'}
+            variant={stormOn ? 'default' : 'outline'}
             size="sm"
-            onClick={() => setHailOn((v) => !v)}
+            onClick={() => setStormOn((v) => !v)}
           >
-            <CloudHail className={`h-4 w-4 mr-1 ${hailLoading ? 'animate-pulse' : ''}`} />
-            Hail{hailOn && hailReports.length > 0 ? ` (${hailReports.length})` : ''}
+            {stormType === 'wind' ? (
+              <Wind className={`h-4 w-4 mr-1 ${stormLoading ? 'animate-pulse' : ''}`} />
+            ) : (
+              <CloudHail className={`h-4 w-4 mr-1 ${stormLoading ? 'animate-pulse' : ''}`} />
+            )}
+            Storm{stormOn && stormReports.length > 0 ? ` (${stormReports.length})` : ''}
           </Button>
-          {hailOn && (
-            <Select value={String(hailDays)} onValueChange={(v) => v && setHailDays(parseInt(v, 10))}>
-              <SelectTrigger className="w-[130px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="7">Last 7 days</SelectItem>
-                <SelectItem value="30">Last 30 days</SelectItem>
-                <SelectItem value="60">Last 60 days</SelectItem>
-                <SelectItem value="90">Last 90 days</SelectItem>
-              </SelectContent>
-            </Select>
+          {stormOn && (
+            <>
+              <Select value={stormType} onValueChange={(v) => v && setStormType(v as StormType)}>
+                <SelectTrigger className="w-[110px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="wind">Wind</SelectItem>
+                  <SelectItem value="hail">Hail</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={String(stormDays)} onValueChange={(v) => v && setStormDays(parseInt(v, 10))}>
+                <SelectTrigger className="w-[130px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="7">Last 7 days</SelectItem>
+                  <SelectItem value="30">Last 30 days</SelectItem>
+                  <SelectItem value="60">Last 60 days</SelectItem>
+                  <SelectItem value="90">Last 90 days</SelectItem>
+                </SelectContent>
+              </Select>
+            </>
           )}
           <Select value={status} onValueChange={(v) => setStatus(v === 'all' ? '' : v ?? '')}>
             <SelectTrigger className="w-[150px]">
@@ -275,18 +291,17 @@ export default function MapPage() {
           />
           Do Not Call (knock only)
         </span>
-        {hailOn && (
+        {stormOn && (
           <>
             <span className="text-muted-foreground/60">|</span>
-            {[
-              { label: 'Hail 1"+', size: 1 },
-              { label: '1.5"+', size: 1.5 },
-              { label: '2"+', size: 2 },
-            ].map((h) => (
+            {(stormType === 'hail'
+              ? [{ label: 'Hail 1"+', v: 1 }, { label: '1.5"+', v: 1.5 }, { label: '2"+', v: 2 }]
+              : [{ label: 'Wind 58+', v: 58 }, { label: '74+', v: 74 }, { label: '90+ mph', v: 90 }]
+            ).map((h) => (
               <span key={h.label} className="flex items-center gap-1.5">
                 <span
                   className="inline-block h-2.5 w-2.5 rounded-full"
-                  style={{ backgroundColor: hailColor(h.size), opacity: 0.6 }}
+                  style={{ backgroundColor: stormColor(stormType, h.v), opacity: 0.6 }}
                 />
                 {h.label}
               </span>
@@ -303,7 +318,8 @@ export default function MapPage() {
             leads={leads}
             selectedIds={new Set(selection.keys())}
             onToggleSelect={isAdmin ? toggleSelect : undefined}
-            hailReports={hailReports}
+            stormReports={stormReports}
+            stormType={stormType}
             onMapReady={(map) => { mapRef.current = map; setMapInstance(map); }}
           />
         )}
