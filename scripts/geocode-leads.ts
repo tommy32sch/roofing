@@ -34,6 +34,8 @@ async function geocodeLeads() {
     .select('id, address_street, address_city, address_state, address_zip')
     .is('latitude', null)
     .not('address_street', 'is', null)
+    // A street with no city/zip can't be geocoded reliably — skip it
+    .or('address_city.not.is.null,address_zip.not.is.null')
     .limit(10000);
 
   if (error) {

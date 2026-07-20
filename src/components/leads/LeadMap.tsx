@@ -7,7 +7,7 @@ import type { Map as LeafletMap } from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { Button } from '@/components/ui/button';
 import { LEAD_STATUS_OPTIONS } from '@/types';
-import { STATUS_COLORS, DNC_RING_COLOR, type GeoLead } from './map-constants';
+import { STATUS_COLORS, DNC_RING_COLOR, hailColor, type GeoLead, type HailReport } from './map-constants';
 
 // Phoenix metro — sensible default for an empty map until leads load
 const DEFAULT_CENTER: [number, number] = [33.4, -111.9];
@@ -44,9 +44,11 @@ interface LeadMapProps {
   /** Present for admins only — enables the Select button in popups */
   onToggleSelect?: (lead: GeoLead) => void;
   onMapReady?: (map: LeafletMap) => void;
+  /** NOAA hail reports to overlay beneath the lead pins */
+  hailReports?: HailReport[];
 }
 
-export default function LeadMap({ leads, selectedIds, onToggleSelect, onMapReady }: LeadMapProps) {
+export default function LeadMap({ leads, selectedIds, onToggleSelect, onMapReady, hailReports = [] }: LeadMapProps) {
   return (
     <MapContainer
       center={DEFAULT_CENTER}
@@ -60,6 +62,32 @@ export default function LeadMap({ leads, selectedIds, onToggleSelect, onMapReady
       />
       <FitBounds leads={leads} />
       <MapReady onMapReady={onMapReady} />
+      {/* NOAA hail reports — drawn first so lead pins sit on top */}
+      {hailReports.map((h, i) => (
+        <CircleMarker
+          key={`hail-${i}`}
+          center={[h.lat, h.lon]}
+          radius={Math.min(6 + h.size * 4, 22)}
+          pathOptions={{
+            fillColor: hailColor(h.size),
+            fillOpacity: 0.3,
+            color: hailColor(h.size),
+            weight: 1,
+          }}
+        >
+          <Popup>
+            <div className="text-sm">
+              <p className="font-medium">{h.size.toFixed(2)}&quot; hail</p>
+              <p className="text-xs">
+                {h.date}
+                {h.location ? ` · ${h.location}` : ''}
+                {h.state ? `, ${h.state}` : ''}
+              </p>
+              <p className="text-[11px] text-muted-foreground">NOAA storm report</p>
+            </div>
+          </Popup>
+        </CircleMarker>
+      ))}
       {leads.map((lead) => {
         const selected = selectedIds.has(lead.id);
         return (
@@ -91,6 +119,12 @@ export default function LeadMap({ leads, selectedIds, onToggleSelect, onMapReady
                 {lead.is_dnc && (
                   <p className="text-xs font-semibold" style={{ color: DNC_RING_COLOR }}>
                     Do Not Call — knock only
+                  </p>
+                )}
+                {lead.hail_size_inches != null && (
+                  <p className="text-xs font-medium text-blue-600">
+                    {Number(lead.hail_size_inches).toFixed(2)}&quot; hail
+                    {lead.hail_date ? ` · ${lead.hail_date}` : ''}
                   </p>
                 )}
                 <div className="flex items-center gap-2 pt-1">

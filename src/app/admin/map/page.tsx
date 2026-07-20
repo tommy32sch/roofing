@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
-import { BoxSelect, UserCheck, LocateFixed } from 'lucide-react';
+import { BoxSelect, UserCheck, LocateFixed, CloudHail } from 'lucide-react';
 import { toast } from 'sonner';
 import type { Map as LeafletMap } from 'leaflet';
 import { Button } from '@/components/ui/button';
@@ -15,7 +15,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { BulkAssignDialog } from '@/components/leads/BulkAssignDialog';
-import { STATUS_COLORS, DNC_RING_COLOR, type GeoLead } from '@/components/leads/map-constants';
+import { STATUS_COLORS, DNC_RING_COLOR, hailColor, type GeoLead, type HailReport } from '@/components/leads/map-constants';
 import { LEAD_STATUS_OPTIONS, LEAD_PRIORITY_OPTIONS } from '@/types';
 import type { UserRole } from '@/types';
 import { LIMITS } from '@/lib/utils/validation';
@@ -37,6 +37,11 @@ export default function MapPage() {
   const [assignOpen, setAssignOpen] = useState(false);
   const [geocoding, setGeocoding] = useState(false);
   const [geocodeStatus, setGeocodeStatus] = useState('');
+  const [hailOn, setHailOn] = useState(false);
+  const [hailDays, setHailDays] = useState(30);
+  const [hailReports, setHailReports] = useState<HailReport[]>([]);
+  const [hailLoading, setHailLoading] = useState(false);
+  const [mapInstance, setMapInstance] = useState<LeafletMap | null>(null);
   const mapRef = useRef<LeafletMap | null>(null);
   const isAdmin = userRole === 'admin';
 
@@ -138,6 +143,45 @@ export default function MapPage() {
     }
   }
 
+  const fetchHail = useCallback(async () => {
+    const map = mapRef.current;
+    if (!map) return;
+    const b = map.getBounds();
+    setHailLoading(true);
+    try {
+      const params = new URLSearchParams({
+        days: String(hailDays),
+        n: String(b.getNorth()),
+        s: String(b.getSouth()),
+        e: String(b.getEast()),
+        w: String(b.getWest()),
+      });
+      const res = await fetch(`/api/admin/storm/hail?${params}`);
+      const data = await res.json();
+      if (data.success) setHailReports(data.reports);
+      else toast.error(data.error || 'Failed to load hail data');
+    } catch {
+      toast.error('Failed to load hail data');
+    } finally {
+      setHailLoading(false);
+    }
+  }, [hailDays]);
+
+  // Fetch when hail mode turns on or the window changes; clear when off.
+  useEffect(() => {
+    if (hailOn) fetchHail();
+    else setHailReports([]);
+  }, [hailOn, fetchHail]);
+
+  // Keep the hail layer in sync with the map as it pans/zooms (debounced).
+  useEffect(() => {
+    if (!mapInstance || !hailOn) return;
+    let t: ReturnType<typeof setTimeout>;
+    const onMove = () => { clearTimeout(t); t = setTimeout(() => fetchHail(), 500); };
+    mapInstance.on('moveend', onMove);
+    return () => { clearTimeout(t); mapInstance.off('moveend', onMove); };
+  }, [mapInstance, hailOn, fetchHail]);
+
   const selectionTotal = [...selection.values()].reduce((sum, v) => sum + v, 0);
 
   return (
@@ -150,6 +194,27 @@ export default function MapPage() {
               <BoxSelect className="h-4 w-4 mr-1" />
               Select visible
             </Button>
+          )}
+          <Button
+            variant={hailOn ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setHailOn((v) => !v)}
+          >
+            <CloudHail className={`h-4 w-4 mr-1 ${hailLoading ? 'animate-pulse' : ''}`} />
+            Hail{hailOn && hailReports.length > 0 ? ` (${hailReports.length})` : ''}
+          </Button>
+          {hailOn && (
+            <Select value={String(hailDays)} onValueChange={(v) => v && setHailDays(parseInt(v, 10))}>
+              <SelectTrigger className="w-[130px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="7">Last 7 days</SelectItem>
+                <SelectItem value="30">Last 30 days</SelectItem>
+                <SelectItem value="60">Last 60 days</SelectItem>
+                <SelectItem value="90">Last 90 days</SelectItem>
+              </SelectContent>
+            </Select>
           )}
           <Select value={status} onValueChange={(v) => setStatus(v === 'all' ? '' : v ?? '')}>
             <SelectTrigger className="w-[150px]">
@@ -210,6 +275,24 @@ export default function MapPage() {
           />
           Do Not Call (knock only)
         </span>
+        {hailOn && (
+          <>
+            <span className="text-muted-foreground/60">|</span>
+            {[
+              { label: 'Hail 1"+', size: 1 },
+              { label: '1.5"+', size: 1.5 },
+              { label: '2"+', size: 2 },
+            ].map((h) => (
+              <span key={h.label} className="flex items-center gap-1.5">
+                <span
+                  className="inline-block h-2.5 w-2.5 rounded-full"
+                  style={{ backgroundColor: hailColor(h.size), opacity: 0.6 }}
+                />
+                {h.label}
+              </span>
+            ))}
+          </>
+        )}
       </div>
 
       <div className="flex-1 min-h-0 isolate">
@@ -220,7 +303,8 @@ export default function MapPage() {
             leads={leads}
             selectedIds={new Set(selection.keys())}
             onToggleSelect={isAdmin ? toggleSelect : undefined}
-            onMapReady={(map) => { mapRef.current = map; }}
+            hailReports={hailReports}
+            onMapReady={(map) => { mapRef.current = map; setMapInstance(map); }}
           />
         )}
       </div>

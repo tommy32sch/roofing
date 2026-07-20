@@ -36,6 +36,8 @@ export async function POST(request: NextRequest) {
       .select('id, address_street, address_city, address_state, address_zip')
       .is('latitude', null)
       .not('address_street', 'is', null)
+      // A street with no city/zip can't be geocoded reliably — skip it
+      .or('address_city.not.is.null,address_zip.not.is.null')
       .order('id', { ascending: true })
       .limit(BATCH);
     if (after) query = query.gt('id', after);

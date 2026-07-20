@@ -67,7 +67,10 @@ export async function geocodeLeadIfNeeded(
     address_zip: string | null;
   }
 ): Promise<boolean> {
+  // A street alone is not geocodable — Nominatim would resolve "123 Main St"
+  // to some random matching street anywhere in the US. Require a city or zip.
   if (!lead.address_street?.trim()) return false;
+  if (!lead.address_city?.trim() && !lead.address_zip?.trim()) return false;
 
   const result = await geocodeAddress(
     lead.address_street.trim(),

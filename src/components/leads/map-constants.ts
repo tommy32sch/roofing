@@ -29,7 +29,26 @@ export interface GeoLead {
   address_street: string | null;
   address_city: string | null;
   is_dnc: boolean;
+  hail_date: string | null;
+  hail_size_inches: number | null;
 }
 
 /** Stroke color used to ring Do Not Call pins (knock-only). */
 export const DNC_RING_COLOR = '#dc2626';
+
+export interface HailReport {
+  lat: number;
+  lon: number;
+  size: number; // inches
+  date: string;
+  location: string;
+  state: string;
+}
+
+/** Marker fill for NOAA hail reports, scaled by hail size (inches). */
+export function hailColor(sizeInches: number): string {
+  if (sizeInches >= 2) return '#6d28d9'; // 2"+ violet — significant
+  if (sizeInches >= 1.5) return '#2563eb'; // 1.5"+ blue
+  if (sizeInches >= 1) return '#0891b2'; // 1"+ cyan
+  return '#67e8f9'; // sub-severe light cyan
+}
