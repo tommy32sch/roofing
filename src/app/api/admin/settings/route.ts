@@ -32,6 +32,7 @@ export async function PATCH(request: NextRequest) {
     const {
       company_name, default_lead_status, default_lead_priority,
       regrid_api_key, auto_enrich_enabled, roof_price_per_square,
+      default_geo_city, default_geo_state,
       email_import_enabled, allowed_sender_emails,
     } = body;
 
@@ -46,6 +47,8 @@ export async function PATCH(request: NextRequest) {
       updates.roof_price_per_square =
         roof_price_per_square === '' || roof_price_per_square === null ? null : Number(roof_price_per_square);
     }
+    if (default_geo_city !== undefined) updates.default_geo_city = default_geo_city?.trim() || null;
+    if (default_geo_state !== undefined) updates.default_geo_state = default_geo_state?.trim() || null;
     if (email_import_enabled !== undefined) updates.email_import_enabled = email_import_enabled;
     if (allowed_sender_emails !== undefined) updates.allowed_sender_emails = allowed_sender_emails || [];
 

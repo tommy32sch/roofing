@@ -29,14 +29,25 @@ async function geocodeLeads() {
 
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-  const { data: leads, error } = await supabase
+  // Default region fallback (fills leads that lack their own city/state)
+  const { data: settings } = await supabase
+    .from('app_settings')
+    .select('default_geo_city, default_geo_state')
+    .eq('id', 'default')
+    .single();
+  const defCity: string | null = settings?.default_geo_city?.trim() || null;
+  const defState: string | null = settings?.default_geo_state?.trim() || null;
+  if (defCity || defState) console.log(`Default region: ${[defCity, defState].filter(Boolean).join(', ')}`);
+
+  let leadsQuery = supabase
     .from('leads')
     .select('id, address_street, address_city, address_state, address_zip')
     .is('latitude', null)
     .not('address_street', 'is', null)
-    // A street with no city/zip can't be geocoded reliably — skip it
-    .or('address_city.not.is.null,address_zip.not.is.null')
     .limit(10000);
+  // Without a default region, a street needs its own city/zip to be geocodable.
+  if (!defCity) leadsQuery = leadsQuery.or('address_city.not.is.null,address_zip.not.is.null');
+  const { data: leads, error } = await leadsQuery;
 
   if (error) {
     console.error('Error fetching leads:', error.message);
@@ -57,8 +68,8 @@ async function geocodeLeads() {
       .join(', ');
     const result = await geocodeAddress(
       lead.address_street!.trim(),
-      lead.address_city,
-      lead.address_state,
+      lead.address_city?.trim() || defCity,
+      lead.address_state?.trim() || defState,
       lead.address_zip
     );
 

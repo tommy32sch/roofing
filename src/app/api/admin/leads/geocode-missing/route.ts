@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/supabase/server';
 import { getAuthenticatedAdmin } from '@/lib/auth/jwt';
-import { geocodeAddress } from '@/lib/integrations/geocode';
+import { geocodeAddress, getGeoDefaults } from '@/lib/integrations/geocode';
 
 // Nominatim allows ~1 request/second, and serverless functions have a short
 // timeout — so geocode a small batch per call and let the client loop through
@@ -30,16 +30,17 @@ export async function POST(request: NextRequest) {
     const after = typeof body?.after === 'string' ? body.after : null;
 
     const supabase = db();
+    const defaults = await getGeoDefaults();
 
     let query = supabase
       .from('leads')
       .select('id, address_street, address_city, address_state, address_zip')
       .is('latitude', null)
       .not('address_street', 'is', null)
-      // A street with no city/zip can't be geocoded reliably — skip it
-      .or('address_city.not.is.null,address_zip.not.is.null')
       .order('id', { ascending: true })
       .limit(BATCH);
+    // Without a default region, a street needs its own city/zip to be geocodable.
+    if (!defaults.city) query = query.or('address_city.not.is.null,address_zip.not.is.null');
     if (after) query = query.gt('id', after);
 
     const { data: rows, error } = await query;
@@ -54,8 +55,8 @@ export async function POST(request: NextRequest) {
       const lead = batch[i];
       const result = await geocodeAddress(
         lead.address_street!.trim(),
-        lead.address_city,
-        lead.address_state,
+        lead.address_city?.trim() || defaults.city,
+        lead.address_state?.trim() || defaults.state,
         lead.address_zip
       );
       if (result) {
@@ -72,12 +73,14 @@ export async function POST(request: NextRequest) {
     const nextCursor = batch.length > 0 ? batch[batch.length - 1].id : after;
     const done = batch.length < BATCH;
 
-    // Total still missing coordinates (for the banner)
-    const { count: remaining } = await supabase
+    // Total still geocodable-but-missing (for the banner) — same rule as the batch
+    let remainingQuery = supabase
       .from('leads')
       .select('id', { count: 'exact', head: true })
       .is('latitude', null)
       .not('address_street', 'is', null);
+    if (!defaults.city) remainingQuery = remainingQuery.or('address_city.not.is.null,address_zip.not.is.null');
+    const { count: remaining } = await remainingQuery;
 
     return NextResponse.json({
       success: true,

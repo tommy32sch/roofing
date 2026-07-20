@@ -160,6 +160,8 @@ export interface AppSettings {
   regrid_api_key: string | null;
   auto_enrich_enabled: boolean;
   roof_price_per_square: number | null;
+  default_geo_city: string | null;
+  default_geo_state: string | null;
   email_import_enabled: boolean;
   allowed_sender_emails: string[] | null;
   updated_at: string;

@@ -30,6 +30,9 @@ export default function SettingsPage() {
   const [savingRegrid, setSavingRegrid] = useState(false);
   const [roofPricePerSquare, setRoofPricePerSquare] = useState('');
   const [savingRoofPrice, setSavingRoofPrice] = useState(false);
+  const [geoCity, setGeoCity] = useState('');
+  const [geoState, setGeoState] = useState('');
+  const [savingGeo, setSavingGeo] = useState(false);
 
   // Email import state
   const [emailEnabled, setEmailEnabled] = useState(false);
@@ -51,6 +54,8 @@ export default function SettingsPage() {
           setRoofPricePerSquare(
             data.settings.roof_price_per_square != null ? String(data.settings.roof_price_per_square) : ''
           );
+          setGeoCity(data.settings.default_geo_city || '');
+          setGeoState(data.settings.default_geo_state || '');
           setEmailEnabled(data.settings.email_import_enabled || false);
           setAllowedEmails((data.settings.allowed_sender_emails || []).join('\n'));
         }
@@ -209,6 +214,56 @@ export default function SettingsPage() {
             disabled={savingRoofPrice}
           >
             {savingRoofPrice ? 'Saving...' : 'Save Roof Pricing'}
+          </Button>
+        </CardContent>
+      </Card>
+
+      {/* Default geocoding region */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Map / Geocoding Region</CardTitle>
+          <CardDescription>
+            When a lead has no city/state of its own, the map uses this region so a bare street
+            (e.g. &quot;1149 N 34th St&quot;) lands in the right area instead of a same-named street
+            elsewhere. Set it to the city/state most of your leads are in.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="geo_city">Default city</Label>
+              <Input id="geo_city" value={geoCity} onChange={(e) => setGeoCity(e.target.value)} placeholder="Phoenix" />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="geo_state">Default state</Label>
+              <Input id="geo_state" value={geoState} onChange={(e) => setGeoState(e.target.value)} placeholder="AZ" />
+            </div>
+          </div>
+          <Button
+            onClick={async () => {
+              setSavingGeo(true);
+              try {
+                const res = await fetch('/api/admin/settings', {
+                  method: 'PATCH',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ default_geo_city: geoCity.trim(), default_geo_state: geoState.trim() }),
+                });
+                const data = await res.json();
+                if (data.success) {
+                  toast.success('Geocoding region saved');
+                  setSettings(data.settings);
+                } else {
+                  toast.error(data.error || 'Failed to save');
+                }
+              } catch {
+                toast.error('Failed to save region');
+              } finally {
+                setSavingGeo(false);
+              }
+            }}
+            disabled={savingGeo}
+          >
+            {savingGeo ? 'Saving...' : 'Save Region'}
           </Button>
         </CardContent>
       </Card>
