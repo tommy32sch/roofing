@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/supabase/server';
 import { getAuthenticatedAdmin } from '@/lib/auth/jwt';
 import { parseLeadCSV } from '@/lib/csv/parser';
+import { normalizeStreet, addressConflicts } from '@/lib/leads/dedupe';
 import { LIMITS } from '@/lib/utils/validation';
 import * as XLSX from 'xlsx';
 
@@ -61,75 +62,84 @@ export async function POST(request: NextRequest) {
     const supabase = db();
 
     // --- Duplicate detection ---
-    // Collect identifiers from parsed leads for bulk DB lookup
-    const phones = leads.map(l => l.phone_normalized).filter(Boolean) as string[];
+    // A duplicate is the same PROPERTY, matched on a canonical street address
+    // (plus APN when the source provides one). Phone numbers are deliberately
+    // not a duplicate signal: skip-trace lists share numbers across relatives,
+    // and DNC-scrubbed leads have no phone at all.
     const apns = leads.map(l => l.apn).filter(Boolean) as string[];
-    const addrPairs = leads
-      .filter(l => l.address_street && l.address_zip)
-      .map(l => `${l.address_street?.toLowerCase().trim()}|${l.address_zip?.trim()}`);
 
-    const [phoneMatches, apnMatches, addrMatches] = await Promise.all([
-      phones.length > 0
-        ? supabase.from('leads').select('id, phone_normalized').in('phone_normalized', phones)
-        : Promise.resolve({ data: [] }),
+    // Existing addresses have to be normalized in JS (the column stores raw text),
+    // so pull the address columns for every lead, paging past the 1000-row cap —
+    // a truncated read would silently miss duplicates.
+    async function fetchExistingAddresses() {
+      const rows: { id: string; address_street: string | null; address_city: string | null; address_zip: string | null }[] = [];
+      for (let from = 0; ; from += 1000) {
+        const { data, error } = await supabase
+          .from('leads')
+          .select('id, address_street, address_city, address_zip')
+          .not('address_street', 'is', null)
+          .range(from, from + 999);
+        if (error) throw error;
+        rows.push(...(data || []));
+        if (!data || data.length < 1000) break;
+      }
+      return rows;
+    }
+
+    const [existingAddrRows, apnMatches] = await Promise.all([
+      fetchExistingAddresses(),
       apns.length > 0
         ? supabase.from('leads').select('id, apn').in('apn', apns)
-        : Promise.resolve({ data: [] }),
-      addrPairs.length > 0
-        ? supabase.from('leads').select('id, address_street, address_zip').or(
-            addrPairs.map(p => {
-              const [street, zip] = p.split('|');
-              return `and(address_street.ilike.${street},address_zip.eq.${zip})`;
-            }).join(',')
-          )
-        : Promise.resolve({ data: [] }),
+        : Promise.resolve({ data: [] as { id: string; apn: string | null }[] }),
     ]);
 
-    // Build lookup maps: identifier → existing lead id
-    const phoneToId = new Map<string, string>();
-    for (const row of phoneMatches.data || []) {
-      if (row.phone_normalized) phoneToId.set(row.phone_normalized, row.id);
-    }
+    // Build lookup maps: identifier → existing lead
     const apnToId = new Map<string, string>();
     for (const row of apnMatches.data || []) {
       if (row.apn) apnToId.set(row.apn, row.id);
     }
-    const addrToId = new Map<string, string>();
-    for (const row of addrMatches.data || []) {
-      if (row.address_street && row.address_zip) {
-        addrToId.set(`${row.address_street.toLowerCase().trim()}|${row.address_zip.trim()}`, row.id);
-      }
+    const addrToLeads = new Map<string, { id: string; city: string | null; zip: string | null }[]>();
+    for (const row of existingAddrRows) {
+      const key = normalizeStreet(row.address_street);
+      if (!key) continue;
+      const bucket = addrToLeads.get(key) || [];
+      bucket.push({ id: row.id, city: row.address_city, zip: row.address_zip });
+      addrToLeads.set(key, bucket);
     }
 
     // Also track intra-batch identifiers to catch duplicates within the same CSV
-    const seenPhones = new Map<string, string>(); // phone → first-row index as string
     const seenApns = new Map<string, string>();
-    const seenAddrs = new Map<string, string>();
+    const seenAddrs = new Map<string, { idx: string; city: string | null; zip: string | null }[]>();
 
     // Annotate each lead with duplicate info
     const annotatedLeads = leads.map((lead, idx) => {
       let duplicateOfId: string | null = null;
 
-      const phone = lead.phone_normalized;
       const apn = lead.apn;
-      const addr = lead.address_street && lead.address_zip
-        ? `${lead.address_street.toLowerCase().trim()}|${lead.address_zip.trim()}`
-        : null;
+      const addr = normalizeStreet(lead.address_street);
+      const scope = { city: lead.address_city, zip: lead.address_zip };
 
-      // Check DB matches
-      if (!duplicateOfId && phone && phoneToId.has(phone)) duplicateOfId = phoneToId.get(phone)!;
+      // Check DB matches — APN is an exact parcel id, so it wins over street text
       if (!duplicateOfId && apn && apnToId.has(apn)) duplicateOfId = apnToId.get(apn)!;
-      if (!duplicateOfId && addr && addrToId.has(addr)) duplicateOfId = addrToId.get(addr)!;
+      if (!duplicateOfId && addr) {
+        const match = (addrToLeads.get(addr) || []).find(c => !addressConflicts(scope, c));
+        if (match) duplicateOfId = match.id;
+      }
 
       // Check intra-batch duplicates (mark later occurrence as duplicate)
-      if (!duplicateOfId && phone && seenPhones.has(phone)) duplicateOfId = `batch:${seenPhones.get(phone)}`;
       if (!duplicateOfId && apn && seenApns.has(apn)) duplicateOfId = `batch:${seenApns.get(apn)}`;
-      if (!duplicateOfId && addr && seenAddrs.has(addr)) duplicateOfId = `batch:${seenAddrs.get(addr)}`;
+      if (!duplicateOfId && addr) {
+        const match = (seenAddrs.get(addr) || []).find(c => !addressConflicts(scope, c));
+        if (match) duplicateOfId = `batch:${match.idx}`;
+      }
 
       // Track this lead's identifiers for subsequent rows
-      if (phone && !seenPhones.has(phone)) seenPhones.set(phone, String(idx));
       if (apn && !seenApns.has(apn)) seenApns.set(apn, String(idx));
-      if (addr && !seenAddrs.has(addr)) seenAddrs.set(addr, String(idx));
+      if (addr) {
+        const bucket = seenAddrs.get(addr) || [];
+        bucket.push({ idx: String(idx), city: lead.address_city, zip: lead.address_zip });
+        seenAddrs.set(addr, bucket);
+      }
 
       const isBatchDuplicate = duplicateOfId?.startsWith('batch:');
       return {

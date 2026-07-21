@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/supabase/server';
 import { parseLeadCSV } from '@/lib/csv/parser';
 import { detectSource } from '@/lib/leads/source-detect';
+import { normalizeStreet } from '@/lib/leads/dedupe';
 import { enrichLead } from '@/lib/integrations/regrid';
 import { checkConfiguredRateLimit, getClientIP } from '@/lib/utils/rate-limit';
 import type { NormalizedLead } from '@/lib/leads/normalize';
@@ -161,28 +162,28 @@ export async function POST(request: NextRequest) {
       const leadsToInsert: NormalizedLead[] = [];
       let duplicates = 0;
 
-      const addressPairs = parsed.leads
-        .filter(l => l.address_street && l.address_zip)
-        .map(l => ({ street: l.address_street!.toLowerCase(), zip: l.address_zip! }));
-
-      let existingAddresses = new Set<string>();
-      if (addressPairs.length > 0) {
-        const zips = [...new Set(addressPairs.map(a => a.zip))];
-        const { data: existing } = await supabase
-          .from('leads')
-          .select('address_street, address_zip')
-          .in('address_zip', zips);
-
-        if (existing) {
-          existingAddresses = new Set(
-            existing.map(e => `${(e.address_street || '').toLowerCase()}|${e.address_zip || ''}`)
-          );
+      // Duplicates are matched on the canonical street address (see lib/leads/dedupe).
+      // Street-only lists are the norm, so we can't require a zip here.
+      const existingAddresses = new Set<string>();
+      if (parsed.leads.some(l => l.address_street)) {
+        for (let from = 0; ; from += 1000) {
+          const { data, error } = await supabase
+            .from('leads')
+            .select('address_street')
+            .not('address_street', 'is', null)
+            .range(from, from + 999);
+          if (error) break;
+          for (const row of data || []) {
+            const key = normalizeStreet(row.address_street);
+            if (key) existingAddresses.add(key);
+          }
+          if (!data || data.length < 1000) break;
         }
       }
 
       for (const lead of parsed.leads) {
-        if (lead.address_street && lead.address_zip) {
-          const key = `${lead.address_street.toLowerCase()}|${lead.address_zip}`;
+        const key = normalizeStreet(lead.address_street);
+        if (key) {
           if (existingAddresses.has(key)) {
             duplicates++;
             continue;
