@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useState, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Search, PlusCircle, Upload, Sparkles, Download, CalendarClock, MapPin, UserCheck, PhoneOff } from 'lucide-react';
+import { Search, PlusCircle, Upload, Sparkles, Download, CalendarClock, MapPin, UserCheck, PhoneOff, CopyCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -58,6 +58,8 @@ function LeadsListContent() {
   const [dncCount, setDncCount] = useState(0);
   const [dncScrubOpen, setDncScrubOpen] = useState(false);
   const [dncScrubbing, setDncScrubbing] = useState(false);
+  const [recheckOpen, setRecheckOpen] = useState(false);
+  const [rechecking, setRechecking] = useState(false);
   const isAdmin = userRole === 'admin';
 
   const status = searchParams.get('status') || '';
@@ -153,6 +155,32 @@ function LeadsListContent() {
     }
   }
 
+  async function handleRecheckDuplicates() {
+    setRechecking(true);
+    try {
+      const res = await fetch('/api/admin/leads/recheck-duplicates', { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        const parts = [];
+        if (data.flagged > 0) parts.push(`${data.flagged} newly flagged`);
+        if (data.unflagged > 0) parts.push(`${data.unflagged} unflagged`);
+        toast.success(
+          parts.length > 0
+            ? `Checked ${data.checked} leads — ${parts.join(', ')}`
+            : `Checked ${data.checked} leads — no changes`
+        );
+        setRecheckOpen(false);
+        fetchLeads();
+      } else {
+        toast.error(data.error || 'Failed to re-check duplicates');
+      }
+    } catch {
+      toast.error('Failed to re-check duplicates');
+    } finally {
+      setRechecking(false);
+    }
+  }
+
   useEffect(() => {
     fetchLeads();
   }, [fetchLeads]);
@@ -225,6 +253,12 @@ function LeadsListContent() {
             >
               <MapPin className="h-4 w-4 mr-1" />
               By Street{selectedStreets.length > 0 ? ` (${selectedStreets.length})` : ''}
+            </Button>
+          )}
+          {isAdmin && (
+            <Button variant="outline" size="sm" onClick={() => setRecheckOpen(true)}>
+              <CopyCheck className="h-4 w-4 mr-1" />
+              Re-check dupes
             </Button>
           )}
           <Button variant="outline" size="sm" onClick={handleExport}>
@@ -563,6 +597,27 @@ function LeadsListContent() {
                 </Button>
                 <Button variant="destructive" onClick={handleScrubDnc} disabled={dncScrubbing}>
                   {dncScrubbing ? 'Removing...' : 'Remove numbers'}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+          <Dialog open={recheckOpen} onOpenChange={setRecheckOpen}>
+            <DialogContent className="max-w-md">
+              <DialogHeader>
+                <DialogTitle>Re-check duplicates?</DialogTitle>
+              </DialogHeader>
+              <p className="text-sm text-muted-foreground">
+                Re-runs duplicate detection over every lead using the current rule — the same
+                property address (or parcel number), ignoring phone numbers. It clears leads that
+                were flagged by mistake and flags any real duplicates that were missed. The oldest
+                lead at an address is always kept as the original. No leads are deleted.
+              </p>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setRecheckOpen(false)} disabled={rechecking}>
+                  Cancel
+                </Button>
+                <Button onClick={handleRecheckDuplicates} disabled={rechecking}>
+                  {rechecking ? 'Checking...' : 'Re-check duplicates'}
                 </Button>
               </DialogFooter>
             </DialogContent>

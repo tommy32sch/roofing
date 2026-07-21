@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/supabase/server';
 import { getAuthenticatedAdmin } from '@/lib/auth/jwt';
 import { parseLeadCSV } from '@/lib/csv/parser';
-import { normalizeStreet, addressConflicts } from '@/lib/leads/dedupe';
+import { assignDuplicates } from '@/lib/leads/dedupe';
 import { LIMITS } from '@/lib/utils/validation';
 import * as XLSX from 'xlsx';
 
@@ -63,90 +63,46 @@ export async function POST(request: NextRequest) {
 
     // --- Duplicate detection ---
     // A duplicate is the same PROPERTY, matched on a canonical street address
-    // (plus APN when the source provides one). Phone numbers are deliberately
-    // not a duplicate signal: skip-trace lists share numbers across relatives,
-    // and DNC-scrubbed leads have no phone at all.
-    const apns = leads.map(l => l.apn).filter(Boolean) as string[];
-
-    // Existing addresses have to be normalized in JS (the column stores raw text),
-    // so pull the address columns for every lead, paging past the 1000-row cap —
-    // a truncated read would silently miss duplicates.
-    async function fetchExistingAddresses() {
-      const rows: { id: string; address_street: string | null; address_city: string | null; address_zip: string | null }[] = [];
-      for (let from = 0; ; from += 1000) {
-        const { data, error } = await supabase
-          .from('leads')
-          .select('id, address_street, address_city, address_zip')
-          .not('address_street', 'is', null)
-          .range(from, from + 999);
-        if (error) throw error;
-        rows.push(...(data || []));
-        if (!data || data.length < 1000) break;
-      }
-      return rows;
+    // (plus APN when the source provides one) by the shared assignDuplicates rule.
+    // Phone numbers are deliberately not a signal: skip-trace lists share numbers
+    // across relatives, and DNC-scrubbed leads have no phone at all.
+    //
+    // Existing leads are normalized in JS (the column stores raw text), so pull
+    // them oldest-first — that keeps the earliest lead at an address as the
+    // original — paging past the 1000-row cap, since a truncated read would
+    // silently miss duplicates.
+    const existing: { id: string; apn: string | null; address_street: string | null; address_city: string | null; address_zip: string | null }[] = [];
+    for (let from = 0; ; from += 1000) {
+      const { data, error } = await supabase
+        .from('leads')
+        .select('id, apn, address_street, address_city, address_zip')
+        .order('created_at', { ascending: true })
+        .range(from, from + 999);
+      if (error) throw error;
+      existing.push(...(data || []));
+      if (!data || data.length < 1000) break;
     }
 
-    const [existingAddrRows, apnMatches] = await Promise.all([
-      fetchExistingAddresses(),
-      apns.length > 0
-        ? supabase.from('leads').select('id, apn').in('apn', apns)
-        : Promise.resolve({ data: [] as { id: string; apn: string | null }[] }),
+    // Incoming rows have no id yet, so they get a temporary one; a match against
+    // another temp id means the duplicate is inside this same file.
+    const assigned = assignDuplicates([
+      ...existing,
+      ...leads.map((l, i) => ({
+        id: `new:${i}`,
+        apn: l.apn,
+        address_street: l.address_street,
+        address_city: l.address_city,
+        address_zip: l.address_zip,
+      })),
     ]);
 
-    // Build lookup maps: identifier → existing lead
-    const apnToId = new Map<string, string>();
-    for (const row of apnMatches.data || []) {
-      if (row.apn) apnToId.set(row.apn, row.id);
-    }
-    const addrToLeads = new Map<string, { id: string; city: string | null; zip: string | null }[]>();
-    for (const row of existingAddrRows) {
-      const key = normalizeStreet(row.address_street);
-      if (!key) continue;
-      const bucket = addrToLeads.get(key) || [];
-      bucket.push({ id: row.id, city: row.address_city, zip: row.address_zip });
-      addrToLeads.set(key, bucket);
-    }
-
-    // Also track intra-batch identifiers to catch duplicates within the same CSV
-    const seenApns = new Map<string, string>();
-    const seenAddrs = new Map<string, { idx: string; city: string | null; zip: string | null }[]>();
-
-    // Annotate each lead with duplicate info
     const annotatedLeads = leads.map((lead, idx) => {
-      let duplicateOfId: string | null = null;
-
-      const apn = lead.apn;
-      const addr = normalizeStreet(lead.address_street);
-      const scope = { city: lead.address_city, zip: lead.address_zip };
-
-      // Check DB matches — APN is an exact parcel id, so it wins over street text
-      if (!duplicateOfId && apn && apnToId.has(apn)) duplicateOfId = apnToId.get(apn)!;
-      if (!duplicateOfId && addr) {
-        const match = (addrToLeads.get(addr) || []).find(c => !addressConflicts(scope, c));
-        if (match) duplicateOfId = match.id;
-      }
-
-      // Check intra-batch duplicates (mark later occurrence as duplicate)
-      if (!duplicateOfId && apn && seenApns.has(apn)) duplicateOfId = `batch:${seenApns.get(apn)}`;
-      if (!duplicateOfId && addr) {
-        const match = (seenAddrs.get(addr) || []).find(c => !addressConflicts(scope, c));
-        if (match) duplicateOfId = `batch:${match.idx}`;
-      }
-
-      // Track this lead's identifiers for subsequent rows
-      if (apn && !seenApns.has(apn)) seenApns.set(apn, String(idx));
-      if (addr) {
-        const bucket = seenAddrs.get(addr) || [];
-        bucket.push({ idx: String(idx), city: lead.address_city, zip: lead.address_zip });
-        seenAddrs.set(addr, bucket);
-      }
-
-      const isBatchDuplicate = duplicateOfId?.startsWith('batch:');
+      const duplicateOfId = assigned.get(`new:${idx}`) ?? null;
       return {
         ...lead,
         is_flagged_duplicate: duplicateOfId !== null,
-        // Intra-batch duplicates don't have a real UUID yet; set to null and flag only
-        duplicate_of_id: isBatchDuplicate ? null : duplicateOfId,
+        // Duplicates of another row in this same file have no real UUID yet
+        duplicate_of_id: duplicateOfId?.startsWith('new:') ? null : duplicateOfId,
       };
     });
 

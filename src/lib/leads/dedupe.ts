@@ -111,3 +111,55 @@ export function addressConflicts(a: AddressScope, b: AddressScope): boolean {
 
   return false;
 }
+
+/** The fields duplicate matching looks at. */
+export interface DedupeRecord {
+  id: string;
+  apn?: string | null;
+  address_street?: string | null;
+  address_city?: string | null;
+  address_zip?: string | null;
+}
+
+/**
+ * Assign duplicates across an ordered list of records — the single source of
+ * truth for the matching rule, shared by CSV import and the re-check action.
+ *
+ * Order matters: the FIRST record at a given address/APN is the original, and
+ * every later one points back to it. Pass records oldest-first (existing leads
+ * by created_at, then any new rows) so imports never re-parent existing leads.
+ * A record that is itself a duplicate never becomes an original, so a whole
+ * cluster collapses onto one lead rather than chaining.
+ *
+ * Returns id → the id it duplicates, or null when it is not a duplicate.
+ */
+export function assignDuplicates(records: DedupeRecord[]): Map<string, string | null> {
+  const addrSeen = new Map<string, { id: string; city: string | null; zip: string | null }[]>();
+  const apnSeen = new Map<string, string>();
+  const result = new Map<string, string | null>();
+
+  for (const r of records) {
+    const apn = r.apn?.trim() || null;
+    const key = normalizeStreet(r.address_street);
+    const scope = { city: r.address_city ?? null, zip: r.address_zip ?? null };
+
+    // APN is an exact parcel id, so it outranks street text
+    let dupOf: string | null = (apn && apnSeen.get(apn)) || null;
+    if (!dupOf && key) {
+      const hit = (addrSeen.get(key) || []).find((c) => !addressConflicts(scope, c));
+      if (hit) dupOf = hit.id;
+    }
+    result.set(r.id, dupOf);
+
+    if (!dupOf) {
+      if (apn && !apnSeen.has(apn)) apnSeen.set(apn, r.id);
+      if (key) {
+        const bucket = addrSeen.get(key) || [];
+        bucket.push({ id: r.id, city: scope.city, zip: scope.zip });
+        addrSeen.set(key, bucket);
+      }
+    }
+  }
+
+  return result;
+}

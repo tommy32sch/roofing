@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { normalizeStreet, addressConflicts } from './dedupe';
+import { normalizeStreet, addressConflicts, assignDuplicates } from './dedupe';
 
 describe('normalizeStreet', () => {
   it('treats spelled-out and abbreviated forms as the same address', () => {
@@ -57,5 +57,65 @@ describe('addressConflicts', () => {
 
   it('allows a match when city/zip agree (case/space insensitive)', () => {
     expect(addressConflicts({ city: 'Phoenix', zip: '85008' }, { city: ' phoenix ', zip: '85008' })).toBe(false);
+  });
+});
+
+describe('assignDuplicates', () => {
+  const rec = (id: string, street: string | null, extra: Record<string, unknown> = {}) => ({
+    id, address_street: street, ...extra,
+  });
+
+  it('keeps the first record at an address and flags later ones', () => {
+    const r = assignDuplicates([
+      rec('a', '1039 N 35th St'),
+      rec('b', '1039 North 35th Street'),
+      rec('c', '1040 N 35th St'),
+    ]);
+    expect(r.get('a')).toBeNull();
+    expect(r.get('b')).toBe('a');
+    expect(r.get('c')).toBeNull();
+  });
+
+  it('collapses a whole cluster onto one original instead of chaining', () => {
+    const r = assignDuplicates([
+      rec('a', '5 Palm Ave'),
+      rec('b', '5 Palm Avenue'),
+      rec('c', '5 palm ave.'),
+    ]);
+    expect(r.get('b')).toBe('a');
+    expect(r.get('c')).toBe('a'); // not 'b'
+  });
+
+  it('does not flag different people at different houses who share a phone', () => {
+    // the real false positive that phone-based dedup produced
+    const r = assignDuplicates([
+      rec('olivia', '1715 N 33rd Pl'),
+      rec('irving', '1712 N 33rd Pl'),
+    ]);
+    expect(r.get('olivia')).toBeNull();
+    expect(r.get('irving')).toBeNull();
+  });
+
+  it('matches on APN even when the street text differs', () => {
+    const r = assignDuplicates([
+      rec('a', '100 Main St', { apn: '123-45-678' }),
+      rec('b', '100 Main Street Rear Unit', { apn: '123-45-678' }),
+    ]);
+    expect(r.get('b')).toBe('a');
+  });
+
+  it('does not match same street in a different city/zip', () => {
+    const r = assignDuplicates([
+      rec('a', '123 Main St', { address_city: 'Phoenix', address_zip: '85008' }),
+      rec('b', '123 Main St', { address_city: 'Mesa', address_zip: '85201' }),
+    ]);
+    expect(r.get('b')).toBeNull();
+  });
+
+  it('ignores records with no address and no APN', () => {
+    const r = assignDuplicates([rec('a', null), rec('b', null), rec('c', '   ')]);
+    expect(r.get('a')).toBeNull();
+    expect(r.get('b')).toBeNull();
+    expect(r.get('c')).toBeNull();
   });
 });
