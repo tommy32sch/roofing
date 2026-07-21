@@ -21,7 +21,9 @@ export async function GET() {
     // Get all leads with source
     const { data: leads, error } = await supabase
       .from('leads')
-      .select('id, first_name, last_name, address_city, address_state, status, priority, source_id, deal_value, estimated_roof_value, created_at, lead_sources(display_name)')
+      // address_street is required — street-only imports have no city/state, so
+      // without it the dashboard shows "No address" for most leads.
+      .select('id, first_name, last_name, address_street, address_city, address_state, status, priority, source_id, deal_value, estimated_roof_value, created_at, lead_sources(display_name)')
       .order('created_at', { ascending: false });
 
     if (error) {

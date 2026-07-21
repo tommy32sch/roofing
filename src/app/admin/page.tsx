@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { Users, TrendingUp, Flame, CalendarDays, ArrowRight, RefreshCw, DollarSign, CalendarClock, AlertCircle } from 'lucide-react';
 import { formatDistanceToNow, format, isPast, isToday } from 'date-fns';
 import { formatAddress } from '@/lib/utils/format';
+import { LeadStatusBadge } from '@/components/leads/lead-status-badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -118,44 +119,30 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Stat cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-2 text-muted-foreground text-sm">
-              <Users className="h-4 w-4" />
-              Total Leads
-            </div>
-            <p className="text-2xl font-bold mt-1">{stats?.totalLeads ?? 0}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-2 text-muted-foreground text-sm">
-              <CalendarDays className="h-4 w-4" />
-              This Week
-            </div>
-            <p className="text-2xl font-bold mt-1">{stats?.leadsThisWeek ?? 0}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-2 text-muted-foreground text-sm">
-              <TrendingUp className="h-4 w-4" />
-              Conversion
-            </div>
-            <p className="text-2xl font-bold mt-1">{stats?.conversionRate ?? 0}%</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-2 text-muted-foreground text-sm">
-              <Flame className="h-4 w-4" />
-              Hot Leads
-            </div>
-            <p className="text-2xl font-bold mt-1">{stats?.hotLeads ?? 0}</p>
-          </CardContent>
-        </Card>
+      {/* Stat cards — label small and quiet, number large and tabular so the
+          figures line up and read as data rather than as body copy. */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
+        {[
+          { icon: Users, label: 'Total Leads', value: (stats?.totalLeads ?? 0).toLocaleString(), accent: 'text-muted-foreground' },
+          { icon: CalendarDays, label: 'This Week', value: (stats?.leadsThisWeek ?? 0).toLocaleString(), accent: 'text-muted-foreground' },
+          { icon: TrendingUp, label: 'Conversion', value: `${stats?.conversionRate ?? 0}%`, accent: 'text-muted-foreground' },
+          {
+            icon: Flame,
+            label: 'Hot Leads',
+            value: (stats?.hotLeads ?? 0).toLocaleString(),
+            accent: (stats?.hotLeads ?? 0) > 0 ? 'text-red-500' : 'text-muted-foreground',
+          },
+        ].map(({ icon: Icon, label, value, accent }) => (
+          <Card key={label} className="transition-colors hover:border-foreground/20">
+            <CardContent className="p-4">
+              <div className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                <Icon className={`h-3.5 w-3.5 ${accent}`} />
+                {label}
+              </div>
+              <p className="mt-2 text-3xl font-semibold tabular-nums tracking-tight">{value}</p>
+            </CardContent>
+          </Card>
+        ))}
       </div>
 
       {/* Revenue cards (only shown when values exist) */}
@@ -306,9 +293,7 @@ export default function DashboardPage() {
                       {formatAddress(lead) || 'No address'}
                     </p>
                   </div>
-                  <Badge className={STATUS_COLORS[lead.status]}>
-                    {STATUS_LABELS[lead.status]}
-                  </Badge>
+                  <LeadStatusBadge status={lead.status} />
                 </Link>
               ))}
             </div>
