@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { Users, TrendingUp, Flame, CalendarDays, ArrowRight, RefreshCw, DollarSign, CalendarClock, AlertCircle } from 'lucide-react';
 import { formatDistanceToNow, format, isPast, isToday } from 'date-fns';
+import { formatAddress } from '@/lib/utils/format';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -258,7 +259,7 @@ export default function DashboardPage() {
                           {lead.first_name} {lead.last_name}
                         </p>
                         <p className="text-xs text-muted-foreground">
-                          {[lead.address_city, lead.address_state].filter(Boolean).join(', ') || 'No address'}
+                          {formatAddress(lead) || 'No address'}
                         </p>
                       </div>
                     </div>
@@ -302,7 +303,7 @@ export default function DashboardPage() {
                       {lead.first_name} {lead.last_name}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      {[lead.address_city, lead.address_state].filter(Boolean).join(', ') || 'No address'}
+                      {formatAddress(lead) || 'No address'}
                     </p>
                   </div>
                   <Badge className={STATUS_COLORS[lead.status]}>

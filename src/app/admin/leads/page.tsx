@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Search, PlusCircle, Upload, Sparkles, Download, CalendarClock, MapPin, UserCheck, PhoneOff, CopyCheck } from 'lucide-react';
 import { toast } from 'sonner';
+import { formatPhone, formatAddress } from '@/lib/utils/format';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
@@ -391,7 +392,8 @@ function LeadsListContent() {
                 </TableHead>
               )}
               <TableHead>Name</TableHead>
-              <TableHead className="hidden md:table-cell">Location</TableHead>
+              <TableHead className="hidden md:table-cell">Address</TableHead>
+              <TableHead className="hidden md:table-cell">Phone</TableHead>
               <TableHead>Status</TableHead>
               <TableHead className="hidden sm:table-cell">Priority</TableHead>
               <TableHead className="hidden lg:table-cell">Source</TableHead>
@@ -406,6 +408,7 @@ function LeadsListContent() {
                 <TableRow key={i}>
                   {isAdmin && <TableCell className="w-10"><Skeleton className="h-4 w-4" /></TableCell>}
                   <TableCell><Skeleton className="h-4 w-32" /></TableCell>
+                  <TableCell className="hidden md:table-cell"><Skeleton className="h-4 w-32" /></TableCell>
                   <TableCell className="hidden md:table-cell"><Skeleton className="h-4 w-24" /></TableCell>
                   <TableCell><Skeleton className="h-5 w-16" /></TableCell>
                   <TableCell className="hidden sm:table-cell"><Skeleton className="h-5 w-14" /></TableCell>
@@ -417,7 +420,7 @@ function LeadsListContent() {
               ))
             ) : leads.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={isAdmin ? 9 : 8} className="text-center py-8 text-muted-foreground">
+                <TableCell colSpan={isAdmin ? 10 : 9} className="text-center py-8 text-muted-foreground">
                   {search || status || priority ? 'No leads match your filters.' : 'No leads yet. Add your first lead to get started.'}
                 </TableCell>
               </TableRow>
@@ -463,12 +466,35 @@ function LeadsListContent() {
                         })()}
                       </p>
                       <p className="text-xs text-muted-foreground md:hidden">
-                        {[lead.address_street, lead.address_city, lead.address_state].filter(Boolean).join(', ')}
+                        {formatAddress(lead) || 'No address'}
                       </p>
                     </div>
                   </TableCell>
-                  <TableCell className="hidden md:table-cell text-sm text-muted-foreground">
-                    {[lead.address_city, lead.address_state].filter(Boolean).join(', ') || '-'}
+                  <TableCell className="hidden md:table-cell text-sm">
+                    {lead.address_street ? (
+                      <span className="text-foreground/90">{lead.address_street}</span>
+                    ) : (
+                      <span className="text-muted-foreground">
+                        {[lead.address_city, lead.address_state].filter(Boolean).join(', ') || '—'}
+                      </span>
+                    )}
+                    {lead.address_street && (lead.address_city || lead.address_state) && (
+                      <span className="text-muted-foreground">
+                        {' · '}
+                        {[lead.address_city, lead.address_state].filter(Boolean).join(', ')}
+                      </span>
+                    )}
+                  </TableCell>
+                  <TableCell className="hidden md:table-cell text-sm" onClick={(e) => e.stopPropagation()}>
+                    {lead.is_dnc ? (
+                      <span className="text-xs text-destructive/80">Do not call</span>
+                    ) : lead.phone ? (
+                      <a href={`tel:${lead.phone}`} className="tabular-nums hover:text-primary hover:underline">
+                        {formatPhone(lead.phone)}
+                      </a>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
                   </TableCell>
                   <TableCell>
                     <LeadStatusBadge status={lead.status} />

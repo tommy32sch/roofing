@@ -29,6 +29,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatDistanceToNow, format } from 'date-fns';
+import { formatPhone } from '@/lib/utils/format';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -435,35 +436,43 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
                     </span>
                   </div>
                 )}
-                {lead.phone && (
-                  <a href={`tel:${lead.phone}`} className="flex items-center gap-2 text-sm hover:text-primary">
-                    <Phone className="h-4 w-4 text-muted-foreground" />
-                    {lead.phone}
-                  </a>
+                {[lead.phone, lead.phone2, lead.phone3].map((p, i) =>
+                  p ? (
+                    <div key={`phone-${i}`} className="flex items-center justify-between gap-2">
+                      <a href={`tel:${p}`} className="flex items-center gap-2 text-sm hover:text-primary min-w-0">
+                        <Phone className="h-4 w-4 text-muted-foreground shrink-0" />
+                        <span className="tabular-nums truncate">{formatPhone(p)}</span>
+                        {i > 0 && <span className="text-xs text-muted-foreground shrink-0">({i + 1})</span>}
+                      </a>
+                      <span className="flex gap-1 shrink-0">
+                        <a
+                          href={`tel:${p}`}
+                          className="inline-flex h-7 items-center rounded-md border px-2 text-xs hover:bg-accent"
+                        >
+                          Call
+                        </a>
+                        <a
+                          href={`sms:${p}`}
+                          className="inline-flex h-7 items-center rounded-md border px-2 text-xs hover:bg-accent"
+                        >
+                          Text
+                        </a>
+                      </span>
+                    </div>
+                  ) : null
                 )}
-                {lead.phone2 && (
-                  <a href={`tel:${lead.phone2}`} className="flex items-center gap-2 text-sm hover:text-primary">
-                    <Phone className="h-4 w-4 text-muted-foreground" />
-                    {lead.phone2} <span className="text-xs text-muted-foreground">(2)</span>
-                  </a>
-                )}
-                {lead.phone3 && (
-                  <a href={`tel:${lead.phone3}`} className="flex items-center gap-2 text-sm hover:text-primary">
-                    <Phone className="h-4 w-4 text-muted-foreground" />
-                    {lead.phone3} <span className="text-xs text-muted-foreground">(3)</span>
-                  </a>
-                )}
-                {lead.email && (
-                  <a href={`mailto:${lead.email}`} className="flex items-center gap-2 text-sm hover:text-primary">
-                    <Mail className="h-4 w-4 text-muted-foreground" />
-                    {lead.email}
-                  </a>
-                )}
-                {lead.email2 && (
-                  <a href={`mailto:${lead.email2}`} className="flex items-center gap-2 text-sm hover:text-primary">
-                    <Mail className="h-4 w-4 text-muted-foreground" />
-                    {lead.email2} <span className="text-xs text-muted-foreground">(2)</span>
-                  </a>
+                {[lead.email, lead.email2].map((e, i) =>
+                  e ? (
+                    <a
+                      key={`email-${i}`}
+                      href={`mailto:${e}`}
+                      className="flex items-center gap-2 text-sm hover:text-primary min-w-0"
+                    >
+                      <Mail className="h-4 w-4 text-muted-foreground shrink-0" />
+                      <span className="truncate">{e}</span>
+                      {i > 0 && <span className="text-xs text-muted-foreground shrink-0">(2)</span>}
+                    </a>
+                  ) : null
                 )}
                 {!lead.phone && !lead.email && !lead.is_dnc && (
                   <p className="text-sm text-muted-foreground">No contact info</p>
