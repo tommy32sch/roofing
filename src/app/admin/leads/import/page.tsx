@@ -110,14 +110,42 @@ export default function ImportPage() {
             )}
           </div>
 
-          <div className="text-xs text-muted-foreground space-y-1">
-            <p className="font-medium">Expected columns:</p>
-            <p>first_name, last_name, phone, email, address (street), city, state, zip, home_value, year_built, roof_age, roof_type, source, notes</p>
-            <p>Headers are flexible — common variations from PropStream, BatchLeads, etc. are auto-detected.</p>
+          <div className="space-y-3 rounded-lg border bg-muted/30 p-3 text-xs text-muted-foreground">
+            <div className="space-y-1">
+              <p className="font-medium text-foreground">Columns we read</p>
+              <p>
+                Name, address (street/city/state/zip), email, phone, plus property data —
+                home value, year built, sq ft, roof age, roof type, last sale, APN, notes.
+              </p>
+              <p>
+                Headers are flexible: common variations from PropStream, BatchLeads and
+                similar skip-trace exports are auto-detected. CSV, XLS and XLSX all work.
+              </p>
+            </div>
+            <div className="space-y-1">
+              <p className="font-medium text-foreground">Multiple phones &amp; Do Not Call</p>
+              <p>
+                <span className="font-medium">Phone 1</span> through{' '}
+                <span className="font-medium">Phone 5</span> are read, each with its own{' '}
+                <span className="font-medium">Phone N DNC</span> column. Any number flagged
+                DNC is <span className="font-medium">never stored</span> — the rest of the
+                lead still imports so you can door-knock it. Up to three callable numbers
+                are kept per lead.
+              </p>
+            </div>
+            <div className="space-y-1">
+              <p className="font-medium text-foreground">Duplicates</p>
+              <p>
+                Matched on the property address (or parcel number), not the phone number.
+                Duplicates are flagged for review — never deleted, and nothing is
+                overwritten.
+              </p>
+            </div>
           </div>
 
+          {/* Reads as a live CTA otherwise, even though it's disabled until a file is chosen */}
           <Button onClick={handleImport} disabled={!file || loading} className="w-full">
-            {loading ? 'Importing...' : 'Import Leads'}
+            {loading ? 'Importing…' : file ? `Import ${file.name}` : 'Choose a file to import'}
           </Button>
         </CardContent>
       </Card>

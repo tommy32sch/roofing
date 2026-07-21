@@ -39,6 +39,7 @@ export default function MapPage() {
   const [geocoding, setGeocoding] = useState(false);
   const [geocodeStatus, setGeocodeStatus] = useState('');
   const [stormOn, setStormOn] = useState(false);
+  const [legendOpen, setLegendOpen] = useState(false);
   const [stormType, setStormType] = useState<StormType>('wind');
   const [stormDays, setStormDays] = useState(30);
   const [stormReports, setStormReports] = useState<StormReport[]>([]);
@@ -323,8 +324,19 @@ export default function MapPage() {
         </div>
       )}
 
-      {/* Legend */}
-      <div className="flex gap-3 flex-wrap text-xs text-muted-foreground">
+      {/* Legend — collapsed by default on mobile, where it otherwise consumed
+          ~130px of a 812px screen before the map even started. */}
+      <button
+        type="button"
+        className="sm:hidden self-start text-xs text-muted-foreground underline underline-offset-2"
+        onClick={() => setLegendOpen((o) => !o)}
+        aria-expanded={legendOpen}
+      >
+        {legendOpen ? 'Hide legend' : 'Show legend'}
+      </button>
+      <div
+        className={`${legendOpen ? 'flex' : 'hidden'} sm:flex gap-3 flex-wrap text-xs text-muted-foreground`}
+      >
         {LEAD_STATUS_OPTIONS.map((opt) => (
           <span key={opt.value} className="flex items-center gap-1.5">
             <span

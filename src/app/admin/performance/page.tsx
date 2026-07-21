@@ -18,22 +18,27 @@ function StatCard({ label, value, sub }: { label: string; value: string | number
   );
 }
 
+/** Role is context, not a headline — a quiet outlined chip, matching the lead badges. */
 function RoleBadge({ role }: { role: string }) {
-  const colors: Record<string, string> = {
-    admin: 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-200',
-    setter: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-200',
-    closer: 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-200',
+  const dot: Record<string, string> = {
+    admin: 'bg-purple-500',
+    setter: 'bg-blue-500',
+    closer: 'bg-green-500',
   };
   return (
-    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${colors[role] ?? ''}`}>
+    <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted/40 px-2 py-0.5 text-xs font-medium text-muted-foreground capitalize">
+      <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${dot[role] ?? 'bg-muted-foreground'}`} />
       {role}
     </span>
   );
 }
 
 function RepCard({ rep, isOwn }: { rep: RepStats; isOwn: boolean }) {
-  const hasSetter = rep.setterLeadsAssigned > 0 || rep.role === 'setter' || rep.role === 'admin';
-  const hasCloser = rep.closerLeadsAssigned > 0 || rep.role === 'closer' || rep.role === 'admin';
+  // With nothing assigned, a grid of zeros is visual weight carrying no
+  // information — show the empty state on its own instead.
+  const hasAnyLeads = rep.setterLeadsAssigned > 0 || rep.closerLeadsAssigned > 0;
+  const hasSetter = hasAnyLeads && (rep.setterLeadsAssigned > 0 || rep.role === 'setter' || rep.role === 'admin');
+  const hasCloser = hasAnyLeads && (rep.closerLeadsAssigned > 0 || rep.role === 'closer' || rep.role === 'admin');
 
   return (
     <Card className={isOwn ? 'border-primary' : ''}>
@@ -93,7 +98,7 @@ function RepCard({ rep, isOwn }: { rep: RepStats; isOwn: boolean }) {
           </div>
         )}
 
-        {rep.setterLeadsAssigned === 0 && rep.closerLeadsAssigned === 0 && (
+        {!hasAnyLeads && (
           <p className="text-sm text-muted-foreground text-center py-2">No leads assigned yet</p>
         )}
       </CardContent>
@@ -152,43 +157,23 @@ export default function PerformancePage() {
 
       {/* Team summary (admin only) */}
       {userRole === 'admin' && reps.length > 1 && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center gap-2 text-muted-foreground text-sm">
-                <Users className="h-4 w-4" />
-                Team Size
-              </div>
-              <p className="text-2xl font-bold mt-1">{reps.length}</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center gap-2 text-muted-foreground text-sm">
-                <CalendarCheck className="h-4 w-4" />
-                Total Appts
-              </div>
-              <p className="text-2xl font-bold mt-1">{totalAppts}</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center gap-2 text-muted-foreground text-sm">
-                <TrendingUp className="h-4 w-4" />
-                Total Won
-              </div>
-              <p className="text-2xl font-bold mt-1">{totalWon}</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center gap-2 text-muted-foreground text-sm">
-                <DollarSign className="h-4 w-4" />
-                Total Revenue
-              </div>
-              <p className="text-2xl font-bold mt-1">${totalRevenue.toLocaleString()}</p>
-            </CardContent>
-          </Card>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+          {[
+            { icon: Users, label: 'Team Size', value: reps.length.toLocaleString() },
+            { icon: CalendarCheck, label: 'Total Appts', value: totalAppts.toLocaleString() },
+            { icon: TrendingUp, label: 'Total Won', value: totalWon.toLocaleString() },
+            { icon: DollarSign, label: 'Total Revenue', value: `$${totalRevenue.toLocaleString()}` },
+          ].map(({ icon: Icon, label, value }) => (
+            <Card key={label} className="transition-colors hover:border-foreground/20">
+              <CardContent className="p-4">
+                <div className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  <Icon className="h-3.5 w-3.5" />
+                  {label}
+                </div>
+                <p className="mt-2 text-3xl font-semibold tabular-nums tracking-tight">{value}</p>
+              </CardContent>
+            </Card>
+          ))}
         </div>
       )}
 

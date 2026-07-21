@@ -126,6 +126,12 @@ export default function LeadMap({
       center={DEFAULT_CENTER}
       zoom={DEFAULT_ZOOM}
       preferCanvas
+      // Leaflet fades tiles in via a requestAnimationFrame loop that can stall
+      // when the map is mounted/torn down twice (React StrictMode) or resized
+      // mid-fade — tiles then sit permanently at partial opacity and the basemap
+      // looks blank. We measured them stuck at 0.19. No fade = tiles paint at
+      // full opacity immediately.
+      fadeAnimation={false}
       className="h-full w-full z-0 rounded-md"
     >
       <TileLayer
