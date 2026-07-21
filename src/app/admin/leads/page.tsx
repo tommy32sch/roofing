@@ -3,9 +3,9 @@
 import { Suspense, useEffect, useState, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Search, PlusCircle, Upload, Sparkles, Download, CalendarClock, MapPin, UserCheck, PhoneOff, CopyCheck } from 'lucide-react';
+import { Search, PlusCircle, Upload, Sparkles, Download, CalendarClock, MapPin, UserCheck, PhoneOff, CopyCheck, SlidersHorizontal, Navigation, Phone } from 'lucide-react';
 import { toast } from 'sonner';
-import { formatPhone, formatAddress } from '@/lib/utils/format';
+import { formatPhone, formatAddress, mapsUrl } from '@/lib/utils/format';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
@@ -61,6 +61,7 @@ function LeadsListContent() {
   const [dncScrubbing, setDncScrubbing] = useState(false);
   const [recheckOpen, setRecheckOpen] = useState(false);
   const [rechecking, setRechecking] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const isAdmin = userRole === 'admin';
 
   const status = searchParams.get('status') || '';
@@ -73,6 +74,8 @@ function LeadsListContent() {
   const selectedStreets = streetsParam ? streetsParam.split('|').filter(Boolean) : [];
   const dncOnly = searchParams.get('is_dnc') === 'true';
   const page = parseInt(searchParams.get('page') || '1', 10);
+  // Drives the mobile filter button's active state
+  const activeFilterCount = [status, priority, streetNumber, streetDir, streetName, streetsParam, dncOnly ? 'dnc' : ''].filter(Boolean).length;
 
   function applyFilterParams(params: URLSearchParams) {
     if (status) params.set('status', status);
@@ -243,30 +246,42 @@ function LeadsListContent() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Leads</h1>
-        <div className="flex gap-2">
+      {/* Header — actions wrap instead of running off the edge on a phone.
+          Secondary/admin actions are desktop-only so the field view stays clean. */}
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Leads</h1>
+          {!loading && (
+            <p className="text-sm text-muted-foreground mt-0.5">
+              {total.toLocaleString()} lead{total !== 1 ? 's' : ''}
+              {selectedStreets.length > 0 && ` · ${selectedStreets.length} street${selectedStreets.length !== 1 ? 's' : ''}`}
+            </p>
+          )}
+        </div>
+        <div className="flex gap-2 flex-wrap">
           {isAdmin && (
             <Button
               variant={selectedStreets.length > 0 ? 'default' : 'outline'}
               size="sm"
               onClick={() => setStreetsOpen(true)}
             >
-              <MapPin className="h-4 w-4 mr-1" />
-              By Street{selectedStreets.length > 0 ? ` (${selectedStreets.length})` : ''}
+              <MapPin className="h-4 w-4 sm:mr-1" />
+              <span className="hidden sm:inline">
+                By Street{selectedStreets.length > 0 ? ` (${selectedStreets.length})` : ''}
+              </span>
             </Button>
           )}
           {isAdmin && (
-            <Button variant="outline" size="sm" onClick={() => setRecheckOpen(true)}>
+            <Button variant="outline" size="sm" className="hidden sm:inline-flex" onClick={() => setRecheckOpen(true)}>
               <CopyCheck className="h-4 w-4 mr-1" />
               Re-check dupes
             </Button>
           )}
-          <Button variant="outline" size="sm" onClick={handleExport}>
+          <Button variant="outline" size="sm" className="hidden sm:inline-flex" onClick={handleExport}>
             <Download className="h-4 w-4 mr-1" />
             Export
           </Button>
-          <Link href="/admin/leads/import">
+          <Link href="/admin/leads/import" className="hidden sm:block">
             <Button variant="outline" size="sm">
               <Upload className="h-4 w-4 mr-1" />
               Import
@@ -274,15 +289,16 @@ function LeadsListContent() {
           </Link>
           <Link href="/admin/leads/new">
             <Button size="sm">
-              <PlusCircle className="h-4 w-4 mr-1" />
-              Add Lead
+              <PlusCircle className="h-4 w-4 sm:mr-1" />
+              <span className="hidden sm:inline">Add Lead</span>
             </Button>
           </Link>
         </div>
       </div>
 
-      {/* Filters */}
-      <div className="flex flex-col sm:flex-row gap-3">
+      {/* Search is always visible; the rest collapses on mobile so leads are
+          on screen immediately instead of below a full page of filter controls. */}
+      <div className="flex gap-2">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
@@ -295,8 +311,21 @@ function LeadsListContent() {
             className="pl-9"
           />
         </div>
+        <Button
+          variant={activeFilterCount > 0 ? 'default' : 'outline'}
+          size="icon"
+          className="sm:hidden shrink-0"
+          aria-label="Filters"
+          aria-expanded={filtersOpen}
+          onClick={() => setFiltersOpen((o) => !o)}
+        >
+          <SlidersHorizontal className="h-4 w-4" />
+        </Button>
+      </div>
+
+      <div className={`${filtersOpen ? 'flex' : 'hidden'} sm:flex flex-col sm:flex-row gap-3`}>
         <Select value={status} onValueChange={(v) => updateFilter('status', v === 'all' ? '' : v ?? '')}>
-          <SelectTrigger className="w-[160px]">
+          <SelectTrigger className="sm:w-[160px]">
             <SelectValue placeholder="All Statuses" />
           </SelectTrigger>
           <SelectContent>
@@ -309,7 +338,7 @@ function LeadsListContent() {
           </SelectContent>
         </Select>
         <Select value={priority} onValueChange={(v) => updateFilter('priority', v === 'all' ? '' : v ?? '')}>
-          <SelectTrigger className="w-[140px]">
+          <SelectTrigger className="sm:w-[140px]">
             <SelectValue placeholder="All Priorities" />
           </SelectTrigger>
           <SelectContent>
@@ -324,7 +353,7 @@ function LeadsListContent() {
       </div>
 
       {/* Street filters */}
-      <div className="flex flex-col sm:flex-row gap-3">
+      <div className={`${filtersOpen ? 'flex' : 'hidden'} sm:flex flex-col sm:flex-row gap-3`}>
         <Input
           placeholder="Street #"
           inputMode="numeric"
@@ -465,9 +494,39 @@ function LeadsListContent() {
                           );
                         })()}
                       </p>
-                      <p className="text-xs text-muted-foreground md:hidden">
-                        {formatAddress(lead) || 'No address'}
-                      </p>
+                      {/* Mobile: the row carries everything a rep needs at the door */}
+                      <div className="md:hidden mt-1 space-y-1.5">
+                        <p className="text-xs text-muted-foreground">
+                          {formatAddress(lead) || 'No address'}
+                        </p>
+                        <div className="flex flex-wrap items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                          {lead.is_dnc ? (
+                            <span className="inline-flex h-7 items-center rounded-md border border-destructive/40 px-2 text-xs text-destructive">
+                              <PhoneOff className="h-3 w-3 mr-1" />
+                              Knock only
+                            </span>
+                          ) : lead.phone ? (
+                            <a
+                              href={`tel:${lead.phone}`}
+                              className="inline-flex h-7 items-center rounded-md border px-2 text-xs tabular-nums active:bg-accent"
+                            >
+                              <Phone className="h-3 w-3 mr-1" />
+                              {formatPhone(lead.phone)}
+                            </a>
+                          ) : null}
+                          {mapsUrl(lead) && (
+                            <a
+                              href={mapsUrl(lead)!}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex h-7 items-center rounded-md border px-2 text-xs active:bg-accent"
+                            >
+                              <Navigation className="h-3 w-3 mr-1" />
+                              Directions
+                            </a>
+                          )}
+                        </div>
+                      </div>
                     </div>
                   </TableCell>
                   <TableCell className="hidden md:table-cell text-sm">

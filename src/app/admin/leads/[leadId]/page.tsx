@@ -26,10 +26,11 @@ import {
   UserCheck,
   CalendarClock,
   PhoneOff,
+  Navigation,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatDistanceToNow, format } from 'date-fns';
-import { formatPhone } from '@/lib/utils/format';
+import { formatPhone, mapsUrl } from '@/lib/utils/format';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -487,9 +488,22 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
               </CardHeader>
               <CardContent className="space-y-2 text-sm">
                 {fullAddress && (
-                  <div className="flex items-start gap-2">
-                    <MapPin className="h-4 w-4 text-muted-foreground mt-0.5" />
-                    <span>{fullAddress}</span>
+                  <div className="flex items-start justify-between gap-2">
+                    <span className="flex items-start gap-2 min-w-0">
+                      <MapPin className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
+                      <span>{fullAddress}</span>
+                    </span>
+                    {mapsUrl(lead) && (
+                      <a
+                        href={mapsUrl(lead)!}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex h-7 shrink-0 items-center rounded-md border px-2 text-xs hover:bg-accent"
+                      >
+                        <Navigation className="h-3 w-3 mr-1" />
+                        Directions
+                      </a>
+                    )}
                   </div>
                 )}
                 {lead.home_value && (

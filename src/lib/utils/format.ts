@@ -36,6 +36,25 @@ export function formatAddress(lead: AddressParts): string {
   return [lead.address_street, cityState].filter(Boolean).join(' · ');
 }
 
+/**
+ * Maps link for navigating to a lead. Prefers the geocoded coordinates — most
+ * skip-trace addresses have no city, so the raw text alone is ambiguous and can
+ * route a rep to the same street in the wrong town. Falls back to the address.
+ * Returns null when there's nothing to navigate to.
+ */
+export function mapsUrl(
+  lead: AddressParts & { latitude?: number | string | null; longitude?: number | string | null }
+): string | null {
+  const base = 'https://www.google.com/maps/search/?api=1&query=';
+  if (lead.latitude != null && lead.longitude != null) {
+    return `${base}${encodeURIComponent(`${lead.latitude},${lead.longitude}`)}`;
+  }
+  const q = [lead.address_street, lead.address_city, lead.address_state, lead.address_zip]
+    .filter(Boolean)
+    .join(', ');
+  return q ? `${base}${encodeURIComponent(q)}` : null;
+}
+
 /** Short address for tight spaces (table cells, list rows): street only when present. */
 export function formatAddressShort(lead: AddressParts): string {
   return (
