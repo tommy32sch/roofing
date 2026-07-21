@@ -162,3 +162,90 @@ describe('normalizeLeadData — DNC flag', () => {
     expect(lead.phone_normalized).toBe('+16502530000');
   });
 });
+
+describe('normalizeLeadData — per-phone DNC (skip-trace exports)', () => {
+  it('drops only the DNC-flagged numbers and keeps the callable ones', () => {
+    // Webhook-style raw headers: each phone paired with its own DNC flag
+    const lead = normalizeLeadData({
+      'First Name': 'Maria',
+      'Last Name': 'Ayala',
+      'Phone 1': '6024343154',
+      'Phone 1 DNC': 'No',
+      'Phone 2': '6022753271',
+      'Phone 2 DNC': 'Yes', // on DNC — must NOT be stored
+      'Phone 3': '6022754360',
+      'Phone 3 DNC': 'No',
+    })!;
+    expect(lead.is_dnc).toBe(false); // still callable on the surviving numbers
+    expect(lead.phone).toBe('6024343154');
+    expect(lead.phone2).toBe('6022754360');
+    expect(lead.phone3).toBeNull();
+    // the DNC number appears nowhere on the lead
+    const stored = [lead.phone, lead.phone2, lead.phone3, lead.phone_normalized];
+    expect(stored.some((v) => v?.includes('6022753271'))).toBe(false);
+  });
+
+  it('handles the CSV path where Phone 1/2/3 were already renamed to phone/phone2/phone3', () => {
+    // Mirrors what transformHeader produces: "Phone 1"->phone, "Phone 4"->phone_4, etc.
+    const lead = normalizeLeadData({
+      first_name: 'A',
+      last_name: 'B',
+      phone: '6024343154',
+      phone_1_dnc: 'No',
+      phone2: '6022753271',
+      phone_2_dnc: 'Yes',
+      phone3: '6022754360',
+      phone_3_dnc: 'No',
+      phone_4: '6022441950',
+      phone_4_dnc: 'No',
+      phone_5: '6022860261',
+      phone_5_dnc: 'Yes',
+      phone_1_type: 'Mobile',
+    })!;
+    expect(lead.is_dnc).toBe(false);
+    // callable in order: P1, P3, P4 (P2 and P5 are DNC) — first three kept
+    expect(lead.phone).toBe('6024343154');
+    expect(lead.phone2).toBe('6022754360');
+    expect(lead.phone3).toBe('6022441950');
+    const all = JSON.stringify(lead);
+    expect(all.includes('6022753271')).toBe(false); // P2 dropped
+    expect(all.includes('6022860261')).toBe(false); // P5 dropped
+  });
+
+  it('flags a lead as DNC only when every number is Do Not Call', () => {
+    const lead = normalizeLeadData({
+      first_name: 'A',
+      last_name: 'B',
+      'Phone 1': '6024343154',
+      'Phone 1 DNC': 'Yes',
+      'Phone 2': '6022753271',
+      'Phone 2 DNC': 'Yes',
+    })!;
+    expect(lead.is_dnc).toBe(true); // knock-only
+    expect(lead.phone).toBeNull();
+    expect(lead.phone2).toBeNull();
+    expect(lead.phone3).toBeNull();
+  });
+
+  it('a lead with no phones at all is not DNC', () => {
+    const lead = normalizeLeadData({ first_name: 'A', last_name: 'B' })!;
+    expect(lead.is_dnc).toBe(false);
+    expect(lead.phone).toBeNull();
+  });
+
+  it('keeps at most three callable numbers (schema has three phone slots)', () => {
+    const lead = normalizeLeadData({
+      first_name: 'A',
+      last_name: 'B',
+      'Phone 1': '6020000001',
+      'Phone 2': '6020000002',
+      'Phone 3': '6020000003',
+      'Phone 4': '6020000004',
+      'Phone 5': '6020000005',
+    })!;
+    expect(lead.phone).toBe('6020000001');
+    expect(lead.phone2).toBe('6020000002');
+    expect(lead.phone3).toBe('6020000003');
+    expect(lead.is_dnc).toBe(false);
+  });
+});

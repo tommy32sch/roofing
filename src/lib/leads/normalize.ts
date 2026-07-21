@@ -352,6 +352,85 @@ export function parseDncFlag(value: string | null | undefined): boolean {
   return v === 'true' || v === 't' || v === 'yes' || v === 'y' || v === '1' || v === 'x' || v === 'dnc';
 }
 
+/** Normalize a header for phone-column matching: lowercase, non-alnum → space, collapsed. */
+function phoneKey(key: string): string {
+  return key.replace(/[^\x20-\x7E]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+/** Header forms (already phoneKey-normalized) that mean the first phone. */
+const PHONE1_ALIASES = new Set([
+  'phone', 'phone number', 'mobile', 'cell', 'cell phone', 'mobile phone', 'telephone', 'contact phone',
+]);
+
+export interface ExtractedPhones {
+  /** Callable (non-DNC) numbers in column order — DNC numbers are dropped, never stored. */
+  callable: string[];
+  /**
+   * Knock-only: true when the row had at least one phone and every one was flagged
+   * Do Not Call (or a lead-level DNC column was set). A lead that still has a callable
+   * number is NOT is_dnc — you can call them on the number(s) that survived.
+   */
+  is_dnc: boolean;
+}
+
+/**
+ * Pull phone numbers out of a raw lead row, honoring PER-PHONE Do Not Call flags.
+ *
+ * Real skip-trace exports (e.g. BatchLeads) carry `Phone 1..N` each paired with its
+ * own `Phone N DNC` flag — not a single lead-level DNC column. We drop any number whose
+ * DNC flag is set (compliance: a DNC number is never stored) and keep the rest in order.
+ * Also handles the CSV path where `Phone 1/2/3` were already renamed to `phone/phone2/phone3`
+ * by the parser's transformHeader, plus a single lead-level `dnc` column for older CSVs.
+ */
+export function extractPhones(raw: Record<string, unknown>): ExtractedPhones {
+  const values = new Map<number, string>();      // phone index -> raw number
+  const dncByIndex = new Map<number, boolean>();  // phone index -> DNC flag
+  let leadLevelDnc = false;
+
+  for (const [key, val] of Object.entries(raw)) {
+    if (val === null || val === undefined) continue;
+    const nk = phoneKey(key);
+    if (!nk) continue;
+
+    // Per-phone DNC flag, e.g. "Phone 3 DNC" / "phone_3_dnc"
+    const dncMatch = nk.match(/^phone\s*(\d+)\s*dnc$/);
+    if (dncMatch) {
+      dncByIndex.set(Number(dncMatch[1]), parseDncFlag(String(val)));
+      continue;
+    }
+    // Phone metadata we don't store, e.g. "Phone 1 TYPE"
+    if (/\btype$/.test(nk)) continue;
+
+    // A single lead-level DNC column (older/simple CSVs) flags the whole record
+    if (mapFieldName(key) === 'dnc') {
+      if (parseDncFlag(String(val))) leadLevelDnc = true;
+      continue;
+    }
+
+    // Phone value column
+    let idx: number | null = null;
+    if (PHONE1_ALIASES.has(nk)) {
+      idx = 1;
+    } else {
+      const m = nk.match(/^phone\s*(\d+)$/);
+      if (m) idx = Number(m[1]);
+    }
+    if (idx !== null) {
+      const s = String(val).trim().replace(/\.0+$/, ''); // guard against Excel numeric ".0"
+      if (s && !values.has(idx)) values.set(idx, s);
+    }
+  }
+
+  const indices = [...values.keys()].sort((a, b) => a - b);
+  const callable: string[] = [];
+  for (const i of indices) {
+    const dnc = leadLevelDnc || (dncByIndex.get(i) ?? false);
+    if (!dnc) callable.push(values.get(i)!);
+  }
+  const hadAnyPhone = indices.length > 0;
+  return { callable, is_dnc: leadLevelDnc || (hadAnyPhone && callable.length === 0) };
+}
+
 export function normalizeLeadData(raw: Record<string, unknown>): NormalizedLead | null {
   const mapped = mapRawFields(raw);
 
@@ -390,14 +469,14 @@ export function normalizeLeadData(raw: Record<string, unknown>): NormalizedLead 
 
   if (!firstName || !lastName) return null;
 
-  const is_dnc = parseDncFlag(mapped.dnc);
-  // Do Not Call: never store the number. Import the rest of the record (name,
-  // address, property data) so the lead is still door-knockable, but drop all
-  // phone fields at the source — this covers both CSV import and the webhook.
-  const noPhone = { phone: null, phone_normalized: null };
-  const { phone, phone_normalized } = is_dnc ? noPhone : normalizePhone(mapped.phone);
-  const phone2 = is_dnc ? noPhone : normalizePhone(mapped.phone2);
-  const phone3 = is_dnc ? noPhone : normalizePhone(mapped.phone3);
+  // Do Not Call is handled per-phone: any number flagged DNC is dropped and never
+  // stored (compliance), while the rest of the record still imports so the lead stays
+  // door-knockable. We keep up to three callable numbers; is_dnc marks knock-only leads
+  // (every number they had was DNC). Covers CSV import and the webhook.
+  const { callable, is_dnc } = extractPhones(raw);
+  const { phone, phone_normalized } = normalizePhone(callable[0]);
+  const phone2 = normalizePhone(callable[1]);
+  const phone3 = normalizePhone(callable[2]);
 
   return {
     first_name: firstName,
