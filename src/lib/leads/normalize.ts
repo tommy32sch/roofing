@@ -390,9 +390,14 @@ export function normalizeLeadData(raw: Record<string, unknown>): NormalizedLead 
 
   if (!firstName || !lastName) return null;
 
-  const { phone, phone_normalized } = normalizePhone(mapped.phone);
-  const phone2 = normalizePhone(mapped.phone2);
-  const phone3 = normalizePhone(mapped.phone3);
+  const is_dnc = parseDncFlag(mapped.dnc);
+  // Do Not Call: never store the number. Import the rest of the record (name,
+  // address, property data) so the lead is still door-knockable, but drop all
+  // phone fields at the source — this covers both CSV import and the webhook.
+  const noPhone = { phone: null, phone_normalized: null };
+  const { phone, phone_normalized } = is_dnc ? noPhone : normalizePhone(mapped.phone);
+  const phone2 = is_dnc ? noPhone : normalizePhone(mapped.phone2);
+  const phone3 = is_dnc ? noPhone : normalizePhone(mapped.phone3);
 
   return {
     first_name: firstName,
@@ -433,6 +438,6 @@ export function normalizeLeadData(raw: Record<string, unknown>): NormalizedLead 
     latitude: parseDecimal(mapped.latitude),
     longitude: parseDecimal(mapped.longitude),
     source_notes: mapped.notes?.trim() || mapped.source?.trim() || null,
-    is_dnc: parseDncFlag(mapped.dnc),
+    is_dnc,
   };
 }

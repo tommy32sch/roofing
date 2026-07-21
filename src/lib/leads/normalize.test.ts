@@ -128,4 +128,37 @@ describe('normalizeLeadData — DNC flag', () => {
     expect(normalizeLeadData({ first_name: 'A', last_name: 'B' })!.is_dnc).toBe(false);
     expect(normalizeLeadData({ first_name: 'A', last_name: 'B', DNC: 'no' })!.is_dnc).toBe(false);
   });
+
+  it('drops all phone numbers for a DNC lead but keeps other fields', () => {
+    const lead = normalizeLeadData({
+      first_name: 'A',
+      last_name: 'B',
+      phone: '(650) 253-0000',
+      phone2: '(212) 555-1234',
+      phone3: '(415) 555-9876',
+      email: 'a@b.com',
+      address_street: '123 Main St',
+      DNC: 'Yes',
+    })!;
+    expect(lead.is_dnc).toBe(true);
+    expect(lead.phone).toBeNull();
+    expect(lead.phone_normalized).toBeNull();
+    expect(lead.phone2).toBeNull();
+    expect(lead.phone2_normalized).toBeNull();
+    expect(lead.phone3).toBeNull();
+    expect(lead.phone3_normalized).toBeNull();
+    // everything else still imports
+    expect(lead.email).toBe('a@b.com');
+    expect(lead.address_street).toBe('123 Main St');
+  });
+
+  it('keeps phone numbers for a non-DNC lead', () => {
+    const lead = normalizeLeadData({
+      first_name: 'A',
+      last_name: 'B',
+      phone: '(650) 253-0000',
+    })!;
+    expect(lead.is_dnc).toBe(false);
+    expect(lead.phone_normalized).toBe('+16502530000');
+  });
 });

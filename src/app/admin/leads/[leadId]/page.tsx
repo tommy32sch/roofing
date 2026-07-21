@@ -25,6 +25,7 @@ import {
   DollarSign,
   UserCheck,
   CalendarClock,
+  PhoneOff,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatDistanceToNow, format } from 'date-fns';
@@ -294,9 +295,17 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
             </Button>
           </Link>
           <div>
-            <h1 className="text-2xl font-bold">
-              {lead.first_name} {lead.last_name}
-            </h1>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h1 className="text-2xl font-bold">
+                {lead.first_name} {lead.last_name}
+              </h1>
+              {lead.is_dnc && (
+                <span className="inline-flex items-center gap-1 rounded-full border border-red-300 bg-red-50 px-2 py-0.5 text-xs font-semibold text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300">
+                  <PhoneOff className="h-3 w-3" />
+                  Do Not Call
+                </span>
+              )}
+            </div>
             {fullAddress && (
               <p className="text-sm text-muted-foreground flex items-center gap-1 mt-0.5">
                 <MapPin className="h-3 w-3" />
@@ -417,6 +426,15 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
                 <CardTitle className="text-sm font-medium text-muted-foreground">Contact</CardTitle>
               </CardHeader>
               <CardContent className="space-y-2">
+                {lead.is_dnc && (
+                  <div className="flex items-start gap-2 rounded-md border border-red-200 bg-red-50 p-2 text-xs text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300">
+                    <PhoneOff className="h-4 w-4 shrink-0 mt-0.5" />
+                    <span>
+                      <span className="font-semibold">On the Do Not Call list.</span> The phone
+                      number was not stored — knock this door instead of calling.
+                    </span>
+                  </div>
+                )}
                 {lead.phone && (
                   <a href={`tel:${lead.phone}`} className="flex items-center gap-2 text-sm hover:text-primary">
                     <Phone className="h-4 w-4 text-muted-foreground" />
@@ -447,7 +465,7 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
                     {lead.email2} <span className="text-xs text-muted-foreground">(2)</span>
                   </a>
                 )}
-                {!lead.phone && !lead.email && (
+                {!lead.phone && !lead.email && !lead.is_dnc && (
                   <p className="text-sm text-muted-foreground">No contact info</p>
                 )}
               </CardContent>
