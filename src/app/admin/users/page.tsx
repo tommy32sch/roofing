@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { RoleBadge } from '@/components/users/role-badge';
 import {
   Dialog,
   DialogContent,
@@ -33,12 +34,6 @@ import {
 } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { AdminUser, UserRole } from '@/types';
-
-const ROLE_COLORS: Record<UserRole, string> = {
-  admin: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200',
-  setter: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
-  closer: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200',
-};
 
 interface UserForm {
   name: string;
@@ -204,9 +199,7 @@ export default function UsersPage() {
                     </TableCell>
                     <TableCell className="text-muted-foreground">{user.email}</TableCell>
                     <TableCell>
-                      <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${ROLE_COLORS[user.role]}`}>
-                        {user.role}
-                      </span>
+                      <RoleBadge role={user.role} />
                     </TableCell>
                     <TableCell className="text-muted-foreground text-sm">
                       {format(new Date(user.created_at), 'MMM d, yyyy')}
@@ -218,7 +211,8 @@ export default function UsersPage() {
                             variant="ghost"
                             size="icon"
                             className="h-7 w-7 text-muted-foreground"
-                            title={`Switch to ${user.name}`}
+                            title={`Sign in as ${user.name}`}
+                            aria-label={`Sign in as ${user.name}`}
                             onClick={() => setImpersonateTarget(user)}
                           >
                             <LogIn className="h-3.5 w-3.5" />
@@ -227,6 +221,8 @@ export default function UsersPage() {
                             variant="ghost"
                             size="icon"
                             className="h-7 w-7"
+                            title={`Edit ${user.name}`}
+                            aria-label={`Edit ${user.name}`}
                             onClick={() => { setEditTarget(user); setEditForm({ name: user.name, email: user.email, role: user.role as 'setter' | 'closer' }); }}
                           >
                             <Pencil className="h-3.5 w-3.5" />
@@ -235,6 +231,8 @@ export default function UsersPage() {
                             variant="ghost"
                             size="icon"
                             className="h-7 w-7 text-destructive hover:text-destructive"
+                            title={`Delete ${user.name}`}
+                            aria-label={`Delete ${user.name}`}
                             onClick={() => setDeleteTarget(user)}
                           >
                             <Trash2 className="h-3.5 w-3.5" />

@@ -5,6 +5,7 @@ import { TrendingUp, DollarSign, CalendarCheck, Target, Users } from 'lucide-rea
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
+import { RoleBadge } from '@/components/users/role-badge';
 import type { RepStats } from '@/app/api/admin/performance/route';
 import type { UserRole } from '@/types';
 
@@ -15,21 +16,6 @@ function StatCard({ label, value, sub }: { label: string; value: string | number
       <p className="text-xs text-muted-foreground mt-0.5">{label}</p>
       {sub && <p className="text-xs font-medium text-primary mt-0.5">{sub}</p>}
     </div>
-  );
-}
-
-/** Role is context, not a headline — a quiet outlined chip, matching the lead badges. */
-function RoleBadge({ role }: { role: string }) {
-  const dot: Record<string, string> = {
-    admin: 'bg-purple-500',
-    setter: 'bg-blue-500',
-    closer: 'bg-green-500',
-  };
-  return (
-    <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted/40 px-2 py-0.5 text-xs font-medium text-muted-foreground capitalize">
-      <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${dot[role] ?? 'bg-muted-foreground'}`} />
-      {role}
-    </span>
   );
 }
 

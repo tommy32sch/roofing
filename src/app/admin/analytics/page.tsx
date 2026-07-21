@@ -13,6 +13,13 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 
+const RANGE_LABELS: Record<string, string> = {
+  all: 'All Time',
+  '30d': 'Last 30 days',
+  '90d': 'Last 90 days',
+  '365d': 'Last 12 months',
+};
+
 interface Breakdown {
   value: string;
   count: number;
@@ -115,7 +122,7 @@ export default function AnalyticsPage() {
           </p>
         </div>
         <Select value={range} onValueChange={v => { setRange(v ?? 'all'); setLoading(true); }}>
-          <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
+          <SelectTrigger className="w-[140px]"><SelectValue>{RANGE_LABELS[range] ?? 'All Time'}</SelectValue></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Time</SelectItem>
             <SelectItem value="30d">Last 30 days</SelectItem>
@@ -163,8 +170,9 @@ export default function AnalyticsPage() {
         </Card>
       )}
 
-      {/* Demographic breakdowns */}
-      {data && (
+      {/* Demographic breakdowns — hidden until there's something to break down;
+          nine "No data yet" cards said nothing the empty state doesn't. */}
+      {data && data.total > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           <BreakdownCard title="Career / Occupation" items={data.breakdowns.careers} />
           <BreakdownCard title="Age Range" items={data.breakdowns.ageRanges} />

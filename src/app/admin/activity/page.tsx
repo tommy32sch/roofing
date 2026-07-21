@@ -15,6 +15,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { formatAddressShort } from '@/lib/utils/format';
 
 const ACTIVITY_ICONS: Record<string, React.ElementType> = {
   note: MessageSquare,
@@ -43,7 +44,7 @@ interface Activity {
   old_status: string | null;
   new_status: string | null;
   created_at: string;
-  leads: { id: string; first_name: string; last_name: string; address_city: string | null; address_state: string | null } | null;
+  leads: { id: string; first_name: string; last_name: string; address_street: string | null; address_city: string | null; address_state: string | null } | null;
   admin_users: { name: string } | null;
 }
 
@@ -105,7 +106,7 @@ export default function ActivityPage() {
 
       {/* Filters */}
       <div className="flex flex-wrap gap-3">
-        <Select value={typeFilter || 'all'} onValueChange={v => { setTypeFilter(v === 'all' ? '' : (v ?? '')); setPage(1); }}>
+        <Select value={typeFilter} onValueChange={v => { setTypeFilter(v === 'all' ? '' : (v ?? '')); setPage(1); }}>
           <SelectTrigger className="w-[160px]">
             <SelectValue placeholder="All Types" />
           </SelectTrigger>
@@ -121,7 +122,7 @@ export default function ActivityPage() {
           </SelectContent>
         </Select>
         {activityUsers.length > 0 && (
-          <Select value={userFilter || 'all'} onValueChange={v => { setUserFilter(v === 'all' ? '' : (v ?? '')); setPage(1); }}>
+          <Select value={userFilter} onValueChange={v => { setUserFilter(v === 'all' ? '' : (v ?? '')); setPage(1); }}>
             <SelectTrigger className="w-[180px]">
               <SelectValue placeholder="All Users" />
             </SelectTrigger>
@@ -151,7 +152,7 @@ export default function ActivityPage() {
             const Icon = ACTIVITY_ICONS[activity.activity_type] || FileText;
             const lead = activity.leads;
             const leadName = lead ? `${lead.first_name} ${lead.last_name}` : 'Unknown Lead';
-            const location = lead ? [lead.address_city, lead.address_state].filter(Boolean).join(', ') : '';
+            const location = lead ? formatAddressShort(lead) : '';
 
             return (
               <Card key={activity.id} className="border-0 shadow-none border-b rounded-none last:border-b-0">
@@ -160,41 +161,41 @@ export default function ActivityPage() {
                     <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-muted">
                       <Icon className="h-3.5 w-3.5 text-muted-foreground" />
                     </div>
+                    {/* Actor + time sit on the same line as the event so each entry
+                        is two lines instead of three — a log should be scannable. */}
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-sm font-medium">
-                          {ACTIVITY_LABELS[activity.activity_type] || activity.activity_type}
-                        </span>
-                        {activity.activity_type === 'status_change' && activity.old_status && activity.new_status && (
-                          <span className="text-xs text-muted-foreground">
-                            {STATUS_LABEL[activity.old_status] ?? activity.old_status}
-                            {' → '}
-                            {STATUS_LABEL[activity.new_status] ?? activity.new_status}
+                      <div className="flex items-baseline justify-between gap-3">
+                        <div className="flex items-center gap-2 flex-wrap min-w-0">
+                          <span className="text-sm font-medium">
+                            {ACTIVITY_LABELS[activity.activity_type] || activity.activity_type}
                           </span>
-                        )}
-                        {lead && (
-                          <Link
-                            href={`/admin/leads/${lead.id}`}
-                            className="text-xs text-primary hover:underline"
-                            onClick={e => e.stopPropagation()}
-                          >
-                            {leadName}{location ? ` · ${location}` : ''}
-                          </Link>
-                        )}
+                          {activity.activity_type === 'status_change' && activity.old_status && activity.new_status && (
+                            <span className="text-xs text-muted-foreground">
+                              {STATUS_LABEL[activity.old_status] ?? activity.old_status}
+                              {' → '}
+                              {STATUS_LABEL[activity.new_status] ?? activity.new_status}
+                            </span>
+                          )}
+                          {lead && (
+                            <Link
+                              href={`/admin/leads/${lead.id}`}
+                              className="text-xs text-primary hover:underline truncate"
+                              onClick={e => e.stopPropagation()}
+                            >
+                              {leadName}{location ? ` · ${location}` : ''}
+                            </Link>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0 text-xs text-muted-foreground">
+                          {activity.admin_users?.name && <span>{activity.admin_users.name}</span>}
+                          <span className="tabular-nums">
+                            {formatDistanceToNow(new Date(activity.created_at), { addSuffix: true })}
+                          </span>
+                        </div>
                       </div>
                       {activity.content && (
-                        <p className="text-sm text-muted-foreground mt-0.5 line-clamp-2">{activity.content}</p>
+                        <p className="text-sm text-muted-foreground mt-0.5 line-clamp-1">{activity.content}</p>
                       )}
-                      <div className="flex items-center gap-2 mt-1">
-                        {activity.admin_users?.name && (
-                          <Badge variant="outline" className="text-xs h-4 px-1.5">
-                            {activity.admin_users.name}
-                          </Badge>
-                        )}
-                        <span className="text-xs text-muted-foreground">
-                          {formatDistanceToNow(new Date(activity.created_at), { addSuffix: true })}
-                        </span>
-                      </div>
                     </div>
                   </div>
                 </CardContent>

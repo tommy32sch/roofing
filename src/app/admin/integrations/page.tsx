@@ -181,11 +181,12 @@ export default function IntegrationsPage() {
               setNewKeyValue(null);
             }
           }}>
-            <DialogTrigger>
-              <Button size="sm" className="gap-1">
-                <Plus className="h-4 w-4" />
-                Create Key
-              </Button>
+            {/* DialogTrigger renders its own <button>, so nesting <Button> inside it
+                produced a button-in-button — invalid HTML and a hydration error.
+                Style the trigger directly instead (same pattern as the leads page). */}
+            <DialogTrigger className="inline-flex h-8 shrink-0 items-center justify-center gap-1 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90">
+              <Plus className="h-4 w-4" />
+              Create Key
             </DialogTrigger>
             <DialogContent>
               {newKeyValue ? (
