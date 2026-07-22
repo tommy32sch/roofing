@@ -77,6 +77,15 @@ function LeadsListContent() {
   // Drives the mobile filter button's active state
   const activeFilterCount = [status, priority, streetNumber, streetDir, streetName, streetsParam, dncOnly ? 'dnc' : ''].filter(Boolean).length;
 
+  // Only show optional columns that actually carry data. Freshly imported lists
+  // have no source or values yet, and three columns of "—" on every row is noise
+  // that pushes the fields a rep needs off to the side.
+  const showSource = leads.some((l) => l.lead_sources?.display_name);
+  const showEstValue = leads.some((l) => l.estimated_roof_value != null);
+  const showDealValue = leads.some((l) => l.deal_value != null);
+  const columnCount =
+    (isAdmin ? 1 : 0) + 7 + [showSource, showEstValue, showDealValue].filter(Boolean).length;
+
   function applyFilterParams(params: URLSearchParams) {
     if (status) params.set('status', status);
     if (priority) params.set('priority', priority);
@@ -425,9 +434,9 @@ function LeadsListContent() {
               <TableHead className="hidden md:table-cell">Phone</TableHead>
               <TableHead>Status</TableHead>
               <TableHead className="hidden sm:table-cell">Priority</TableHead>
-              <TableHead className="hidden lg:table-cell">Source</TableHead>
-              <TableHead className="hidden lg:table-cell">Est. Value</TableHead>
-              <TableHead className="hidden lg:table-cell">Deal Value</TableHead>
+              {showSource && <TableHead className="hidden lg:table-cell">Source</TableHead>}
+              {showEstValue && <TableHead className="hidden lg:table-cell">Est. Value</TableHead>}
+              {showDealValue && <TableHead className="hidden lg:table-cell">Deal Value</TableHead>}
               <TableHead className="hidden md:table-cell">Added</TableHead>
             </TableRow>
           </TableHeader>
@@ -441,15 +450,15 @@ function LeadsListContent() {
                   <TableCell className="hidden md:table-cell"><Skeleton className="h-4 w-24" /></TableCell>
                   <TableCell><Skeleton className="h-5 w-16" /></TableCell>
                   <TableCell className="hidden sm:table-cell"><Skeleton className="h-5 w-14" /></TableCell>
-                  <TableCell className="hidden lg:table-cell"><Skeleton className="h-4 w-20" /></TableCell>
-                  <TableCell className="hidden lg:table-cell"><Skeleton className="h-4 w-16" /></TableCell>
-                  <TableCell className="hidden lg:table-cell"><Skeleton className="h-4 w-16" /></TableCell>
+                  {showSource && <TableCell className="hidden lg:table-cell"><Skeleton className="h-4 w-20" /></TableCell>}
+                  {showEstValue && <TableCell className="hidden lg:table-cell"><Skeleton className="h-4 w-16" /></TableCell>}
+                  {showDealValue && <TableCell className="hidden lg:table-cell"><Skeleton className="h-4 w-16" /></TableCell>}
                   <TableCell className="hidden md:table-cell"><Skeleton className="h-4 w-16" /></TableCell>
                 </TableRow>
               ))
             ) : leads.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={isAdmin ? 10 : 9} className="text-center py-8 text-muted-foreground">
+                <TableCell colSpan={columnCount} className="text-center py-8 text-muted-foreground">
                   {search || status || priority ? 'No leads match your filters.' : 'No leads yet. Add your first lead to get started.'}
                 </TableCell>
               </TableRow>
@@ -561,15 +570,23 @@ function LeadsListContent() {
                   <TableCell className="hidden sm:table-cell">
                     <LeadPriorityBadge priority={lead.priority} />
                   </TableCell>
-                  <TableCell className="hidden lg:table-cell text-sm text-muted-foreground">
-                    {(lead.lead_sources as { display_name: string } | undefined)?.display_name || '-'}
-                  </TableCell>
-                  <TableCell className="hidden lg:table-cell text-sm text-muted-foreground">
-                    {lead.estimated_roof_value != null ? `$${Number(lead.estimated_roof_value).toLocaleString()}` : <span className="text-muted-foreground">-</span>}
-                  </TableCell>
-                  <TableCell className="hidden lg:table-cell text-sm font-medium">
-                    {lead.deal_value != null ? `$${Number(lead.deal_value).toLocaleString()}` : <span className="text-muted-foreground">-</span>}
-                  </TableCell>
+                  {showSource && (
+                    <TableCell className="hidden lg:table-cell text-sm text-muted-foreground">
+                      {(lead.lead_sources as { display_name: string } | undefined)?.display_name || '—'}
+                    </TableCell>
+                  )}
+                  {showEstValue && (
+                    <TableCell className="hidden lg:table-cell text-sm text-muted-foreground tabular-nums">
+                      {lead.estimated_roof_value != null
+                        ? `$${Number(lead.estimated_roof_value).toLocaleString()}`
+                        : '—'}
+                    </TableCell>
+                  )}
+                  {showDealValue && (
+                    <TableCell className="hidden lg:table-cell text-sm font-medium tabular-nums">
+                      {lead.deal_value != null ? `$${Number(lead.deal_value).toLocaleString()}` : '—'}
+                    </TableCell>
+                  )}
                   <TableCell className="hidden md:table-cell text-sm text-muted-foreground">
                     {formatDistanceToNow(new Date(lead.created_at), { addSuffix: true })}
                   </TableCell>
