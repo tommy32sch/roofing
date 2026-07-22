@@ -31,6 +31,7 @@ export function LeadForm({ lead, isEdit }: LeadFormProps) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [sources, setSources] = useState<LeadSource[]>([]);
+  const [geoDefaults, setGeoDefaults] = useState<{ city: string; state: string }>({ city: '', state: '' });
 
   const [form, setForm] = useState({
     first_name: lead?.first_name || '',
@@ -70,6 +71,23 @@ export function LeadForm({ lead, isEdit }: LeadFormProps) {
       .then((res) => res.json())
       .then((data) => {
         if (data.success) setSources(data.sources);
+      })
+      .catch(() => {});
+  }, []);
+
+  // Hint city/state with the configured map region rather than a hardcoded
+  // example — the placeholder read "TX" for an Arizona company, which invites
+  // wrong data. Placeholder only: an out-of-area lead still types its own.
+  useEffect(() => {
+    fetch('/api/admin/settings')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success && data.settings) {
+          setGeoDefaults({
+            city: data.settings.default_geo_city || '',
+            state: data.settings.default_geo_state || '',
+          });
+        }
       })
       .catch(() => {});
   }, []);
@@ -242,6 +260,7 @@ export function LeadForm({ lead, isEdit }: LeadFormProps) {
               id="address_city"
               value={form.address_city}
               onChange={(e) => updateField('address_city', e.target.value)}
+              placeholder={geoDefaults.city || undefined}
             />
           </div>
           <div className="grid grid-cols-2 gap-4">
@@ -252,7 +271,7 @@ export function LeadForm({ lead, isEdit }: LeadFormProps) {
                 value={form.address_state}
                 onChange={(e) => updateField('address_state', e.target.value)}
                 maxLength={2}
-                placeholder="TX"
+                placeholder={geoDefaults.state || undefined}
               />
             </div>
             <div className="space-y-2">
