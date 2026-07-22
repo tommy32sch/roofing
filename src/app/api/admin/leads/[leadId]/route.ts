@@ -67,16 +67,23 @@ export async function GET(
       return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
     }
 
-    // Get activities
-    const { data: activities } = await supabase
-      .from('lead_activities')
-      .select('*')
-      .eq('lead_id', leadId)
-      .order('created_at', { ascending: false });
+    // Get activities and appointments
+    const [{ data: activities }, { data: appointments }] = await Promise.all([
+      supabase
+        .from('lead_activities')
+        .select('*')
+        .eq('lead_id', leadId)
+        .order('created_at', { ascending: false }),
+      supabase
+        .from('lead_appointments')
+        .select('*')
+        .eq('lead_id', leadId)
+        .order('scheduled_at', { ascending: true }),
+    ]);
 
     return NextResponse.json({
       success: true,
-      lead: { ...lead, lead_activities: activities || [] },
+      lead: { ...lead, lead_activities: activities || [], lead_appointments: appointments || [] },
     });
   } catch {
     return NextResponse.json({ success: false, error: 'Internal server error' }, { status: 500 });
@@ -127,6 +134,30 @@ export async function PATCH(
         );
       }
     }
+
+    // Transitioning to appointment_set requires a scheduled time — the
+    // appointment row is created after the lead update succeeds.
+    let appointmentScheduledAt: string | null = null;
+    let appointmentNotes: string | null = null;
+    if (body.status === 'appointment_set' && body.status !== currentLead.status) {
+      if (
+        typeof body.appointment_scheduled_at !== 'string' ||
+        Number.isNaN(Date.parse(body.appointment_scheduled_at))
+      ) {
+        return NextResponse.json(
+          { success: false, error: 'appointment_form_required' },
+          { status: 400 }
+        );
+      }
+      appointmentScheduledAt = body.appointment_scheduled_at;
+      appointmentNotes =
+        typeof body.appointment_notes === 'string' && body.appointment_notes.trim()
+          ? body.appointment_notes.trim()
+          : null;
+    }
+    // Not lead columns — strip before the update
+    delete body.appointment_scheduled_at;
+    delete body.appointment_notes;
 
     // When marking as sold, demographic form must be complete
     let demographicCapturedAt: string | null = null;
@@ -216,6 +247,27 @@ export async function PATCH(
         new_status: body.status,
         created_by: admin.sub,
       });
+    }
+
+    // Create the inspection appointment captured with the status change
+    if (appointmentScheduledAt) {
+      const { error: apptError } = await supabase.from('lead_appointments').insert({
+        lead_id: leadId,
+        appointment_type: 'inspection',
+        scheduled_at: appointmentScheduledAt,
+        notes: appointmentNotes,
+        created_by: admin.sub,
+      });
+      if (apptError) {
+        console.error('Failed to create appointment:', apptError.message);
+      } else {
+        await supabase.from('lead_activities').insert({
+          lead_id: leadId,
+          activity_type: 'updated',
+          content: 'Inspection appointment scheduled',
+          created_by: admin.sub,
+        });
+      }
     }
 
     return NextResponse.json({ success: true, lead });

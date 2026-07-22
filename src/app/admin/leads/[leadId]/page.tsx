@@ -56,8 +56,9 @@ import { Input } from '@/components/ui/input';
 import { LeadStatusBadge } from '@/components/leads/lead-status-badge';
 import { LeadPriorityBadge } from '@/components/leads/lead-priority-badge';
 import { WonLeadModal } from '@/components/leads/WonLeadModal';
-import { LEAD_STATUS_OPTIONS, LEAD_PRIORITY_OPTIONS } from '@/types';
-import type { LeadWithActivities, LeadActivity, ActivityType, UserRole, AdminUser } from '@/types';
+import { AppointmentModal } from '@/components/leads/AppointmentModal';
+import { LEAD_STATUS_OPTIONS, LEAD_PRIORITY_OPTIONS, APPOINTMENT_TYPE_OPTIONS } from '@/types';
+import type { LeadWithActivities, LeadActivity, ActivityType, UserRole, AdminUser, AppointmentType, LeadAppointment } from '@/types';
 import { estimateRoofValue } from '@/lib/leads/roof-value';
 
 const SETTER_ALLOWED_STATUSES = new Set(['new', 'contacted', 'appointment_set', 'lost']);
@@ -88,6 +89,13 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [userRole, setUserRole] = useState<UserRole>('admin');
   const [wonModalOpen, setWonModalOpen] = useState(false);
+  const [apptModalOpen, setApptModalOpen] = useState(false);
+  const [addApptOpen, setAddApptOpen] = useState(false);
+  const [apptType, setApptType] = useState<AppointmentType>('inspection');
+  const [apptDateTime, setApptDateTime] = useState('');
+  const [apptNotes, setApptNotes] = useState('');
+  const [apptSaving, setApptSaving] = useState(false);
+  const [editingApptId, setEditingApptId] = useState<string | null>(null);
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [dealValueInput, setDealValueInput] = useState('');
 
@@ -195,6 +203,11 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
       setWonModalOpen(true);
       return;
     }
+    // Setting an appointment requires a date/time — captured in a modal
+    if (newStatus === 'appointment_set' && lead?.status !== 'appointment_set') {
+      setApptModalOpen(true);
+      return;
+    }
     try {
       const res = await fetch(`/api/admin/leads/${leadId}`, {
         method: 'PATCH',
@@ -210,6 +223,73 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
       }
     } catch {
       toast.error('Failed to update status');
+    }
+  }
+
+  function openAddAppointment() {
+    setEditingApptId(null);
+    setApptType('inspection');
+    setApptDateTime('');
+    setApptNotes('');
+    setAddApptOpen(true);
+  }
+
+  function openEditAppointment(appt: LeadAppointment) {
+    setEditingApptId(appt.id);
+    setApptType(appt.appointment_type);
+    // datetime-local wants local wall time without zone suffix
+    const d = new Date(appt.scheduled_at);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    setApptDateTime(
+      `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+    );
+    setApptNotes(appt.notes ?? '');
+    setAddApptOpen(true);
+  }
+
+  async function handleSaveAppointment() {
+    if (!apptDateTime || Number.isNaN(new Date(apptDateTime).getTime())) return;
+    setApptSaving(true);
+    try {
+      const url = editingApptId
+        ? `/api/admin/leads/${leadId}/appointments/${editingApptId}`
+        : `/api/admin/leads/${leadId}/appointments`;
+      const res = await fetch(url, {
+        method: editingApptId ? 'PATCH' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...(editingApptId ? {} : { appointment_type: apptType }),
+          scheduled_at: new Date(apptDateTime).toISOString(),
+          notes: apptNotes.trim() || null,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success(editingApptId ? 'Appointment updated' : 'Appointment added');
+        setAddApptOpen(false);
+        fetchLead();
+      } else {
+        toast.error(data.error || 'Failed to save appointment');
+      }
+    } catch {
+      toast.error('Failed to save appointment');
+    } finally {
+      setApptSaving(false);
+    }
+  }
+
+  async function handleDeleteAppointment(appt: LeadAppointment) {
+    try {
+      const res = await fetch(`/api/admin/leads/${leadId}/appointments/${appt.id}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (data.success) {
+        toast.success('Appointment canceled');
+        fetchLead();
+      } else {
+        toast.error(data.error || 'Failed to cancel appointment');
+      }
+    } catch {
+      toast.error('Failed to cancel appointment');
     }
   }
 
@@ -603,6 +683,70 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
               </CardContent>
             </Card>
 
+            {/* Appointments */}
+            <Card>
+              <CardHeader className="pb-2">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1">
+                    <CalendarClock className="h-3.5 w-3.5" />
+                    Appointments
+                  </CardTitle>
+                  <Button variant="outline" size="sm" className="h-7 text-xs" onClick={openAddAppointment}>
+                    <Plus className="h-3 w-3 mr-1" />
+                    Add
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {!lead.lead_appointments || lead.lead_appointments.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No appointments scheduled.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {lead.lead_appointments.map((appt) => {
+                      const when = new Date(appt.scheduled_at);
+                      const past = when.getTime() < Date.now();
+                      return (
+                        <div
+                          key={appt.id}
+                          className={`flex items-start justify-between gap-2 rounded-md border p-2 text-sm ${past ? 'opacity-60' : ''}`}
+                        >
+                          <div className="min-w-0">
+                            <p className="font-medium">
+                              {format(when, 'EEE, MMM d · h:mm a')}
+                              <span className="ml-2 text-xs font-normal text-muted-foreground capitalize">
+                                {appt.appointment_type}
+                              </span>
+                            </p>
+                            {appt.notes && (
+                              <p className="text-xs text-muted-foreground mt-0.5">{appt.notes}</p>
+                            )}
+                          </div>
+                          <div className="flex gap-1 shrink-0">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 w-7 p-0"
+                              onClick={() => openEditAppointment(appt)}
+                            >
+                              <Edit2 className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 w-7 p-0 text-destructive"
+                              onClick={() => handleDeleteAppointment(appt)}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
             {/* Storm Data (conditional) */}
             {(lead.hail_date || lead.hail_size_inches) && (
               <Card>
@@ -788,6 +932,68 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
         onOpenChange={setWonModalOpen}
         onSuccess={() => { toast.success('Lead marked as won!'); fetchLead(); }}
       />
+      <AppointmentModal
+        leadId={leadId}
+        open={apptModalOpen}
+        onOpenChange={setApptModalOpen}
+        onSuccess={() => { toast.success('Appointment set!'); fetchLead(); }}
+      />
+      {/* Add / edit appointment from the Appointments card */}
+      <Dialog open={addApptOpen} onOpenChange={setAddApptOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{editingApptId ? 'Edit Appointment' : 'Add Appointment'}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            {!editingApptId && (
+              <div className="space-y-1">
+                <label className="text-sm font-medium">Type</label>
+                <Select value={apptType} onValueChange={(v) => v && setApptType(v as AppointmentType)}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {APPOINTMENT_TYPE_OPTIONS.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            <div className="space-y-1">
+              <label htmlFor="card_appt_datetime" className="text-sm font-medium">
+                Date &amp; Time<span className="text-destructive ml-0.5">*</span>
+              </label>
+              <Input
+                id="card_appt_datetime"
+                type="datetime-local"
+                value={apptDateTime}
+                onChange={(e) => setApptDateTime(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1">
+              <label htmlFor="card_appt_notes" className="text-sm font-medium">Notes</label>
+              <Textarea
+                id="card_appt_notes"
+                rows={3}
+                value={apptNotes}
+                onChange={(e) => setApptNotes(e.target.value)}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAddApptOpen(false)} disabled={apptSaving}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSaveAppointment}
+              disabled={apptSaving || !apptDateTime || Number.isNaN(new Date(apptDateTime).getTime())}
+            >
+              {apptSaving ? 'Saving...' : editingApptId ? 'Save Changes' : 'Add Appointment'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

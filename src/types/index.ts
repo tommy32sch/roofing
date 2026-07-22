@@ -3,6 +3,7 @@ export type LeadPriority = 'low' | 'medium' | 'high' | 'hot';
 export type RoofType = 'asphalt_shingle' | 'metal' | 'tile' | 'slate' | 'wood_shake' | 'flat' | 'other' | 'unknown';
 export type ActivityType = 'note' | 'status_change' | 'call' | 'email' | 'visit' | 'created' | 'updated';
 export type UserRole = 'admin' | 'setter' | 'closer';
+export type AppointmentType = 'inspection' | 'adjuster';
 
 export const LEAD_STATUS_OPTIONS: { value: LeadStatus; label: string }[] = [
   { value: 'new', label: 'New' },
@@ -128,6 +129,22 @@ export interface LeadActivity {
   created_at: string;
 }
 
+export interface LeadAppointment {
+  id: string;
+  lead_id: string;
+  appointment_type: AppointmentType;
+  scheduled_at: string;
+  notes: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export const APPOINTMENT_TYPE_OPTIONS: { value: AppointmentType; label: string }[] = [
+  { value: 'inspection', label: 'Inspection' },
+  { value: 'adjuster', label: 'Adjuster' },
+];
+
 export interface Tag {
   id: number;
   name: string;
@@ -186,6 +203,7 @@ export interface LeadWithSource extends Lead {
 export interface LeadWithActivities extends Lead {
   lead_activities?: LeadActivity[];
   lead_sources?: LeadSource;
+  lead_appointments?: LeadAppointment[];
 }
 
 export interface DashboardStats {
