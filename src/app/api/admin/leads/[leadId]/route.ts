@@ -5,6 +5,7 @@ import { isValidUUID } from '@/lib/utils/validation';
 import { parsePhoneNumber } from 'libphonenumber-js';
 import { estimateRoofValue } from '@/lib/leads/roof-value';
 import { getRoofPricePerSquare } from '@/lib/leads/roof-value.server';
+import { notifyAppointmentBooked } from '@/lib/notifications/notify-appointment';
 
 const STATUS_ORDER: string[] = ['new', 'contacted', 'appointment_set', 'inspected', 'proposal_sent', 'sold', 'lost'];
 const SETTER_ALLOWED_STATUSES = new Set(['new', 'contacted', 'appointment_set', 'lost']);
@@ -251,13 +252,17 @@ export async function PATCH(
 
     // Create the inspection appointment captured with the status change
     if (appointmentScheduledAt) {
-      const { error: apptError } = await supabase.from('lead_appointments').insert({
-        lead_id: leadId,
-        appointment_type: 'inspection',
-        scheduled_at: appointmentScheduledAt,
-        notes: appointmentNotes,
-        created_by: admin.sub,
-      });
+      const { data: appointment, error: apptError } = await supabase
+        .from('lead_appointments')
+        .insert({
+          lead_id: leadId,
+          appointment_type: 'inspection',
+          scheduled_at: appointmentScheduledAt,
+          notes: appointmentNotes,
+          created_by: admin.sub,
+        })
+        .select('*')
+        .single();
       if (apptError) {
         console.error('Failed to create appointment:', apptError.message);
       } else {
@@ -267,6 +272,8 @@ export async function PATCH(
           content: 'Inspection appointment scheduled',
           created_by: admin.sub,
         });
+        // Best-effort homeowner confirmation; never fails the status change
+        await notifyAppointmentBooked(supabase, { leadId, appointment, actorId: admin.sub });
       }
     }
 

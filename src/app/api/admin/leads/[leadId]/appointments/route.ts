@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/supabase/server';
 import { getAuthenticatedAdmin } from '@/lib/auth/jwt';
 import { isValidUUID } from '@/lib/utils/validation';
+import { notifyAppointmentBooked } from '@/lib/notifications/notify-appointment';
 
 const APPOINTMENT_TYPES = new Set(['inspection', 'adjuster']);
 
@@ -60,7 +61,15 @@ export async function POST(
       created_by: admin.sub,
     });
 
-    return NextResponse.json({ success: true, appointment }, { status: 201 });
+    // Best-effort: the booking is already saved, so a notification failure is
+    // reported back but never rolls this call into an error.
+    const notified = await notifyAppointmentBooked(supabase, {
+      leadId,
+      appointment,
+      actorId: admin.sub,
+    });
+
+    return NextResponse.json({ success: true, appointment, notified }, { status: 201 });
   } catch {
     return NextResponse.json({ success: false, error: 'Internal server error' }, { status: 500 });
   }
