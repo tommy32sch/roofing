@@ -20,3 +20,12 @@
   the dashboard SQL editor. Code on main that references a column the user hasn't
   applied yet breaks production (found migration 007 missing this way). Check
   column existence against the live DB before any deploy that touches the schema.
+
+## Don't verify table existence with a head:true count query
+- Checking `.select('id', { count: 'exact', head: true })` against a MISSING table
+  returns `{ error: null, count: null }` rather than an error, so it looks like a
+  pass. Combined with `count ?? 0` it reported "table exists, 0 rows" for a table
+  that did not exist, and appointments work was nearly pushed to main on that basis.
+- Verify with a real row read instead: `.select('*').limit(1)` surfaces
+  "Could not find the table 'public.X' in the schema cache". Always include a
+  control query against a known-good table so a broken client can't read as a pass.
