@@ -31,7 +31,7 @@ export async function POST(
     const supabase = db();
     const { data: targetUser, error } = await supabase
       .from('admin_users')
-      .select('id, email, name, role')
+      .select('id, email, name, role, token_version')
       .eq('id', userId)
       .single();
 
@@ -59,6 +59,7 @@ export async function POST(
       name: targetUser.name,
       role: targetUser.role as 'admin' | 'setter' | 'closer',
       impersonatedBy: admin.sub,
+      tokenVersion: targetUser.token_version,
     });
 
     await setAuthCookie(newToken);

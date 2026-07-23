@@ -28,7 +28,7 @@ export async function POST(request: NextRequest) {
     const supabase = db();
     const { data: admin, error } = await supabase
       .from('admin_users')
-      .select('id, email, name, password_hash, role')
+      .select('id, email, name, password_hash, role, token_version')
       .eq('email', email.toLowerCase().trim())
       .single();
 
@@ -52,6 +52,7 @@ export async function POST(request: NextRequest) {
       email: admin.email,
       name: admin.name,
       role: admin.role,
+      tokenVersion: admin.token_version,
     });
 
     await setAuthCookie(token);

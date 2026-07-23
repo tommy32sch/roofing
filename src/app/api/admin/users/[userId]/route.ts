@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { hash } from 'bcryptjs';
 import { db } from '@/lib/supabase/server';
 import { getAuthenticatedAdmin } from '@/lib/auth/jwt';
+import { revokeUserSessions } from '@/lib/auth/revoke';
 import { isValidUUID } from '@/lib/utils/validation';
 
 export async function PATCH(
@@ -71,6 +72,13 @@ export async function PATCH(
 
     if (!user) {
       return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
+    }
+
+    // A role or password change must take effect immediately — otherwise a
+    // demoted user keeps their old privileges (or a reset password stays valid)
+    // for up to 24h. Bumping token_version invalidates their existing sessions.
+    if (role || password) {
+      await revokeUserSessions(supabase, userId);
     }
 
     return NextResponse.json({ success: true, user });
