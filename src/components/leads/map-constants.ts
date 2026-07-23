@@ -31,10 +31,17 @@ export interface GeoLead {
   is_dnc: boolean;
   hail_date: string | null;
   hail_size_inches: number | null;
+  last_knock_at: string | null;
+  last_disposition: string | null;
+  knock_count: number;
+  do_not_knock: boolean;
 }
 
 /** Stroke color used to ring Do Not Call pins (knock-only). */
 export const DNC_RING_COLOR = 'oklch(0.55 0.22 25)';
+
+/** Ring for houses the homeowner asked us not to return to. */
+export const DO_NOT_KNOCK_RING_COLOR = 'oklch(0.45 0.02 45)';
 
 export type StormType = 'hail' | 'wind';
 

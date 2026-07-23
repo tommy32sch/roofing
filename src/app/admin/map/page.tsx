@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { BoxSelect, UserCheck, LocateFixed, CloudHail, Wind, Pencil } from 'lucide-react';
 import { toast } from 'sonner';
+import { knockLabel, type KnockDisposition } from '@/lib/leads/knocks';
 import type { Map as LeafletMap } from 'leaflet';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -137,6 +138,37 @@ export default function MapPage() {
       }
       return next;
     });
+  }
+
+  const [loggingKnockFor, setLoggingKnockFor] = useState<string | null>(null);
+
+  /**
+   * Log a knock from the pin popup. Refetches so the pin immediately reflects
+   * the new state — a rep needs to see at a glance that this door is done.
+   */
+  async function logKnock(lead: GeoLead, disposition: KnockDisposition) {
+    setLoggingKnockFor(lead.id);
+    try {
+      const res = await fetch(`/api/admin/leads/${lead.id}/knocks`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ disposition }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success(
+          `${lead.first_name} ${lead.last_name} — ${knockLabel(disposition)}` +
+            (data.statusChangedTo ? ` · moved to ${data.statusChangedTo.replace('_', ' ')}` : '')
+        );
+        fetchLeads();
+      } else {
+        toast.error(data.error || 'Failed to log knock');
+      }
+    } catch {
+      toast.error('Failed to log knock');
+    } finally {
+      setLoggingKnockFor(null);
+    }
   }
 
   async function geocodeMissing() {
@@ -434,6 +466,8 @@ export default function MapPage() {
             drawPoints={drawPoints}
             onDrawPoint={isAdmin ? (lat, lng) => setDrawPoints((p) => [...p, [lat, lng]]) : undefined}
             onMapReady={(map) => { mapRef.current = map; setMapInstance(map); }}
+            onLogKnock={logKnock}
+            loggingKnockFor={loggingKnockFor}
           />
         )}
       </div>

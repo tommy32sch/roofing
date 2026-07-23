@@ -5,9 +5,11 @@ import Link from 'next/link';
 import { MapContainer, TileLayer, CircleMarker, Popup, Polygon, Polyline, useMap, useMapEvents } from 'react-leaflet';
 import type { Map as LeafletMap } from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import { formatDistanceToNow } from 'date-fns';
+import { KNOCK_DISPOSITIONS, knockLabel, knockRecency, type KnockDisposition } from '@/lib/leads/knocks';
 import { Button } from '@/components/ui/button';
 import { LEAD_STATUS_OPTIONS } from '@/types';
-import { STATUS_COLORS, DNC_RING_COLOR, stormColor, stormRadius, stormLabel, type GeoLead, type StormReport, type StormType } from './map-constants';
+import { STATUS_COLORS, DNC_RING_COLOR, DO_NOT_KNOCK_RING_COLOR, stormColor, stormRadius, stormLabel, type GeoLead, type StormReport, type StormType } from './map-constants';
 
 // Phoenix metro — sensible default for an empty map until leads load
 const DEFAULT_CENTER: [number, number] = [33.4, -111.9];
@@ -104,6 +106,10 @@ interface LeadMapProps {
   /** NOAA storm reports to overlay beneath the lead pins */
   stormReports?: StormReport[];
   stormType?: StormType;
+  /** Log a knock straight from the pin popup. */
+  onLogKnock?: (lead: GeoLead, disposition: KnockDisposition) => void;
+  /** Lead id currently being written, so its buttons can disable. */
+  loggingKnockFor?: string | null;
   /** Territory-drawing mode */
   drawing?: boolean;
   drawPoints?: [number, number][];
@@ -117,6 +123,8 @@ export default function LeadMap({
   onMapReady,
   stormReports = [],
   stormType = 'hail',
+  onLogKnock,
+  loggingKnockFor,
   drawing = false,
   drawPoints = [],
   onDrawPoint,
@@ -174,10 +182,18 @@ export default function LeadMap({
             radius={selected ? 11 : 8}
             pathOptions={{
               fillColor: STATUS_COLORS[lead.status] ?? STATUS_COLORS.new,
-              fillOpacity: 0.85,
-              // Selected wins the ring; otherwise a red ring marks Do Not Call (knock-only)
-              color: selected ? '#111111' : lead.is_dnc ? DNC_RING_COLOR : '#ffffff',
-              weight: selected || lead.is_dnc ? 3 : 1.5,
+              // Recently knocked doors fade back so a rep's eye goes to the ones
+              // still worth walking to.
+              fillOpacity: knockRecency(lead.last_knock_at) === 'recent' ? 0.35 : 0.85,
+              // Ring precedence: selection, then do-not-knock, then Do Not Call.
+              color: selected
+                ? '#111111'
+                : lead.do_not_knock
+                  ? DO_NOT_KNOCK_RING_COLOR
+                  : lead.is_dnc
+                    ? DNC_RING_COLOR
+                    : '#ffffff',
+              weight: selected || lead.do_not_knock || lead.is_dnc ? 3 : 1.5,
             }}
           >
             <Popup>
@@ -204,6 +220,44 @@ export default function LeadMap({
                     {lead.hail_date ? ` · ${lead.hail_date}` : ''}
                   </p>
                 )}
+                {lead.do_not_knock && (
+                  <p className="text-xs font-semibold" style={{ color: DO_NOT_KNOCK_RING_COLOR }}>
+                    Do not knock — homeowner asked
+                  </p>
+                )}
+                {lead.last_knock_at && (
+                  <p className="text-xs text-muted-foreground">
+                    Knocked {formatDistanceToNow(new Date(lead.last_knock_at), { addSuffix: true })}
+                    {lead.last_disposition ? ` · ${knockLabel(lead.last_disposition)}` : ''}
+                    {lead.knock_count > 1 ? ` · ${lead.knock_count}×` : ''}
+                  </p>
+                )}
+
+                {/* The daily loop: standing at the door, one tap to record what
+                    happened. Hidden for do-not-knock houses so the quickest
+                    action can't be to knock one again. */}
+                {onLogKnock && !lead.do_not_knock && (
+                  <div className="border-t pt-1.5">
+                    <p className="mb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                      Log knock
+                    </p>
+                    <div className="flex flex-wrap gap-1">
+                      {KNOCK_DISPOSITIONS.map((d) => (
+                        <button
+                          key={d.value}
+                          type="button"
+                          title={d.hint}
+                          disabled={loggingKnockFor === lead.id}
+                          onClick={() => onLogKnock(lead, d.value)}
+                          className="rounded border px-1.5 py-0.5 text-[11px] hover:bg-accent disabled:opacity-50"
+                        >
+                          {d.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 <div className="flex items-center gap-2 pt-1">
                   <Link href={`/admin/leads/${lead.id}`} className="text-xs underline">
                     View lead →
