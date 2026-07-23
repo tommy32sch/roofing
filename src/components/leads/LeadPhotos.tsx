@@ -130,10 +130,11 @@ export function LeadPhotos({ leadId }: { leadId: string }) {
             size="sm"
             className="h-7 text-xs"
             disabled={uploading > 0}
+            aria-label="Add photo"
             onClick={() => fileRef.current?.click()}
           >
             <Upload className="mr-1 h-3 w-3" />
-            {uploading > 0 ? `Uploading ${uploading}…` : 'Add'}
+            {uploading > 0 ? `Uploading ${uploading}…` : 'Add photo'}
           </Button>
           <input
             ref={fileRef}

@@ -729,9 +729,15 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
                     <CalendarClock className="h-3.5 w-3.5" />
                     Appointments
                   </CardTitle>
-                  <Button variant="outline" size="sm" className="h-7 text-xs" onClick={openAddAppointment}>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs"
+                    aria-label="Add appointment"
+                    onClick={openAddAppointment}
+                  >
                     <Plus className="h-3 w-3 mr-1" />
-                    Add
+                    Add appointment
                   </Button>
                 </div>
               </CardHeader>
