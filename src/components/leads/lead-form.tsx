@@ -14,7 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   LEAD_STATUS_OPTIONS,
   LEAD_PRIORITY_OPTIONS,
@@ -166,11 +166,12 @@ export function LeadForm({ lead, isEdit }: LeadFormProps) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <form onSubmit={handleSubmit} className="max-w-4xl space-y-6">
       {/* Contact Info */}
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base">Contact Information</CardTitle>
+          <CardDescription>How to reach the homeowner. Only a first and last name are required.</CardDescription>
         </CardHeader>
         <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-2">
@@ -244,6 +245,7 @@ export function LeadForm({ lead, isEdit }: LeadFormProps) {
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base">Property Information</CardTitle>
+          <CardDescription>The address is what duplicate detection and the map both rely on.</CardDescription>
         </CardHeader>
         <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-2 md:col-span-2">
@@ -515,11 +517,13 @@ export function LeadForm({ lead, isEdit }: LeadFormProps) {
         </CardContent>
       </Card>
 
-      <div className="flex gap-3">
+      {/* Sticky so the primary action stays reachable — this form is long enough
+          that the buttons would otherwise sit far below the fold. */}
+      <div className="sticky bottom-16 md:bottom-0 -mx-1 flex gap-3 border-t bg-background/95 px-1 py-3 backdrop-blur supports-[backdrop-filter]:bg-background/80">
         <Button type="submit" disabled={loading}>
-          {loading ? 'Saving...' : isEdit ? 'Update Lead' : 'Create Lead'}
+          {loading ? 'Saving…' : isEdit ? 'Update Lead' : 'Create Lead'}
         </Button>
-        <Button type="button" variant="outline" onClick={() => router.back()}>
+        <Button type="button" variant="outline" onClick={() => router.back()} disabled={loading}>
           Cancel
         </Button>
       </div>
