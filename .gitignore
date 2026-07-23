@@ -42,3 +42,6 @@ next-env.d.ts
 
 # ...but the placeholder template SHOULD be tracked
 !.env.example
+
+# Database backups — contain PII, password hashes and API keys
+backups/

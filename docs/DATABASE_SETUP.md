@@ -1,4 +1,44 @@
-# Separating the development and production databases
+# Database environments
+
+## Current state (decided 2026-07-23)
+
+**One database serves both the live site and local development.** The free
+Supabase tier allows two projects and both are already in use, so a separate
+dev project isn't available right now.
+
+That is a known, accepted tradeoff. Two things mitigate it:
+
+### 1. Back up before anything destructive
+
+```bash
+npm run backup
+```
+
+Read-only, takes seconds, writes a timestamped JSON of every table to
+`backups/` (gitignored — it contains PII, password hashes and API keys).
+
+**Run it before:** bulk deletes, migrations, backfills, or any script run with
+`--allow-prod`. Production is the only copy of this data, so a backup is the
+difference between "undo" and "gone".
+
+### 2. The guard blocks accidental writes
+
+`.env.local` is labelled `APP_DB_ENV=production`, so data-modifying scripts in
+`scripts/` refuse to run unless explicitly overridden with `--allow-prod`.
+
+**What the guard does not cover:** ad-hoc one-off scripts and direct queries.
+Those hit whatever `.env.local` points at, which is production. The habit of
+running `npm run backup` first is what actually protects you there.
+
+### When to revisit
+
+Move to a separate database if a project slot frees up, or by running Supabase
+locally (free and unlimited, needs Docker). Everything needed for the switch is
+already prepared — see below.
+
+---
+
+## Setting up a separate dev database (when available)
 
 ## Why
 
