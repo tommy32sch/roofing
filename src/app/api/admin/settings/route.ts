@@ -4,6 +4,15 @@ import { getAuthenticatedAdmin } from '@/lib/auth/jwt';
 
 export async function GET() {
   try {
+    // Settings include the Regrid API key — admin only, not just any session.
+    const admin = await getAuthenticatedAdmin();
+    if (!admin) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
+    if (admin.role !== 'admin') {
+      return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
+    }
+
     const supabase = db();
     const { data: settings, error } = await supabase
       .from('app_settings')
@@ -26,6 +35,9 @@ export async function PATCH(request: NextRequest) {
     const admin = await getAuthenticatedAdmin();
     if (!admin) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
+    if (admin.role !== 'admin') {
+      return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
     }
 
     const body = await request.json();

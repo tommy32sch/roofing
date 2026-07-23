@@ -8,6 +8,9 @@ export async function POST(request: NextRequest) {
     if (!admin) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
+    if (admin.role !== 'admin') {
+      return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
+    }
 
     const { api_key } = await request.json();
     if (!api_key?.trim()) {

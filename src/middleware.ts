@@ -8,9 +8,12 @@ const PUBLIC_PATHS = new Set([
 
 const PUBLIC_PREFIXES = ['/api/webhooks/'];
 
-// Routes restricted to admin only
-const ADMIN_ONLY_PAGE_PREFIXES = ['/admin/users', '/admin/analytics'];
-const ADMIN_ONLY_API_PREFIXES = ['/api/admin/users', '/api/admin/analytics'];
+// Routes restricted to admin only. Integrations manage webhook API keys (a
+// lead-injection credential) and settings hold global config + the Regrid API
+// key, so neither should be reachable by setters/closers. The handlers also
+// enforce this themselves — this list is the outer layer of defense.
+const ADMIN_ONLY_PAGE_PREFIXES = ['/admin/users', '/admin/analytics', '/admin/settings', '/admin/integrations'];
+const ADMIN_ONLY_API_PREFIXES = ['/api/admin/users', '/api/admin/analytics', '/api/admin/settings', '/api/admin/integrations'];
 
 // Routes blocked for closers
 const CLOSER_BLOCKED_PAGE_PREFIXES = ['/admin/leads/import', '/admin/leads/new'];

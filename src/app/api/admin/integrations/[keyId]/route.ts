@@ -11,6 +11,10 @@ export async function DELETE(
     if (!admin) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
+    // API keys are lead-injection credentials — admin only.
+    if (admin.role !== 'admin') {
+      return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
+    }
 
     const { keyId } = await params;
     const supabase = db();
@@ -38,6 +42,10 @@ export async function PATCH(
     const admin = await getAuthenticatedAdmin();
     if (!admin) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
+    // API keys are lead-injection credentials — admin only.
+    if (admin.role !== 'admin') {
+      return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
     }
 
     const { keyId } = await params;
