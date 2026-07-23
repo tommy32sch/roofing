@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
   Dialog,
   DialogContent,
@@ -121,11 +122,10 @@ export default function IntegrationsPage() {
   if (loading) {
     return (
       <div className="space-y-6">
-        <h1 className="text-2xl font-bold">Integrations</h1>
-        <div className="animate-pulse space-y-4">
-          <div className="h-32 bg-muted rounded-lg" />
-          <div className="h-48 bg-muted rounded-lg" />
-        </div>
+        <PageHeader title="Integrations" />
+        <Skeleton className="h-36 w-full rounded-lg" />
+        <Skeleton className="h-56 w-full rounded-lg" />
+        <Skeleton className="h-40 w-full rounded-lg" />
       </div>
     );
   }

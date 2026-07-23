@@ -40,7 +40,7 @@ import { EmptyState } from '@/components/layout/empty-state';
 
 export default function LeadsListPage() {
   return (
-    <Suspense fallback={<div className="space-y-4"><h1 className="text-2xl font-bold">Leads</h1><p className="text-muted-foreground">Loading...</p></div>}>
+    <Suspense fallback={<div className="space-y-4"><PageHeader title="Leads" /></div>}>
       <LeadsListContent />
     </Suspense>
   );

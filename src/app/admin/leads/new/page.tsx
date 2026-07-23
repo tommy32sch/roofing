@@ -4,6 +4,7 @@ import { ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { LeadForm } from '@/components/leads/lead-form';
+import { PageHeader } from '@/components/layout/page-header';
 
 export default function NewLeadPage() {
   return (
@@ -14,7 +15,7 @@ export default function NewLeadPage() {
             <ArrowLeft className="h-4 w-4" />
           </Button>
         </Link>
-        <h1 className="text-2xl font-bold">Add New Lead</h1>
+        <PageHeader title="Add New Lead" />
       </div>
       <LeadForm />
     </div>

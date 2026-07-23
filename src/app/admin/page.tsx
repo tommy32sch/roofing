@@ -12,6 +12,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { DuplicateReviewPanel } from '@/components/leads/DuplicateReviewPanel';
 import type { DashboardStats, LeadStatus, LeadWithSource, UserRole } from '@/types';
+import { PageHeader } from '@/components/layout/page-header';
 
 const STATUS_COLORS: Record<LeadStatus, string> = {
   new: 'bg-pipeline-new text-white',
@@ -85,39 +86,49 @@ export default function DashboardPage() {
   }, [fetchStats]);
 
   if (loading) {
+    // Mirrors the real layout — same header, four stat cards, pipeline strip and
+    // recent-leads list — so the page doesn't reflow when data lands.
     return (
       <div className="space-y-6">
-        <h1 className="text-2xl font-bold">Dashboard</h1>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <PageHeader title="Dashboard" />
+        <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-4">
           {[...Array(4)].map((_, i) => (
             <Card key={i}>
               <CardContent className="p-4">
-                <Skeleton className="h-4 w-20 mb-2" />
+                <Skeleton className="mb-3 h-3 w-24" />
                 <Skeleton className="h-8 w-16" />
               </CardContent>
             </Card>
           ))}
         </div>
+        <Card>
+          <CardHeader className="pb-3"><Skeleton className="h-5 w-24" /></CardHeader>
+          <CardContent className="flex flex-wrap gap-2">
+            {[...Array(7)].map((_, i) => <Skeleton key={i} className="h-9 w-32 rounded-full" />)}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-3"><Skeleton className="h-5 w-32" /></CardHeader>
+          <CardContent className="space-y-2">
+            {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-14 w-full rounded-lg" />)}
+          </CardContent>
+        </Card>
       </div>
     );
   }
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <h1 className="text-2xl font-bold">Dashboard</h1>
-        <div className="flex items-center gap-2">
-          {lastUpdated && (
-            <span className="text-xs text-muted-foreground">
-              Updated {formatDistanceToNow(lastUpdated, { addSuffix: true })}
-            </span>
-          )}
+      <PageHeader
+        title="Dashboard"
+        description={lastUpdated ? `Updated ${formatDistanceToNow(lastUpdated, { addSuffix: true })}` : undefined}
+        actions={
           <Button variant="outline" size="sm" onClick={() => fetchStats(true)} disabled={refreshing}>
             <RefreshCw className={`h-3.5 w-3.5 mr-1 ${refreshing ? 'animate-spin' : ''}`} />
             Refresh
           </Button>
-        </div>
-      </div>
+        }
+      />
 
       {/* Stat cards — label small and quiet, number large and tabular so the
           figures line up and read as data rather than as body copy. */}
@@ -145,50 +156,30 @@ export default function DashboardPage() {
         ))}
       </div>
 
-      {/* Revenue cards (only shown when values exist) */}
+      {/* Revenue cards — same treatment as the stat cards above, and coloured
+          from the pipeline tokens rather than raw greens/blues so they follow
+          the theme. Only rendered once there is money to show. */}
       {((stats?.totalPipelineValue ?? 0) > 0 ||
         (stats?.totalWonValue ?? 0) > 0 ||
         (stats?.totalEstimatedRoofValue ?? 0) > 0) && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {(stats?.totalWonValue ?? 0) > 0 && (
-            <Card className="border-green-200 dark:border-green-900">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3">
+          {[
+            { show: (stats?.totalWonValue ?? 0) > 0, label: 'Won Revenue', value: stats?.totalWonValue ?? 0, tone: 'text-pipeline-sold' },
+            { show: (stats?.totalPipelineValue ?? 0) > 0, label: 'Pipeline Value', value: stats?.totalPipelineValue ?? 0, tone: 'text-primary' },
+            { show: (stats?.totalEstimatedRoofValue ?? 0) > 0, label: 'Est. Roof Value', value: stats?.totalEstimatedRoofValue ?? 0, tone: 'text-muted-foreground' },
+          ].filter(c => c.show).map(({ label, value, tone }) => (
+            <Card key={label}>
               <CardContent className="p-4">
-                <div className="flex items-center gap-2 text-muted-foreground text-sm">
-                  <DollarSign className="h-4 w-4 text-green-600" />
-                  Won Revenue
+                <div className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  <DollarSign className={`h-3.5 w-3.5 ${tone}`} />
+                  {label}
                 </div>
-                <p className="text-2xl font-bold mt-1 text-green-600">
-                  ${(stats?.totalWonValue ?? 0).toLocaleString()}
+                <p className={`mt-2 text-3xl font-semibold tabular-nums tracking-tight ${tone}`}>
+                  ${value.toLocaleString()}
                 </p>
               </CardContent>
             </Card>
-          )}
-          {(stats?.totalPipelineValue ?? 0) > 0 && (
-            <Card className="border-blue-200 dark:border-blue-900">
-              <CardContent className="p-4">
-                <div className="flex items-center gap-2 text-muted-foreground text-sm">
-                  <DollarSign className="h-4 w-4 text-blue-600" />
-                  Pipeline Value
-                </div>
-                <p className="text-2xl font-bold mt-1 text-blue-600">
-                  ${(stats?.totalPipelineValue ?? 0).toLocaleString()}
-                </p>
-              </CardContent>
-            </Card>
-          )}
-          {(stats?.totalEstimatedRoofValue ?? 0) > 0 && (
-            <Card className="border-amber-200 dark:border-amber-900">
-              <CardContent className="p-4">
-                <div className="flex items-center gap-2 text-muted-foreground text-sm">
-                  <DollarSign className="h-4 w-4 text-amber-600" />
-                  Est. Roof Value
-                </div>
-                <p className="text-2xl font-bold mt-1 text-amber-600">
-                  ${(stats?.totalEstimatedRoofValue ?? 0).toLocaleString()}
-                </p>
-              </CardContent>
-            </Card>
-          )}
+          ))}
         </div>
       )}
 

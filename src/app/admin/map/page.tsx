@@ -215,8 +215,11 @@ export default function MapPage() {
 
   const selectionTotal = [...selection.values()].reduce((sum, v) => sum + v, 0);
 
+  // Map height budget, measured rather than guessed. Desktop: viewport minus the
+  // app header (3.5rem) and main's vertical padding (4rem). Mobile reserves more
+  // for the fixed bottom tab bar.
   return (
-    <div className="flex flex-col gap-3 h-[calc(100dvh-13rem)] min-h-[420px]">
+    <div className="flex min-h-[420px] flex-col gap-3 h-[calc(100dvh-13rem)] md:h-[calc(100dvh-7.5rem)]">
       <PageHeader
         title="Map"
         description="Lead locations, storm overlays and territory selection"

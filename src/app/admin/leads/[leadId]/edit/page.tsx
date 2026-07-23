@@ -34,8 +34,10 @@ export default function EditLeadPage({ params }: { params: Promise<{ leadId: str
   if (loading) {
     return (
       <div className="space-y-6">
-        <Skeleton className="h-8 w-48" />
-        <Skeleton className="h-64 w-full" />
+        <Skeleton className="h-8 w-56" />
+        <div className="space-y-4">
+          {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-64 w-full rounded-lg" />)}
+        </div>
       </div>
     );
   }
@@ -50,7 +52,7 @@ export default function EditLeadPage({ params }: { params: Promise<{ leadId: str
             <ArrowLeft className="h-4 w-4" />
           </Button>
         </Link>
-        <h1 className="text-2xl font-bold">
+        <h1 className="text-2xl font-semibold tracking-tight">
           Edit: {lead.first_name} {lead.last_name}
         </h1>
       </div>

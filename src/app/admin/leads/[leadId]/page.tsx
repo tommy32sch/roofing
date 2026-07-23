@@ -354,8 +354,11 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
   if (loading) {
     return (
       <div className="space-y-6">
-        <Skeleton className="h-8 w-48" />
-        <Skeleton className="h-64 w-full" />
+        <Skeleton className="h-8 w-56" />
+        <Skeleton className="h-[4.5rem] w-full max-w-lg rounded-lg" />
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-56 w-full rounded-lg" />)}
+        </div>
       </div>
     );
   }
@@ -378,7 +381,7 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
           </Link>
           <div>
             <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="text-2xl font-bold">
+              <h1 className="text-2xl font-semibold tracking-tight">
                 {lead.first_name} {lead.last_name}
               </h1>
               {lead.is_dnc && (
