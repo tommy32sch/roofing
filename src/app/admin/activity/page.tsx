@@ -16,6 +16,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { formatAddressShort } from '@/lib/utils/format';
+import { PageHeader } from '@/components/layout/page-header';
 
 const ACTIVITY_ICONS: Record<string, React.ElementType> = {
   note: MessageSquare,
@@ -97,12 +98,10 @@ export default function ActivityPage() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-2xl font-bold">Activity Log</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          {total} total events across all leads
-        </p>
-      </div>
+      <PageHeader
+        title="Activity"
+        description={`${total.toLocaleString()} event${total === 1 ? '' : 's'} across all leads`}
+      />
 
       {/* Filters */}
       <div className="flex flex-wrap gap-3">

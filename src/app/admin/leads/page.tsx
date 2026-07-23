@@ -3,9 +3,10 @@
 import { Suspense, useEffect, useState, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Search, PlusCircle, Upload, Sparkles, Download, CalendarClock, MapPin, UserCheck, PhoneOff, CopyCheck, SlidersHorizontal, Navigation, Phone } from 'lucide-react';
+import { Search, Upload, Sparkles, Download, CalendarClock, MapPin, UserCheck, PhoneOff, CopyCheck, SlidersHorizontal, Navigation, Phone } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatPhone, formatAddress, mapsUrl } from '@/lib/utils/format';
+import { PageHeader } from '@/components/layout/page-header';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
@@ -255,55 +256,42 @@ function LeadsListContent() {
 
   return (
     <div className="space-y-4">
-      {/* Header — actions wrap instead of running off the edge on a phone.
-          Secondary/admin actions are desktop-only so the field view stays clean. */}
-      <div className="flex items-start justify-between gap-3 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Leads</h1>
-          {!loading && (
-            <p className="text-sm text-muted-foreground mt-0.5">
-              {total.toLocaleString()} lead{total !== 1 ? 's' : ''}
-              {selectedStreets.length > 0 && ` · ${selectedStreets.length} street${selectedStreets.length !== 1 ? 's' : ''}`}
-            </p>
-          )}
-        </div>
-        <div className="flex gap-2 flex-wrap">
-          {isAdmin && (
-            <Button
-              variant={selectedStreets.length > 0 ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setStreetsOpen(true)}
-            >
-              <MapPin className="h-4 w-4 sm:mr-1" />
-              <span className="hidden sm:inline">
-                By Street{selectedStreets.length > 0 ? ` (${selectedStreets.length})` : ''}
-              </span>
+      <PageHeader
+        title="Leads"
+        description={loading ? undefined : `${total.toLocaleString()} lead${total !== 1 ? 's' : ''}${selectedStreets.length > 0 ? ` · ${selectedStreets.length} street${selectedStreets.length !== 1 ? 's' : ''}` : ''}`}
+        actions={
+          <>
+            {isAdmin && (
+              <Button
+                variant={selectedStreets.length > 0 ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setStreetsOpen(true)}
+              >
+                <MapPin className="h-4 w-4 sm:mr-1" />
+                <span className="hidden sm:inline">
+                  By Street{selectedStreets.length > 0 ? ` (${selectedStreets.length})` : ''}
+                </span>
+              </Button>
+            )}
+            {isAdmin && (
+              <Button variant="outline" size="sm" className="hidden sm:inline-flex" onClick={() => setRecheckOpen(true)}>
+                <CopyCheck className="h-4 w-4 mr-1" />
+                Re-check dupes
+              </Button>
+            )}
+            <Button variant="outline" size="sm" className="hidden sm:inline-flex" onClick={handleExport}>
+              <Download className="h-4 w-4 mr-1" />
+              Export
             </Button>
-          )}
-          {isAdmin && (
-            <Button variant="outline" size="sm" className="hidden sm:inline-flex" onClick={() => setRecheckOpen(true)}>
-              <CopyCheck className="h-4 w-4 mr-1" />
-              Re-check dupes
-            </Button>
-          )}
-          <Button variant="outline" size="sm" className="hidden sm:inline-flex" onClick={handleExport}>
-            <Download className="h-4 w-4 mr-1" />
-            Export
-          </Button>
-          <Link href="/admin/leads/import" className="hidden sm:block">
-            <Button variant="outline" size="sm">
-              <Upload className="h-4 w-4 mr-1" />
-              Import
-            </Button>
-          </Link>
-          <Link href="/admin/leads/new">
-            <Button size="sm">
-              <PlusCircle className="h-4 w-4 sm:mr-1" />
-              <span className="hidden sm:inline">Add Lead</span>
-            </Button>
-          </Link>
-        </div>
-      </div>
+            <Link href="/admin/leads/import" className="hidden sm:block">
+              <Button variant="outline" size="sm">
+                <Upload className="h-4 w-4 mr-1" />
+                Import
+              </Button>
+            </Link>
+          </>
+        }
+      />
 
       {/* Search is always visible; the rest collapses on mobile so leads are
           on screen immediately instead of below a full page of filter controls. */}

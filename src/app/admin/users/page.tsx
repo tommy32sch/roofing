@@ -34,6 +34,7 @@ import {
 } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { AdminUser, UserRole } from '@/types';
+import { PageHeader } from '@/components/layout/page-header';
 
 interface UserForm {
   name: string;
@@ -176,13 +177,16 @@ export default function UsersPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Users</h1>
-        <Button size="sm" onClick={() => setCreateOpen(true)}>
-          <UserPlus className="h-4 w-4 mr-2" />
-          Add User
-        </Button>
-      </div>
+      <PageHeader
+        title="Users"
+        description="Team members and the access each one has"
+        actions={
+          <Button size="sm" onClick={() => setCreateOpen(true)}>
+            <UserPlus className="h-4 w-4 mr-2" />
+            Add User
+          </Button>
+        }
+      />
 
       <Card>
         <CardHeader className="pb-3">

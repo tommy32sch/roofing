@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/select';
 import { LEAD_STATUS_OPTIONS, LEAD_PRIORITY_OPTIONS } from '@/types';
 import type { AppSettings } from '@/types';
+import { PageHeader } from '@/components/layout/page-header';
 
 export default function SettingsPage() {
   const [settings, setSettings] = useState<AppSettings | null>(null);
@@ -101,7 +102,10 @@ export default function SettingsPage() {
   if (loading) {
     return (
       <div className="space-y-6">
-        <h1 className="text-2xl font-bold">Settings</h1>
+        <PageHeader
+        title="Settings"
+        description="Company defaults, roof pricing, and the region used for mapping"
+      />
         <p className="text-sm text-muted-foreground">Loading...</p>
       </div>
     );
