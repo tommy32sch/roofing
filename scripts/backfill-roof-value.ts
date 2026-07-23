@@ -11,6 +11,7 @@
 
 import { createClient } from '@supabase/supabase-js';
 import { estimateRoofValue } from '../src/lib/leads/roof-value';
+import { assertSafeTarget } from './lib/guard';
 
 async function backfill() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -23,6 +24,9 @@ async function backfill() {
   }
 
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+
+  assertSafeTarget({ action: 'backfill estimated roof value onto leads' });
 
   const { data: settings } = await supabase
     .from('app_settings')

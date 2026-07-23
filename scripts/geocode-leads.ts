@@ -12,6 +12,7 @@
 
 import { createClient } from '@supabase/supabase-js';
 import { geocodeAddress } from '../src/lib/integrations/geocode';
+import { assertSafeTarget } from './lib/guard';
 
 const DELAY_MS = 1100;
 
@@ -28,6 +29,9 @@ async function geocodeLeads() {
   }
 
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+
+  assertSafeTarget({ action: 'backfill coordinates onto leads' });
 
   // Default region fallback (fills leads that lack their own city/state)
   const { data: settings } = await supabase

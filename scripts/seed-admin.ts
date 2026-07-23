@@ -5,6 +5,7 @@
 
 import { createClient } from '@supabase/supabase-js';
 import { hash } from 'bcryptjs';
+import { assertSafeTarget } from './lib/guard';
 
 async function seedAdmin() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -17,6 +18,9 @@ async function seedAdmin() {
   }
 
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+
+  assertSafeTarget({ action: 'create an admin user' });
 
   const email = process.env.ADMIN_EMAIL || 'admin@example.com';
   const password = process.env.ADMIN_PASSWORD || 'changeme123';
