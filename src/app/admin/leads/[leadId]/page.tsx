@@ -60,6 +60,7 @@ import { LEAD_STATUS_OPTIONS, LEAD_PRIORITY_OPTIONS, APPOINTMENT_TYPE_OPTIONS } 
 import type { LeadWithActivities, LeadActivity, ActivityType, UserRole, AdminUser, AppointmentType, LeadAppointment } from '@/types';
 import { estimateRoofValue } from '@/lib/leads/roof-value';
 import { EmptyState } from '@/components/layout/empty-state';
+import { LeadPhotos } from '@/components/leads/LeadPhotos';
 
 const SETTER_ALLOWED_STATUSES = new Set(['new', 'contacted', 'appointment_set', 'lost']);
 const CLOSER_ALLOWED_STATUSES = new Set(['sold', 'lost']);
@@ -716,6 +717,8 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
                 )}
               </CardContent>
             </Card>
+
+            <LeadPhotos leadId={leadId} />
 
             {/* Appointments */}
             <Card>
