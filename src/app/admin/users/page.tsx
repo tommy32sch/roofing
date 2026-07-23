@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { UserPlus, Pencil, Trash2, LogIn } from 'lucide-react';
+import { UserPlus, Pencil, Trash2, LogIn, LogOut } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -59,6 +59,7 @@ export default function UsersPage() {
 
   const [deleteTarget, setDeleteTarget] = useState<AdminUser | null>(null);
   const [impersonateTarget, setImpersonateTarget] = useState<AdminUser | null>(null);
+  const [revokeTarget, setRevokeTarget] = useState<AdminUser | null>(null);
 
   async function fetchUsers() {
     try {
@@ -158,6 +159,21 @@ export default function UsersPage() {
     }
   }
 
+  async function handleRevoke(user: AdminUser) {
+    try {
+      const res = await fetch(`/api/admin/users/${user.id}/revoke-sessions`, { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        toast.success(`${user.name} signed out on all devices`);
+        setRevokeTarget(null);
+      } else {
+        toast.error(data.error || 'Failed to revoke sessions');
+      }
+    } catch {
+      toast.error('Network error');
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -226,6 +242,16 @@ export default function UsersPage() {
                             onClick={() => { setEditTarget(user); setEditForm({ name: user.name, email: user.email, role: user.role as 'setter' | 'closer' }); }}
                           >
                             <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-muted-foreground"
+                            title={`Log ${user.name} out everywhere`}
+                            aria-label={`Log ${user.name} out everywhere`}
+                            onClick={() => setRevokeTarget(user)}
+                          >
+                            <LogOut className="h-3.5 w-3.5" />
                           </Button>
                           <Button
                             variant="ghost"
@@ -346,6 +372,26 @@ export default function UsersPage() {
             <Button variant="outline" onClick={() => setDeleteTarget(null)}>Cancel</Button>
             <Button variant="destructive" onClick={() => deleteTarget && handleDelete(deleteTarget)}>
               Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Revoke-sessions confirmation dialog */}
+      <Dialog open={!!revokeTarget} onOpenChange={open => !open && setRevokeTarget(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Log {revokeTarget?.name} out everywhere?</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Immediately signs {revokeTarget?.name} ({revokeTarget?.email}) out of every device and
+            browser. They&apos;ll need to log in again. Use this if a device is lost or they&apos;ve
+            left the team. The account itself is kept.
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRevokeTarget(null)}>Cancel</Button>
+            <Button onClick={() => revokeTarget && handleRevoke(revokeTarget)}>
+              Log out everywhere
             </Button>
           </DialogFooter>
         </DialogContent>
