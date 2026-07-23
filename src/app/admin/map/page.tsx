@@ -20,6 +20,7 @@ import { LEAD_STATUS_OPTIONS, LEAD_PRIORITY_OPTIONS } from '@/types';
 import type { UserRole } from '@/types';
 import { LIMITS } from '@/lib/utils/validation';
 import { pointInPolygon } from '@/lib/leads/geo-polygon';
+import { PageHeader } from '@/components/layout/page-header';
 
 // Leaflet touches `window` at import time — client-only
 const LeadMap = dynamic(() => import('@/components/leads/LeadMap'), {
@@ -215,92 +216,96 @@ export default function MapPage() {
   const selectionTotal = [...selection.values()].reduce((sum, v) => sum + v, 0);
 
   return (
-    <div className="flex flex-col gap-3 h-[calc(100dvh-160px)] min-h-[400px]">
-      <div className="flex items-center justify-between gap-2 flex-wrap">
-        <h1 className="text-2xl font-bold">Map</h1>
-        <div className="flex gap-2 items-center flex-wrap">
-          {isAdmin && (
-            <Button variant="outline" size="sm" onClick={selectVisible} disabled={loading || leads.length === 0}>
-              <BoxSelect className="h-4 w-4 mr-1" />
-              Select visible
-            </Button>
-          )}
-          {isAdmin && !drawing && (
-            <Button variant="outline" size="sm" onClick={() => setDrawing(true)} disabled={loading || leads.length === 0}>
-              <Pencil className="h-4 w-4 mr-1" />
-              Draw area
-            </Button>
-          )}
-          {isAdmin && drawing && (
-            <>
-              <Button variant="default" size="sm" onClick={finishDraw}>
-                Finish{drawPoints.length > 0 ? ` (${drawPoints.length})` : ''}
+    <div className="flex flex-col gap-3 h-[calc(100dvh-13rem)] min-h-[420px]">
+      <PageHeader
+        title="Map"
+        description="Lead locations, storm overlays and territory selection"
+        actions={
+          <>
+  
+            {isAdmin && (
+              <Button variant="outline" size="sm" onClick={selectVisible} disabled={loading || leads.length === 0}>
+                <BoxSelect className="h-4 w-4 mr-1" />
+                Select visible
               </Button>
-              <Button variant="ghost" size="sm" onClick={cancelDraw}>
-                Cancel
-              </Button>
-            </>
-          )}
-          <Button
-            variant={stormOn ? 'default' : 'outline'}
-            size="sm"
-            onClick={() => setStormOn((v) => !v)}
-          >
-            {stormType === 'wind' ? (
-              <Wind className={`h-4 w-4 mr-1 ${stormLoading ? 'animate-pulse' : ''}`} />
-            ) : (
-              <CloudHail className={`h-4 w-4 mr-1 ${stormLoading ? 'animate-pulse' : ''}`} />
             )}
-            Storm{stormOn && stormReports.length > 0 ? ` (${stormReports.length})` : ''}
-          </Button>
-          {stormOn && (
-            <>
-              <Select value={stormType} onValueChange={(v) => v && setStormType(v as StormType)}>
-                <SelectTrigger className="w-[110px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="wind">Wind</SelectItem>
-                  <SelectItem value="hail">Hail</SelectItem>
-                </SelectContent>
-              </Select>
-              <Select value={String(stormDays)} onValueChange={(v) => v && setStormDays(parseInt(v, 10))}>
-                <SelectTrigger className="w-[130px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="7">Last 7 days</SelectItem>
-                  <SelectItem value="30">Last 30 days</SelectItem>
-                  <SelectItem value="60">Last 60 days</SelectItem>
-                  <SelectItem value="90">Last 90 days</SelectItem>
-                </SelectContent>
-              </Select>
-            </>
-          )}
-          <Select value={status} onValueChange={(v) => setStatus(v === 'all' ? '' : v ?? '')}>
-            <SelectTrigger className="w-[150px]">
-              <SelectValue placeholder="All Statuses" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Statuses</SelectItem>
-              {LEAD_STATUS_OPTIONS.map((opt) => (
-                <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select value={priority} onValueChange={(v) => setPriority(v === 'all' ? '' : v ?? '')}>
-            <SelectTrigger className="w-[140px]">
-              <SelectValue placeholder="All Priorities" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Priorities</SelectItem>
-              {LEAD_PRIORITY_OPTIONS.map((opt) => (
-                <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
+            {isAdmin && !drawing && (
+              <Button variant="outline" size="sm" onClick={() => setDrawing(true)} disabled={loading || leads.length === 0}>
+                <Pencil className="h-4 w-4 mr-1" />
+                Draw area
+              </Button>
+            )}
+            {isAdmin && drawing && (
+              <>
+                <Button variant="default" size="sm" onClick={finishDraw}>
+                  Finish{drawPoints.length > 0 ? ` (${drawPoints.length})` : ''}
+                </Button>
+                <Button variant="ghost" size="sm" onClick={cancelDraw}>
+                  Cancel
+                </Button>
+              </>
+            )}
+            <Button
+              variant={stormOn ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setStormOn((v) => !v)}
+            >
+              {stormType === 'wind' ? (
+                <Wind className={`h-4 w-4 mr-1 ${stormLoading ? 'animate-pulse' : ''}`} />
+              ) : (
+                <CloudHail className={`h-4 w-4 mr-1 ${stormLoading ? 'animate-pulse' : ''}`} />
+              )}
+              Storm{stormOn && stormReports.length > 0 ? ` (${stormReports.length})` : ''}
+            </Button>
+            {stormOn && (
+              <>
+                <Select value={stormType} onValueChange={(v) => v && setStormType(v as StormType)}>
+                  <SelectTrigger className="w-[110px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="wind">Wind</SelectItem>
+                    <SelectItem value="hail">Hail</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={String(stormDays)} onValueChange={(v) => v && setStormDays(parseInt(v, 10))}>
+                  <SelectTrigger className="w-[130px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="7">Last 7 days</SelectItem>
+                    <SelectItem value="30">Last 30 days</SelectItem>
+                    <SelectItem value="60">Last 60 days</SelectItem>
+                    <SelectItem value="90">Last 90 days</SelectItem>
+                  </SelectContent>
+                </Select>
+              </>
+            )}
+            <Select value={status} onValueChange={(v) => setStatus(v === 'all' ? '' : v ?? '')}>
+              <SelectTrigger className="w-[150px]">
+                <SelectValue placeholder="All Statuses" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Statuses</SelectItem>
+                {LEAD_STATUS_OPTIONS.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={priority} onValueChange={(v) => setPriority(v === 'all' ? '' : v ?? '')}>
+              <SelectTrigger className="w-[140px]">
+                <SelectValue placeholder="All Priorities" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Priorities</SelectItem>
+                {LEAD_PRIORITY_OPTIONS.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </>
+        }
+      />
 
       {drawing && (
         <div className="rounded-md border border-blue-300 bg-blue-50 dark:bg-blue-950/30 px-3 py-2 text-xs text-blue-700 dark:text-blue-300">

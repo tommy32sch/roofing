@@ -7,6 +7,7 @@ import { addDays, format, isSameDay, isToday, startOfWeek } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { LeadAppointment, LeadStatus } from '@/types';
+import { PageHeader } from '@/components/layout/page-header';
 
 interface CalendarAppointment extends LeadAppointment {
   leads: {
@@ -54,25 +55,29 @@ export default function CalendarPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-2 flex-wrap">
-        <h1 className="text-2xl font-bold">Calendar</h1>
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-muted-foreground">{weekLabel}</span>
-          <Button variant="outline" size="sm" onClick={() => setWeekStart(addDays(weekStart, -7))}>
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }))}
-          >
-            Today
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => setWeekStart(addDays(weekStart, 7))}>
-            <ChevronRight className="h-4 w-4" />
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        title="Calendar"
+        description="Inspections and adjuster visits for your team"
+        actions={
+          <>
+  
+            <span className="text-sm text-muted-foreground">{weekLabel}</span>
+            <Button variant="outline" size="sm" onClick={() => setWeekStart(addDays(weekStart, -7))}>
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }))}
+            >
+              Today
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setWeekStart(addDays(weekStart, 7))}>
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </>
+        }
+      />
 
       {/* Legend */}
       <div className="flex gap-4 text-xs text-muted-foreground">

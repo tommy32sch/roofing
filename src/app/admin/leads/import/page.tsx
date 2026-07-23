@@ -6,6 +6,7 @@ import { ArrowLeft, Upload, FileSpreadsheet, CheckCircle2, AlertCircle } from 'l
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { PageHeader } from '@/components/layout/page-header';
 
 export default function ImportPage() {
   const fileRef = useRef<HTMLInputElement>(null);
@@ -69,11 +70,14 @@ export default function ImportPage() {
     <div className="space-y-6">
       <div className="flex items-center gap-3">
         <Link href="/admin/leads">
-          <Button variant="ghost" size="icon">
+          <Button variant="ghost" size="icon" aria-label="Back to leads">
             <ArrowLeft className="h-4 w-4" />
           </Button>
         </Link>
-        <h1 className="text-2xl font-bold">Import Leads</h1>
+        <PageHeader
+          title="Import Leads"
+          description="Upload a CSV or Excel file. Duplicates and Do Not Call numbers are handled automatically."
+        />
       </div>
 
       <Card>
