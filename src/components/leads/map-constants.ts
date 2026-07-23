@@ -8,13 +8,13 @@ import type { LeadStatus, LeadPriority } from '@/types';
  * importing Leaflet (which touches `window` and breaks SSR).
  */
 export const STATUS_COLORS: Record<LeadStatus, string> = {
-  new: 'oklch(0.60 0.17 250)',
-  contacted: 'oklch(0.75 0.15 80)',
-  appointment_set: 'oklch(0.60 0.17 300)',
-  inspected: 'oklch(0.65 0.15 50)',
-  proposal_sent: 'oklch(0.55 0.17 265)',
-  sold: 'oklch(0.55 0.16 155)',
-  lost: 'oklch(0.577 0.245 27)',
+  new: 'oklch(0.58 0.16 250)',
+  contacted: 'oklch(0.62 0.12 195)',
+  appointment_set: 'oklch(0.58 0.17 300)',
+  inspected: 'oklch(0.72 0.14 95)',
+  proposal_sent: 'oklch(0.52 0.16 275)',
+  sold: 'oklch(0.56 0.16 150)',
+  lost: 'oklch(0.55 0.16 25)',
 };
 
 export interface GeoLead {
@@ -34,7 +34,7 @@ export interface GeoLead {
 }
 
 /** Stroke color used to ring Do Not Call pins (knock-only). */
-export const DNC_RING_COLOR = '#dc2626';
+export const DNC_RING_COLOR = 'oklch(0.55 0.22 25)';
 
 export type StormType = 'hail' | 'wind';
 
