@@ -12,6 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { PageHeader } from '@/components/layout/page-header';
 
 const RANGE_LABELS: Record<string, string> = {
   all: 'All Time',
@@ -114,23 +115,21 @@ export default function AnalyticsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="text-2xl font-bold">Analytics</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Based on {data?.total ?? 0} won lead{data?.total !== 1 ? 's' : ''} with demographic profiles
-          </p>
-        </div>
-        <Select value={range} onValueChange={v => { setRange(v ?? 'all'); setLoading(true); }}>
-          <SelectTrigger className="w-[140px]"><SelectValue>{RANGE_LABELS[range] ?? 'All Time'}</SelectValue></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Time</SelectItem>
-            <SelectItem value="30d">Last 30 days</SelectItem>
-            <SelectItem value="90d">Last 90 days</SelectItem>
-            <SelectItem value="365d">Last 12 months</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
+      <PageHeader
+        title="Analytics"
+        description={`Based on ${data?.total ?? 0} won lead${data?.total !== 1 ? 's' : ''} with demographic profiles`}
+        actions={
+            <Select value={range} onValueChange={v => { setRange(v ?? 'all'); setLoading(true); }}>
+              <SelectTrigger className="w-[140px]"><SelectValue>{RANGE_LABELS[range] ?? 'All Time'}</SelectValue></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Time</SelectItem>
+                <SelectItem value="30d">Last 30 days</SelectItem>
+                <SelectItem value="90d">Last 90 days</SelectItem>
+                <SelectItem value="365d">Last 12 months</SelectItem>
+              </SelectContent>
+            </Select>
+        }
+      />
 
       {/* FB Targeting Recommendation */}
       <Card className="border-primary/30 bg-primary/5">

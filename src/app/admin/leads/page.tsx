@@ -36,6 +36,7 @@ import type { LeadWithSource, UserRole } from '@/types';
 import { LIMITS } from '@/lib/utils/validation';
 import { STREET_DIRECTIONS } from '@/lib/utils/lead-query';
 import { formatDistanceToNow, isPast, isToday } from 'date-fns';
+import { EmptyState } from '@/components/layout/empty-state';
 
 export default function LeadsListPage() {
   return (
@@ -446,8 +447,28 @@ function LeadsListContent() {
               ))
             ) : leads.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={columnCount} className="text-center py-8 text-muted-foreground">
-                  {search || status || priority ? 'No leads match your filters.' : 'No leads yet. Add your first lead to get started.'}
+                <TableCell colSpan={columnCount} className="p-0">
+                  {activeFilterCount > 0 || search ? (
+                    <EmptyState
+                      icon={Search}
+                      title="No leads match your filters"
+                      description="Try a different search, or clear the filters to see everything."
+                    />
+                  ) : (
+                    <EmptyState
+                      icon={Upload}
+                      title="No leads yet"
+                      description="Import a list to get started — CSV and Excel both work, and Do Not Call numbers are handled automatically."
+                      action={
+                        <Link href="/admin/leads/import">
+                          <Button size="sm">
+                            <Upload className="h-4 w-4 mr-1" />
+                            Import leads
+                          </Button>
+                        </Link>
+                      }
+                    />
+                  )}
                 </TableCell>
               </TableRow>
             ) : (

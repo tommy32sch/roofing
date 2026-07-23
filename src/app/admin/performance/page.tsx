@@ -4,10 +4,11 @@ import { useEffect, useState } from 'react';
 import { TrendingUp, DollarSign, CalendarCheck, Target, Users } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Badge } from '@/components/ui/badge';
 import { RoleBadge } from '@/components/users/role-badge';
 import type { RepStats } from '@/app/api/admin/performance/route';
 import type { UserRole } from '@/types';
+import { PageHeader } from '@/components/layout/page-header';
+import { EmptyState } from '@/components/layout/empty-state';
 
 function StatCard({ label, value, sub }: { label: string; value: string | number; sub?: string }) {
   return (
@@ -137,9 +138,14 @@ export default function PerformancePage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">
-        {userRole === 'admin' ? 'Team Performance' : 'My Performance'}
-      </h1>
+      <PageHeader
+        title={userRole === 'admin' ? 'Team Performance' : 'My Performance'}
+        description={
+          userRole === 'admin'
+            ? 'Appointments set and deals closed, per rep'
+            : 'Your appointments set and deals closed'
+        }
+      />
 
       {/* Team summary (admin only) */}
       {userRole === 'admin' && reps.length > 1 && (
@@ -165,8 +171,12 @@ export default function PerformancePage() {
 
       {reps.length === 0 ? (
         <Card>
-          <CardContent className="py-12 text-center text-muted-foreground">
-            <p>No data yet. Assign leads to reps to start tracking performance.</p>
+          <CardContent className="p-0">
+            <EmptyState
+              icon={TrendingUp}
+              title="Nothing to measure yet"
+              description="Assign leads to setters and closers, and their appointment and close rates will show up here."
+            />
           </CardContent>
         </Card>
       ) : (

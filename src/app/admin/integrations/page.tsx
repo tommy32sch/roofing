@@ -19,6 +19,8 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import type { IntegrationApiKey, WebhookLog, LeadSource } from '@/types';
+import { PageHeader } from '@/components/layout/page-header';
+import { EmptyState } from '@/components/layout/empty-state';
 
 export default function IntegrationsPage() {
   const [keys, setKeys] = useState<IntegrationApiKey[]>([]);
@@ -130,12 +132,10 @@ export default function IntegrationsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Integrations</h1>
-          <p className="text-muted-foreground">Manage webhook integrations and API keys</p>
-        </div>
-      </div>
+      <PageHeader
+        title="Integrations"
+        description="Webhooks and API keys for services that send you leads"
+      />
 
       {/* Webhook URL */}
       <Card>
@@ -308,7 +308,11 @@ export default function IntegrationsPage() {
         <CardContent>
           {logs.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-6">
-              No webhook activity yet.
+              <EmptyState
+                icon={Activity}
+                title="No webhook activity yet"
+                description="Once a service posts leads to your webhook URL, each request will be logged here."
+              />
             </p>
           ) : (
             <div className="space-y-2">

@@ -3,9 +3,8 @@
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { formatDistanceToNow } from 'date-fns';
-import { MessageSquare, PhoneCall, Mail, Eye, ArrowRightLeft, FileText, Edit2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { MessageSquare, PhoneCall, Mail, Eye, ArrowRightLeft, FileText, Edit2, ChevronLeft, ChevronRight, ScrollText } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
@@ -17,6 +16,7 @@ import {
 } from '@/components/ui/select';
 import { formatAddressShort } from '@/lib/utils/format';
 import { PageHeader } from '@/components/layout/page-header';
+import { EmptyState } from '@/components/layout/empty-state';
 
 const ACTIVITY_ICONS: Record<string, React.ElementType> = {
   note: MessageSquare,
@@ -141,8 +141,16 @@ export default function ActivityPage() {
         </div>
       ) : activities.length === 0 ? (
         <Card>
-          <CardContent className="py-12 text-center text-muted-foreground">
-            No activity yet.
+          <CardContent className="p-0">
+            <EmptyState
+              icon={ScrollText}
+              title={typeFilter || userFilter ? 'No activity matches these filters' : 'No activity yet'}
+              description={
+                typeFilter || userFilter
+                  ? 'Try clearing the type or user filter.'
+                  : 'Calls, notes, visits and status changes will appear here as your team works leads.'
+              }
+            />
           </CardContent>
         </Card>
       ) : (

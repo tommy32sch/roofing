@@ -53,13 +53,12 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-import { LeadStatusBadge } from '@/components/leads/lead-status-badge';
-import { LeadPriorityBadge } from '@/components/leads/lead-priority-badge';
 import { WonLeadModal } from '@/components/leads/WonLeadModal';
 import { AppointmentModal } from '@/components/leads/AppointmentModal';
 import { LEAD_STATUS_OPTIONS, LEAD_PRIORITY_OPTIONS, APPOINTMENT_TYPE_OPTIONS } from '@/types';
 import type { LeadWithActivities, LeadActivity, ActivityType, UserRole, AdminUser, AppointmentType, LeadAppointment } from '@/types';
 import { estimateRoofValue } from '@/lib/leads/roof-value';
+import { EmptyState } from '@/components/layout/empty-state';
 
 const SETTER_ALLOWED_STATUSES = new Set(['new', 'contacted', 'appointment_set', 'lost']);
 const CLOSER_ALLOWED_STATUSES = new Set(['sold', 'lost']);
@@ -699,7 +698,12 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
               </CardHeader>
               <CardContent>
                 {!lead.lead_appointments || lead.lead_appointments.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No appointments scheduled.</p>
+                  <EmptyState
+                    icon={CalendarClock}
+                    title="No appointments scheduled"
+                    description="Add one here, or set this lead's status to Appointment Set."
+                    className="py-8"
+                  />
                 ) : (
                   <div className="space-y-2">
                     {lead.lead_appointments.map((appt) => {
@@ -921,7 +925,12 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
               );
             })}
             {(!lead.lead_activities || lead.lead_activities.length === 0) && (
-              <p className="text-sm text-muted-foreground text-center py-8">No activity yet.</p>
+              <EmptyState
+                icon={MessageSquare}
+                title="No activity yet"
+                description="Log a call, note or visit above and it will show up here."
+                className="py-8"
+              />
             )}
           </div>
         </TabsContent>
