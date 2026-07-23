@@ -27,6 +27,7 @@ import {
   CalendarClock,
   PhoneOff,
   Navigation,
+  X,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatDistanceToNow, format } from 'date-fns';
@@ -430,10 +431,17 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
 
       {/* Quick actions */}
       <div className="flex flex-wrap gap-3">
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-muted-foreground">Status:</span>
+        {/* Lead controls. Grouped into one labelled surface so status, priority and
+          follow-up read as a toolbar for this record rather than three loose
+          inputs, and each control gets a real label above it instead of an
+          inline "Status:" prefix. */}
+      <div className="flex flex-wrap items-end gap-x-6 gap-y-3 rounded-lg border bg-card px-4 py-3">
+        <div className="space-y-1">
+          <label className="block text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Status
+          </label>
           <Select value={lead.status} onValueChange={handleStatusChange}>
-            <SelectTrigger className="w-[150px] h-8">
+            <SelectTrigger className="h-9 w-[160px]">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -447,10 +455,13 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
             </SelectContent>
           </Select>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-muted-foreground">Priority:</span>
+
+        <div className="space-y-1">
+          <label className="block text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Priority
+          </label>
           <Select value={lead.priority} onValueChange={handlePriorityChange}>
-            <SelectTrigger className="w-[120px] h-8">
+            <SelectTrigger className="h-9 w-[130px]">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -460,27 +471,39 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
             </SelectContent>
           </Select>
         </div>
+
         {userRole !== 'closer' && (
-          <div className="flex items-center gap-2">
-            <CalendarClock className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm text-muted-foreground">Follow-up:</span>
-            <Input
-              type="date"
-              value={lead.follow_up_date || ''}
-              onChange={(e) => handleFollowUpChange(e.target.value)}
-              className="h-8 w-[150px] text-sm"
-            />
-            {lead.follow_up_date && (
-              <button
-                onClick={() => handleFollowUpChange('')}
-                className="text-xs text-muted-foreground hover:text-destructive"
-                title="Clear follow-up"
-              >
-                ✕
-              </button>
-            )}
+          <div className="space-y-1">
+            <label
+              htmlFor="follow_up_date"
+              className="block text-xs font-medium uppercase tracking-wide text-muted-foreground"
+            >
+              Follow-up
+            </label>
+            <div className="flex items-center gap-1.5">
+              <Input
+                id="follow_up_date"
+                type="date"
+                value={lead.follow_up_date || ''}
+                onChange={(e) => handleFollowUpChange(e.target.value)}
+                className="h-9 w-[165px] text-sm"
+              />
+              {lead.follow_up_date && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-9 px-2 text-muted-foreground hover:text-destructive"
+                  onClick={() => handleFollowUpChange('')}
+                  title="Clear follow-up"
+                  aria-label="Clear follow-up date"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
           </div>
         )}
+      </div>
       </div>
 
       <Tabs defaultValue="overview">
@@ -643,6 +666,14 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
                 <CardTitle className="text-sm font-medium text-muted-foreground">Roof</CardTitle>
               </CardHeader>
               <CardContent>
+                {!lead.roof_type && !lead.roof_age && lead.roof_score === null && lead.estimated_roof_value == null ? (
+                  <EmptyState
+                    icon={Home}
+                    title="No roof details yet"
+                    description="Roof type, age and estimated value fill in from enrichment or when you edit the lead."
+                    className="py-6"
+                  />
+                ) : (
                 <div className="grid grid-cols-2 gap-2 text-sm">
                   <div>
                     <span className="text-muted-foreground">Type:</span>{' '}
@@ -679,6 +710,7 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
                     </div>
                   )}
                 </div>
+                )}
               </CardContent>
             </Card>
 
