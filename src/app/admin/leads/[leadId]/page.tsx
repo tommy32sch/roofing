@@ -61,6 +61,7 @@ import type { LeadWithActivities, LeadActivity, ActivityType, UserRole, AdminUse
 import { estimateRoofValue } from '@/lib/leads/roof-value';
 import { EmptyState } from '@/components/layout/empty-state';
 import { LeadPhotos } from '@/components/leads/LeadPhotos';
+import { DateTimeFields } from '@/components/leads/DateTimeFields';
 
 const SETTER_ALLOWED_STATUSES = new Set(['new', 'contacted', 'appointment_set', 'lost']);
 const CLOSER_ALLOWED_STATUSES = new Set(['sold', 'lost']);
@@ -1008,14 +1009,11 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
               </div>
             )}
             <div className="space-y-1">
-              <label htmlFor="card_appt_datetime" className="text-sm font-medium">
-                Date &amp; Time<span className="text-destructive ml-0.5">*</span>
-              </label>
-              <Input
-                id="card_appt_datetime"
-                type="datetime-local"
+              <DateTimeFields
+                idPrefix="card_appt"
                 value={apptDateTime}
-                onChange={(e) => setApptDateTime(e.target.value)}
+                onChange={setApptDateTime}
+                disabled={apptSaving}
               />
             </div>
             <div className="space-y-1">

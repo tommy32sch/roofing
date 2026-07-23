@@ -3,9 +3,9 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { DateTimeFields } from '@/components/leads/DateTimeFields';
 
 interface AppointmentModalProps {
   leadId: string;
@@ -79,14 +79,11 @@ export function AppointmentModal({ leadId, open, onOpenChange, onSuccess }: Appo
 
         <div className="space-y-4 py-2">
           <div className="space-y-1">
-            <Label htmlFor="appt_datetime">
-              Date &amp; Time<span className="text-destructive ml-0.5">*</span>
-            </Label>
-            <Input
-              id="appt_datetime"
-              type="datetime-local"
+            <DateTimeFields
+              idPrefix="appt"
               value={scheduledAt}
-              onChange={(e) => setScheduledAt(e.target.value)}
+              onChange={setScheduledAt}
+              disabled={loading}
             />
           </div>
           <div className="space-y-1">
