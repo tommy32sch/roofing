@@ -36,6 +36,7 @@ export default function MapPage() {
   const [priority, setPriority] = useState('');
   const [userRole, setUserRole] = useState<UserRole>('setter');
   const [selection, setSelection] = useState<Map<string, number>>(new Map());
+  const [visibleIds, setVisibleIds] = useState<Set<string>>(new Set());
   const [assignOpen, setAssignOpen] = useState(false);
   const [geocoding, setGeocoding] = useState(false);
   const [geocodeStatus, setGeocodeStatus] = useState('');
@@ -90,15 +91,48 @@ export default function MapPage() {
     });
   }, []);
 
-  function selectVisible() {
+  // Which leads are inside the current viewport. Tracked in state (not read on
+  // click) so the button can say whether it will select or deselect.
+  const recomputeVisible = useCallback(() => {
     const map = mapRef.current;
     if (!map) return;
     const bounds = map.getBounds();
+    const next = new Set<string>();
+    for (const lead of leads) {
+      if (bounds.contains([lead.latitude, lead.longitude])) next.add(lead.id);
+    }
+    setVisibleIds(next);
+  }, [leads]);
+
+  useEffect(() => {
+    if (!mapInstance) return;
+    recomputeVisible();
+    let t: ReturnType<typeof setTimeout>;
+    const onMove = () => { clearTimeout(t); t = setTimeout(recomputeVisible, 150); };
+    // moveend alone isn't enough: resizing the container (or a zoom that keeps
+    // the same centre) changes which leads are in view without firing it, which
+    // would leave the button's count and select/deselect state stale.
+    const events = 'moveend zoomend resize';
+    mapInstance.on(events, onMove);
+    return () => { clearTimeout(t); mapInstance.off(events, onMove); };
+  }, [mapInstance, recomputeVisible]);
+
+  const allVisibleSelected =
+    visibleIds.size > 0 && [...visibleIds].every((id) => selection.has(id));
+
+  /**
+   * Toggle the leads currently in view. Deliberately scoped to the viewport:
+   * panning elsewhere and deselecting shouldn't discard a selection you built
+   * up somewhere else on the map.
+   */
+  function toggleVisibleSelection() {
     setSelection((prev) => {
       const next = new Map(prev);
-      for (const lead of leads) {
-        if (bounds.contains([lead.latitude, lead.longitude])) {
-          next.set(lead.id, Number(lead.estimated_roof_value) || 0);
+      if (allVisibleSelected) {
+        for (const id of visibleIds) next.delete(id);
+      } else {
+        for (const lead of leads) {
+          if (visibleIds.has(lead.id)) next.set(lead.id, Number(lead.estimated_roof_value) || 0);
         }
       }
       return next;
@@ -227,9 +261,15 @@ export default function MapPage() {
           <>
   
             {isAdmin && (
-              <Button variant="outline" size="sm" onClick={selectVisible} disabled={loading || leads.length === 0}>
+              <Button
+                variant={allVisibleSelected ? 'default' : 'outline'}
+                size="sm"
+                onClick={toggleVisibleSelection}
+                disabled={loading || visibleIds.size === 0}
+              >
                 <BoxSelect className="h-4 w-4 mr-1" />
-                Select visible
+                {allVisibleSelected ? 'Deselect visible' : 'Select visible'}
+                {visibleIds.size > 0 && ` (${visibleIds.size})`}
               </Button>
             )}
             {isAdmin && !drawing && (
