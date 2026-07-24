@@ -8,6 +8,8 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { LeadAppointment, LeadStatus } from '@/types';
 import { PageHeader } from '@/components/layout/page-header';
+import { MarketFilter } from '@/components/markets/market-filter';
+import { useMarkets, ALL_MARKETS } from '@/components/markets/use-markets';
 
 interface CalendarAppointment extends LeadAppointment {
   leads: {
@@ -30,13 +32,16 @@ export default function CalendarPage() {
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date(), { weekStartsOn: 1 }));
   const [appointments, setAppointments] = useState<CalendarAppointment[]>([]);
   const [loading, setLoading] = useState(true);
+  const { markets, homeMarketId, loading: marketsLoading } = useMarkets();
+  const [market, setMarket] = useState('');
+  const marketValue = market || (homeMarketId != null ? String(homeMarketId) : ALL_MARKETS);
 
   const fetchAppointments = useCallback(async () => {
     setLoading(true);
     const start = weekStart.toISOString();
     const end = addDays(weekStart, 7).toISOString();
     try {
-      const res = await fetch(`/api/admin/appointments?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`);
+      const res = await fetch(`/api/admin/appointments?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}${market ? `&market_id=${market}` : ''}`);
       const data = await res.json();
       if (data.success) setAppointments(data.appointments);
     } catch {
@@ -44,7 +49,7 @@ export default function CalendarPage() {
     } finally {
       setLoading(false);
     }
-  }, [weekStart]);
+  }, [weekStart, market]);
 
   useEffect(() => {
     fetchAppointments();
@@ -60,7 +65,9 @@ export default function CalendarPage() {
         description="Inspections and adjuster visits for your team"
         actions={
           <>
-  
+            {!marketsLoading && (
+              <MarketFilter markets={markets} value={marketValue} onChange={setMarket} className="w-[150px]" />
+            )}
             <span className="text-sm text-muted-foreground">{weekLabel}</span>
             <Button variant="outline" size="sm" onClick={() => setWeekStart(addDays(weekStart, -7))}>
               <ChevronLeft className="h-4 w-4" />

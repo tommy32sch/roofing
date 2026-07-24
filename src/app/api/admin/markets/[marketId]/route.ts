@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/supabase/server';
 import { getAuthenticatedAdmin } from '@/lib/auth/jwt';
+import { geocodeAddress } from '@/lib/integrations/geocode';
 
 /** Rename an office, adjust its geocoding fallback, or retire it. Admin only. */
 export async function PATCH(
@@ -42,7 +43,23 @@ export async function PATCH(
     updates.name = name;
   }
   if (body.default_geo_city !== undefined) {
-    updates.default_geo_city = body.default_geo_city?.trim() || null;
+    const city = body.default_geo_city?.trim() || null;
+    updates.default_geo_city = city;
+    // Moving an office to a different city moves where the map jumps to.
+    // Best-effort — a failed lookup leaves the existing center alone.
+    if (city) {
+      const state = body.default_geo_state?.trim()?.toUpperCase() || null;
+      try {
+        const center = await geocodeAddress('', city, state, null);
+        if (center) {
+          updates.center_lat = center.latitude;
+          updates.center_lng = center.longitude;
+          updates.center_zoom = 10;
+        }
+      } catch {
+        // keep whatever center the market already had
+      }
+    }
   }
   if (body.default_geo_state !== undefined) {
     updates.default_geo_state = body.default_geo_state?.trim()?.toUpperCase() || null;

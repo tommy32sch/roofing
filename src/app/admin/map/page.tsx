@@ -41,6 +41,14 @@ export default function MapPage() {
   // '' means "not chosen yet" — fall back to the rep's own office once loaded.
   const [market, setMarket] = useState('');
   const marketValue = market || (homeMarketId != null ? String(homeMarketId) : ALL_MARKETS);
+  // The office the map should sit over when there are no leads to fit to.
+  // "All Markets" has no single home, so the view is left alone.
+  const selectedMarket = marketValue === ALL_MARKETS
+    ? null
+    : markets.find((m) => String(m.id) === marketValue) ?? null;
+  const marketCenter = selectedMarket?.center_lat != null && selectedMarket?.center_lng != null
+    ? { lat: selectedMarket.center_lat, lng: selectedMarket.center_lng, zoom: selectedMarket.center_zoom }
+    : null;
   const [userRole, setUserRole] = useState<UserRole>('setter');
   const [selection, setSelection] = useState<Map<string, number>>(new Map());
   const [visibleIds, setVisibleIds] = useState<Set<string>>(new Set());
@@ -478,6 +486,9 @@ export default function MapPage() {
             onMapReady={(map) => { mapRef.current = map; setMapInstance(map); }}
             onLogKnock={logKnock}
             loggingKnockFor={loggingKnockFor}
+            marketId={selectedMarket?.id ?? null}
+            marketCenter={marketCenter}
+            marketLoading={loading}
           />
         )}
       </div>

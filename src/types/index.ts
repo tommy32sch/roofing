@@ -122,6 +122,11 @@ export interface Market {
    *  Minnesota street doesn't resolve into Arizona. */
   default_geo_city: string | null;
   default_geo_state: string | null;
+  /** Where the map jumps to when this office is selected. Independent of its
+   *  leads, so an office with none yet still puts the map in the right place. */
+  center_lat: number | null;
+  center_lng: number | null;
+  center_zoom: number | null;
   is_active: boolean;
   sort_order: number;
   created_at: string;

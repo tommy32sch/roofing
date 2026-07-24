@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/supabase/server';
 import { getAuthenticatedAdmin } from '@/lib/auth/jwt';
+import { geocodeAddress } from '@/lib/integrations/geocode';
 
 /**
  * Markets (offices).
@@ -54,12 +55,30 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: false, error: 'Name is required' }, { status: 400 });
   }
 
+  const city = body.default_geo_city?.trim() || null;
+  const state = body.default_geo_state?.trim()?.toUpperCase() || null;
+
+  // Give the new office a map position up front, so selecting it moves the map
+  // even before a single lead is imported. Best-effort: a failed lookup just
+  // leaves the center null and the map keeps its current view.
+  let center: { latitude: number; longitude: number } | null = null;
+  if (city) {
+    try {
+      center = await geocodeAddress('', city, state, null);
+    } catch {
+      center = null;
+    }
+  }
+
   const { data, error } = await db()
     .from('markets')
     .insert({
       name,
-      default_geo_city: body.default_geo_city?.trim() || null,
-      default_geo_state: body.default_geo_state?.trim()?.toUpperCase() || null,
+      default_geo_city: city,
+      default_geo_state: state,
+      center_lat: center?.latitude ?? null,
+      center_lng: center?.longitude ?? null,
+      center_zoom: center ? 10 : null,
     })
     .select()
     .single();
