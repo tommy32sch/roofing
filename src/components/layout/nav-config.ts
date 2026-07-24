@@ -1,6 +1,6 @@
 import {
   Home, Users, Map, CalendarDays, ScrollText, TrendingUp,
-  Upload, UserCog, BarChart2, Webhook, Settings, PlusCircle,
+  Upload, UserCog, BarChart2, Webhook, Settings, PlusCircle, Sun,
 } from 'lucide-react';
 import type { UserRole } from '@/types';
 
@@ -33,6 +33,9 @@ export function getNavGroups(role: UserRole): NavGroup[] {
     {
       label: 'Workspace',
       items: [
+        // First because it's the screen a rep opens each morning; the Dashboard
+        // is a status read, this is the work itself.
+        { href: '/admin/today', label: 'Today', icon: Sun },
         { href: '/admin', label: 'Dashboard', icon: Home },
         { href: '/admin/leads', label: 'Leads', icon: Users, badge: 'duplicates' },
         { href: '/admin/map', label: 'Map', icon: Map },
@@ -68,7 +71,10 @@ export function getNavGroups(role: UserRole): NavGroup[] {
 /** Phone tab bar — only the handful of things a rep needs in the field. */
 export function getBottomTabs(role: UserRole): NavItem[] {
   const tabs: NavItem[] = [
-    { href: '/admin', label: 'Dashboard', icon: Home },
+    // Today takes the Dashboard's slot rather than adding a sixth tab: in the
+    // field, "what do I do next" beats a stats read, and the Dashboard is still
+    // one tap away in the menu.
+    { href: '/admin/today', label: 'Today', icon: Sun },
     { href: '/admin/leads', label: 'Leads', icon: Users },
     { href: '/admin/map', label: 'Map', icon: Map },
   ];
