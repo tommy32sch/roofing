@@ -9,6 +9,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { KNOCK_DISPOSITIONS, knockLabel, knockRecency, type KnockDisposition } from '@/lib/leads/knocks';
 import { Button } from '@/components/ui/button';
 import { LEAD_STATUS_OPTIONS } from '@/types';
+import { shouldRecenterMap } from '@/lib/leads/markets';
 import { STATUS_COLORS, DNC_RING_COLOR, DO_NOT_KNOCK_RING_COLOR, stormColor, stormRadius, stormLabel, type GeoLead, type StormReport, type StormType } from './map-constants';
 
 // Phoenix metro — sensible default for an empty map until leads load
@@ -67,11 +68,7 @@ function MarketView({
 }) {
   const map = useMap();
   useEffect(() => {
-    // Wait for the new market's leads to land before deciding there are none.
-    // Mid-fetch, `leads` still holds the PREVIOUS market's pins, so acting
-    // early would fly to the centre and then FitBounds would immediately refit
-    // to the leads — two animations for one click.
-    if (loading || hasLeads || !center) return;
+    if (!shouldRecenterMap({ loading, hasLeads, hasCenter: !!center }) || !center) return;
     map.flyTo([center.lat, center.lng], center.zoom ?? DEFAULT_ZOOM, { duration: 0.8 });
     // marketId is the trigger: re-centre on switch, not on every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps

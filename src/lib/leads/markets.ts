@@ -44,6 +44,30 @@ export function resolveMarketFilter(
 }
 
 /**
+ * Whether the map should jump to the selected office's own position.
+ *
+ * The map normally fits its view to the leads it is showing, which is strictly
+ * better than a fixed centre — so this only takes over when there is nothing to
+ * fit. Pure and tested because the failure it guards against is invisible until
+ * you happen to click the one market that has no leads.
+ *
+ * @param loading true while the new market's leads are still in flight. Acting
+ *   early would recentre using the PREVIOUS market's pins, then let the fit
+ *   immediately override it — two animations for one click.
+ */
+export function shouldRecenterMap({
+  loading,
+  hasLeads,
+  hasCenter,
+}: {
+  loading: boolean;
+  hasLeads: boolean;
+  hasCenter: boolean;
+}): boolean {
+  return !loading && !hasLeads && hasCenter;
+}
+
+/**
  * Narrow a Supabase query to a market when one is in effect.
  *
  * The parameter is deliberately unconstrained. Expressing this as

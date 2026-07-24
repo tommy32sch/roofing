@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { resolveMarketFilter, applyMarketFilter, ALL_MARKETS } from './markets';
+import { resolveMarketFilter, applyMarketFilter, shouldRecenterMap, ALL_MARKETS } from './markets';
 
 const AZ = 1;
 const MN = 2;
@@ -63,5 +63,33 @@ describe('applyMarketFilter', () => {
     const q = fakeQuery();
     applyMarketFilter(q, null);
     expect(q.calls).toEqual([]);
+  });
+});
+
+describe('shouldRecenterMap', () => {
+  const base = { loading: false, hasLeads: false, hasCenter: true };
+
+  // The reported bug: switching to Minnesota, which has no leads, left the map
+  // sitting over Phoenix because the fit-to-leads path bails out on an empty set.
+  it('recentres on an office that has no mapped leads', () => {
+    expect(shouldRecenterMap(base)).toBe(true);
+  });
+
+  // Fitting the actual pins beats a fixed centre, so it must not take over.
+  it('defers to the lead fit when the office has leads', () => {
+    expect(shouldRecenterMap({ ...base, hasLeads: true })).toBe(false);
+  });
+
+  // Mid-switch `leads` still holds the PREVIOUS office's pins. Acting then would
+  // fly to the centre and let the fit immediately override it.
+  it('waits while the new market is still loading', () => {
+    expect(shouldRecenterMap({ ...base, loading: true })).toBe(false);
+    expect(shouldRecenterMap({ loading: true, hasLeads: true, hasCenter: true })).toBe(false);
+  });
+
+  // "All Markets", or an office whose centre never geocoded — hold the view
+  // rather than jumping somewhere arbitrary.
+  it('holds the current view when there is no centre to move to', () => {
+    expect(shouldRecenterMap({ ...base, hasCenter: false })).toBe(false);
   });
 });
