@@ -107,6 +107,11 @@ export interface Lead {
   duplicate_of_id: string | null;
   // Do Not Call (flagged from the source CSV on import)
   is_dnc: boolean;
+  // Door-knock history (migration 013). Written by the map's knock logging.
+  last_knock_at: string | null;
+  last_disposition: string | null;
+  knock_count: number;
+  do_not_knock: boolean;
   /** Office this lead belongs to. Set at import, never derived from the
    *  address — most imported leads have no city/state at all. */
   market_id: number | null;
