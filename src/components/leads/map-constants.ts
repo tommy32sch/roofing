@@ -35,6 +35,7 @@ export interface GeoLead {
   last_disposition: string | null;
   knock_count: number;
   do_not_knock: boolean;
+  follow_up_date: string | null;
 }
 
 /** Stroke color used to ring Do Not Call pins (knock-only). */

@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
     let query = supabase
       .from('leads')
       .select(
-        'id, first_name, last_name, latitude, longitude, status, priority, estimated_roof_value, address_street, address_city, is_dnc, hail_date, hail_size_inches, last_knock_at, last_disposition, knock_count, do_not_knock'
+        'id, first_name, last_name, latitude, longitude, status, priority, estimated_roof_value, address_street, address_city, is_dnc, hail_date, hail_size_inches, last_knock_at, last_disposition, knock_count, do_not_knock, follow_up_date'
       )
       .eq('is_flagged_duplicate', false)
       .limit(10000);
