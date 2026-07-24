@@ -29,3 +29,29 @@
 - Verify with a real row read instead: `.select('*').limit(1)` surfaces
   "Could not find the table 'public.X' in the schema cache". Always include a
   control query against a known-good table so a broken client can't read as a pass.
+
+## <input type="time"> has the SAME "empty until complete" trap as datetime-local
+- **Mistake:** "fixed" a greyed-out submit button by swapping `datetime-local`
+  for a separate date + `<input type="time">`, believing the trap was unique to
+  datetime-local. It is not. In a US (AM/PM) locale `type="time"` renders
+  `hh:mm AM/PM` and its `.value` stays `''` until ALL segments — including the
+  meridiem — are valid. So editing the time to a real hour leaves value `''`
+  mid-entry and any all-or-nothing "date && time" combine disables the button
+  exactly as before. Shipped the same bug twice.
+- **Why it slipped past verification:** (1) automated `type`/keystroke tools in
+  this harness deliver ZERO key events to native segmented inputs — synthetic
+  typing "worked" but changed nothing; (2) headless Chromium can render
+  `type="time"` as 24h with no AM/PM segment, hiding the locale-specific failure.
+  A browser test that only exercises auto-fill/programmatic value-set will pass
+  while the real keyboard path is broken.
+- **Rules:**
+  - For split date/time inputs, make the DATE the only field that can block the
+    value; default or hold-with-a-hint on time, never silently disable.
+  - Distinguish "mid-entry" from "empty" via `input.validity.badInput`
+    (`value==='' && badInput` = partial), not by emptiness alone.
+  - Put the combine logic in a PURE, unit-tested function — jsdom doesn't
+    implement time/date input sanitization, so DOM tests can't cover it; a pure
+    function can encode "partial -> '' -> disabled, complete -> value -> enabled".
+  - Don't trust a green browser check that relied on synthetic keystrokes or
+    programmatic value sets for native date/time controls; those bypass the exact
+    sanitization that causes the bug.
