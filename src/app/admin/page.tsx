@@ -2,8 +2,8 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
-import { Users, TrendingUp, Flame, CalendarDays, ArrowRight, RefreshCw, DollarSign, CalendarClock, AlertCircle } from 'lucide-react';
-import { formatDistanceToNow, format, isPast, isToday } from 'date-fns';
+import { Users, TrendingUp, Flame, CalendarDays, ArrowRight, RefreshCw, DollarSign } from 'lucide-react';
+import { formatDistanceToNow } from 'date-fns';
 import { formatAddress } from '@/lib/utils/format';
 import { LeadStatusBadge } from '@/components/leads/lead-status-badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { DuplicateReviewPanel } from '@/components/leads/DuplicateReviewPanel';
-import type { DashboardStats, LeadStatus, LeadWithSource, UserRole } from '@/types';
+import type { DashboardStats, LeadStatus, UserRole } from '@/types';
 import { PageHeader } from '@/components/layout/page-header';
 import { MarketFilter } from '@/components/markets/market-filter';
 import { useMarkets, ALL_MARKETS } from '@/components/markets/use-markets';
@@ -42,7 +42,6 @@ export default function DashboardPage() {
   const [userRole, setUserRole] = useState<UserRole>('admin');
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-  const [followUps, setFollowUps] = useState<LeadWithSource[]>([]);
 
   const { markets, homeMarketId, loading: marketsLoading } = useMarkets();
   const [market, setMarket] = useState('');
@@ -55,19 +54,11 @@ export default function DashboardPage() {
       setLoading(true);
     }
     try {
-      const today = new Date().toISOString().slice(0, 10);
-      const scope = market ? `&market_id=${market}` : '';
-      const [statsRes, followUpRes] = await Promise.all([
-        fetch(`/api/admin/stats${market ? `?market_id=${market}` : ''}`),
-        fetch(`/api/admin/leads?follow_up_before=${today}&limit=20&sort=follow_up_date&order=asc${scope}`),
-      ]);
-      const [statsData, followUpData] = await Promise.all([statsRes.json(), followUpRes.json()]);
+      const statsRes = await fetch(`/api/admin/stats${market ? `?market_id=${market}` : ''}`);
+      const statsData = await statsRes.json();
       if (statsData.success) {
         setStats(statsData.stats);
         setLastUpdated(new Date());
-      }
-      if (followUpData.success) {
-        setFollowUps(followUpData.leads);
       }
     } catch {
       // silent
@@ -216,53 +207,6 @@ export default function DashboardPage() {
           </div>
         </CardContent>
       </Card>
-
-      {/* Follow-up reminders */}
-      {followUps.length > 0 && (
-        <Card className="border-amber-200 dark:border-amber-900">
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-lg flex items-center gap-2">
-                <CalendarClock className="h-4 w-4 text-amber-500" />
-                Follow-ups Due
-                <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-amber-500 px-1.5 text-[11px] font-bold text-white">
-                  {followUps.length}
-                </span>
-              </CardTitle>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              {followUps.map((lead) => {
-                const date = new Date(lead.follow_up_date + 'T00:00:00');
-                const overdue = isPast(date) && !isToday(date);
-                return (
-                  <Link
-                    key={lead.id}
-                    href={`/admin/leads/${lead.id}`}
-                    className="flex items-center justify-between rounded-lg border p-3 hover:bg-muted/50 transition-colors"
-                  >
-                    <div className="flex items-center gap-2">
-                      {overdue && <AlertCircle className="h-4 w-4 text-destructive shrink-0" />}
-                      <div>
-                        <p className="font-medium text-sm">
-                          {lead.first_name} {lead.last_name}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {formatAddress(lead) || 'No address'}
-                        </p>
-                      </div>
-                    </div>
-                    <span className={`text-xs font-medium ${overdue ? 'text-destructive' : 'text-amber-600 dark:text-amber-400'}`}>
-                      {isToday(date) ? 'Today' : overdue ? `${format(date, 'MMM d')} (overdue)` : format(date, 'MMM d')}
-                    </span>
-                  </Link>
-                );
-              })}
-            </div>
-          </CardContent>
-        </Card>
-      )}
 
       {/* Duplicate review (admin only) */}
       {userRole === 'admin' && <DuplicateReviewPanel />}
