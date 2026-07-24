@@ -18,6 +18,51 @@ const DEFAULT_ZOOM = 10;
 
 const STATUS_LABELS = Object.fromEntries(LEAD_STATUS_OPTIONS.map((o) => [o.value, o.label]));
 
+/**
+ * Run a view change once the map container actually has a size.
+ *
+ * A freshly mounted map has a 0x0 container until layout settles, and Leaflet's
+ * flyTo divides by the container size — at zero it yields Invalid LatLng
+ * (NaN, NaN) and throws, taking the page down. fitBounds doesn't throw but
+ * lands on the wrong view.
+ *
+ * Measures the container element directly rather than map.getSize(), which
+ * returns a value Leaflet cached at init and only refreshes on invalidateSize —
+ * polling it would spin forever on a map that was born zero-sized.
+ *
+ * Runs synchronously when the container is already laid out, which is both the
+ * common case and the only path that works in a BACKGROUND TAB, where
+ * requestAnimationFrame never fires. Frame polling is just the fallback for a
+ * container that hasn't been measured yet, and gives up after ~1s rather than
+ * spinning on one that is legitimately hidden.
+ */
+function whenSized(map: LeafletMap, run: () => void): () => void {
+  const el = map.getContainer();
+  const sized = () => el.offsetWidth > 0 && el.offsetHeight > 0;
+  if (sized()) {
+    run();
+    return () => {};
+  }
+
+  let cancelled = false;
+  let frame = 0;
+  let attempts = 0;
+  const tick = () => {
+    if (cancelled) return;
+    if (sized()) {
+      run();
+      return;
+    }
+    if (attempts++ > 60) return;
+    frame = requestAnimationFrame(tick);
+  };
+  frame = requestAnimationFrame(tick);
+  return () => {
+    cancelled = true;
+    cancelAnimationFrame(frame);
+  };
+}
+
 function FitBounds({ leads }: { leads: GeoLead[] }) {
   const map = useMap();
   // Refit when the result set changes identity (filter change / first load)
@@ -27,7 +72,7 @@ function FitBounds({ leads }: { leads: GeoLead[] }) {
     // Defer to the next frame so the container has its final size, then
     // re-measure before fitting — otherwise it over-zooms to fit the bounds
     // into a stale (small) viewport.
-    const id = requestAnimationFrame(() => {
+    return whenSized(map, () => {
       map.invalidateSize();
       map.fitBounds(
         leads.map((l) => [l.latitude, l.longitude] as [number, number]),
@@ -37,7 +82,6 @@ function FitBounds({ leads }: { leads: GeoLead[] }) {
       // tiles for the full container (not a stale smaller area).
       requestAnimationFrame(() => map.invalidateSize());
     });
-    return () => cancelAnimationFrame(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, map]);
   return null;
@@ -69,7 +113,22 @@ function MarketView({
   const map = useMap();
   useEffect(() => {
     if (!shouldRecenterMap({ loading, hasLeads, hasCenter: !!center }) || !center) return;
-    map.flyTo([center.lat, center.lng], center.zoom ?? DEFAULT_ZOOM, { duration: 0.8 });
+    // Must wait for a real container size — flyTo on a 0x0 map throws
+    // Invalid LatLng (NaN, NaN), which crashes the page.
+    return whenSized(map, () => {
+      map.invalidateSize();
+      const target: [number, number] = [center.lat, center.lng];
+      const zoom = center.zoom ?? DEFAULT_ZOOM;
+      // flyTo animates on requestAnimationFrame, which is suspended while the
+      // page is in a background tab — the animation would never progress and
+      // the map would sit on the previous office. Jump straight there instead;
+      // nobody is watching the transition anyway.
+      if (typeof document !== 'undefined' && document.hidden) {
+        map.setView(target, zoom, { animate: false });
+      } else {
+        map.flyTo(target, zoom, { duration: 0.8 });
+      }
+    });
     // marketId is the trigger: re-centre on switch, not on every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [marketId, hasLeads, loading, map]);

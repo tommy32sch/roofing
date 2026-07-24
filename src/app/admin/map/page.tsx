@@ -35,6 +35,11 @@ export default function MapPage() {
   const [leads, setLeads] = useState<GeoLead[]>([]);
   const [missingCoords, setMissingCoords] = useState(0);
   const [loading, setLoading] = useState(true);
+  // Only the FIRST load shows a skeleton. Keying it on "loading && no leads"
+  // tore the map down whenever you came back from an empty market, remounting
+  // Leaflet from scratch — which both flashed and re-ran the initial view logic
+  // against a container that hadn't been laid out yet.
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [status, setStatus] = useState('');
   const [priority, setPriority] = useState('');
   const { markets, homeMarketId, loading: marketsLoading } = useMarkets();
@@ -84,6 +89,7 @@ export default function MapPage() {
       // Failed to fetch
     } finally {
       setLoading(false);
+      setHasLoadedOnce(true);
     }
   }, [status, priority, market]);
 
@@ -471,7 +477,7 @@ export default function MapPage() {
       </div>
 
       <div className="flex-1 min-h-0 isolate">
-        {loading && leads.length === 0 ? (
+        {!hasLoadedOnce ? (
           <Skeleton className="h-full w-full rounded-md" />
         ) : (
           <LeadMap
