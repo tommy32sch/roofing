@@ -22,6 +22,12 @@ export async function POST(request: NextRequest) {
     const formData = await request.formData();
     const file = formData.get('file') as File | null;
 
+    // Which office this list belongs to. Chosen on the import screen because it
+    // cannot be derived — street-only storm lists carry no city or state at all.
+    const rawMarket = formData.get('market_id');
+    const parsedMarket = rawMarket == null ? NaN : Number(rawMarket);
+    const marketId = Number.isInteger(parsedMarket) && parsedMarket > 0 ? parsedMarket : null;
+
     if (!file) {
       return NextResponse.json({ success: false, error: 'No file provided' }, { status: 400 });
     }
@@ -100,6 +106,7 @@ export async function POST(request: NextRequest) {
       const duplicateOfId = assigned.get(`new:${idx}`) ?? null;
       return {
         ...lead,
+        market_id: marketId,
         is_flagged_duplicate: duplicateOfId !== null,
         // Duplicates of another row in this same file have no real UUID yet
         duplicate_of_id: duplicateOfId?.startsWith('new:') ? null : duplicateOfId,

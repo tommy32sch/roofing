@@ -9,6 +9,8 @@ import type { RepStats } from '@/app/api/admin/performance/route';
 import type { UserRole } from '@/types';
 import { PageHeader } from '@/components/layout/page-header';
 import { EmptyState } from '@/components/layout/empty-state';
+import { MarketFilter } from '@/components/markets/market-filter';
+import { useMarkets, ALL_MARKETS } from '@/components/markets/use-markets';
 
 function StatCard({ label, value, sub }: { label: string; value: string | number; sub?: string }) {
   return (
@@ -98,10 +100,13 @@ export default function PerformancePage() {
   const [loading, setLoading] = useState(true);
   const [userRole, setUserRole] = useState<UserRole>('admin');
   const [userId, setUserId] = useState('');
+  const { markets, homeMarketId, loading: marketsLoading } = useMarkets();
+  const [market, setMarket] = useState('');
+  const marketValue = market || (homeMarketId != null ? String(homeMarketId) : ALL_MARKETS);
 
   useEffect(() => {
     Promise.all([
-      fetch('/api/admin/performance').then(r => r.json()),
+      fetch(`/api/admin/performance${market ? `?market_id=${market}` : ''}`).then(r => r.json()),
       fetch('/api/admin/auth/me').then(r => r.json()),
     ]).then(([perfData, meData]) => {
       if (perfData.success) setReps(perfData.reps);
@@ -110,7 +115,7 @@ export default function PerformancePage() {
         setUserId(meData.admin.id);
       }
     }).catch(() => {}).finally(() => setLoading(false));
-  }, []);
+  }, [market]);
 
   if (loading) {
     return (
@@ -144,6 +149,16 @@ export default function PerformancePage() {
           userRole === 'admin'
             ? 'Appointments set and deals closed, per rep'
             : 'Your appointments set and deals closed'
+        }
+        actions={
+          !marketsLoading ? (
+            <MarketFilter
+              markets={markets}
+              value={marketValue}
+              onChange={(v) => { setMarket(v); setLoading(true); }}
+              className="w-[150px]"
+            />
+          ) : undefined
         }
       />
 

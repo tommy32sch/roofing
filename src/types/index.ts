@@ -107,8 +107,24 @@ export interface Lead {
   duplicate_of_id: string | null;
   // Do Not Call (flagged from the source CSV on import)
   is_dnc: boolean;
+  /** Office this lead belongs to. Set at import, never derived from the
+   *  address — most imported leads have no city/state at all. */
+  market_id: number | null;
   created_at: string;
   updated_at: string;
+}
+
+/** An office / branch. Leads and users are both assigned to one. */
+export interface Market {
+  id: number;
+  name: string;
+  /** Geocoding fallback for street-only addresses in this market, so a bare
+   *  Minnesota street doesn't resolve into Arizona. */
+  default_geo_city: string | null;
+  default_geo_state: string | null;
+  is_active: boolean;
+  sort_order: number;
+  created_at: string;
 }
 
 export interface LeadSource {
@@ -157,6 +173,8 @@ export interface AdminUser {
   password_hash: string;
   name: string;
   role: UserRole;
+  /** Home office. Drives the default market filter; not an access restriction. */
+  market_id: number | null;
   created_at: string;
 }
 

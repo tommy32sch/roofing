@@ -13,6 +13,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { PageHeader } from '@/components/layout/page-header';
+import { MarketFilter } from '@/components/markets/market-filter';
+import { useMarkets, ALL_MARKETS } from '@/components/markets/use-markets';
 
 const RANGE_LABELS: Record<string, string> = {
   all: 'All Time',
@@ -91,15 +93,19 @@ export default function AnalyticsPage() {
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [range, setRange] = useState('all');
+  const { markets, homeMarketId, loading: marketsLoading } = useMarkets();
+  const [market, setMarket] = useState('');
+  const marketValue = market || (homeMarketId != null ? String(homeMarketId) : ALL_MARKETS);
 
+  // The skeleton is triggered by the controls that change range/market, not
+  // from inside the effect — a synchronous setState there cascades renders.
   useEffect(() => {
-    setLoading(true);
-    fetch(`/api/admin/analytics?range=${range}`)
+    fetch(`/api/admin/analytics?range=${range}${market ? `&market_id=${market}` : ''}`)
       .then(r => r.json())
       .then(d => { if (d.success) setData(d); })
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, [range]);
+  }, [range, market]);
 
   if (loading) {
     return (
@@ -119,6 +125,10 @@ export default function AnalyticsPage() {
         title="Analytics"
         description={`Based on ${data?.total ?? 0} won lead${data?.total !== 1 ? 's' : ''} with demographic profiles`}
         actions={
+          <div className="flex items-center gap-2">
+            {!marketsLoading && (
+              <MarketFilter markets={markets} value={marketValue} onChange={(v) => { setMarket(v); setLoading(true); }} className="w-[150px]" />
+            )}
             <Select value={range} onValueChange={v => { setRange(v ?? 'all'); setLoading(true); }}>
               <SelectTrigger className="w-[140px]"><SelectValue>{RANGE_LABELS[range] ?? 'All Time'}</SelectValue></SelectTrigger>
               <SelectContent>
@@ -128,6 +138,7 @@ export default function AnalyticsPage() {
                 <SelectItem value="365d">Last 12 months</SelectItem>
               </SelectContent>
             </Select>
+          </div>
         }
       />
 

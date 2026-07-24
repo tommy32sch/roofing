@@ -12,7 +12,7 @@ export async function GET() {
     const supabase = db();
     const { data: users, error } = await supabase
       .from('admin_users')
-      .select('id, email, name, role, created_at')
+      .select('id, email, name, role, market_id, created_at')
       .order('created_at', { ascending: true });
 
     if (error) {
@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
     const { data: user, error } = await supabase
       .from('admin_users')
       .insert({ email: email.toLowerCase().trim(), name: name.trim(), password_hash, role })
-      .select('id, email, name, role, created_at')
+      .select('id, email, name, role, market_id, created_at')
       .single();
 
     if (error) {

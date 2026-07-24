@@ -1,46 +1,82 @@
-# Lead Map View (Leaflet + OSM, free geocoding)
+# Markets (AZ / MN offices)
 
-Plan: `/Users/tommyschwieger/.claude/plans/gentle-dazzling-storm.md`
-Branch: `feat/map-view`
+Goal: split leads by market/office so each rep works their own book, and so
+per-office numbers can be read separately instead of one blended total.
 
-## Tasks
-- [x] Deps: leaflet 1.9.4, react-leaflet 5.0.0, @types/leaflet
-- [x] Geocoding lib `src/lib/integrations/geocode.ts` (Nominatim, only-if-null writes)
-- [x] Auto-geocode on lead create (fire-and-forget beside enrichLead)
-- [x] Backfill script `scripts/geocode-leads.ts` (1.1s throttle, idempotent)
-- [x] GET `/api/admin/leads/geo` (role-filtered, missing_coords count)
-- [x] `map-constants.ts` (status colors, GeoLead type — leaflet-free for SSR)
-- [x] `LeadMap.tsx` (canvas CircleMarkers, popups, FitBounds, map-ready callback)
-- [x] `/admin/map` page (filters, legend, banner, selection, action bar, BulkAssignDialog)
-- [x] Nav: Map item in sidebar + mobile bottom tabs (all roles)
-- [x] CSP: img-src + OSM tile hosts
-- [x] Verify: tsc/lint/build, geocode smoke + backfill, API role tests, UI screenshots
+Key constraint found before building: **615 of 616 leads have no city or state**
+(the PHX storm list imported street-only). Market therefore CANNOT be derived
+from the address — it is set explicitly at import and stored on the lead.
+
+Decisions (confirmed with owner):
+- Home market, switchable: each user has a home office; Leads/Map/reporting
+  default to it; anyone can switch to another market or "All markets".
+- Market also splits reporting (Dashboard, Performance, Analytics).
+
+## Schema
+- [x] `015_markets.sql`: `markets` table (name + per-market geo defaults),
+      `leads.market_id`, `admin_users.market_id`, indexes
+- [x] Seed Arizona + Minnesota
+- [x] Backfill all existing leads -> Arizona (in the migration; NOT yet run)
+
+## Server
+- [x] `market_id` filter on leads, geo, stats, performance, analytics routes
+- [x] `/api/admin/markets` (list; admin-only create/update)
+- [x] `/api/admin/auth/me` returns the user's home `market_id`
+- [x] Import applies the chosen market to every row
+- [x] Geocoding falls back to the LEAD'S market city/state, not the app-wide
+      singleton (a street-only MN lead currently geocodes into Arizona)
+
+## UI
+- [x] Shared market picker, defaulting to home market
+- [x] Leads page + Map filter
+- [x] Dashboard / Performance / Analytics filter
+- [x] Import: market selector (defaults to home market)
+- [x] Settings: manage markets
+- [x] Users: assign a home market
+- [x] Lead detail: show / change market
+
+## Verify
+- [x] Tests for market resolution + filter plumbing
+- [x] typecheck / build / lint / full suite
 
 ## Review
 
-**Status:** complete + verified on branch `feat/map-view` (NOT yet deployed).
+Built on branch `feat/markets`. **Deliberately not merged** — migration 015 is
+not applied yet (verified against the live DB with a real row read plus a
+control query, per tasks/lessons.md). Merging first would break the import
+insert and the users list, both of which name `market_id` directly.
 
-**What was built:** `/admin/map` plots all visible leads as status-colored pins on a
-free OpenStreetMap/Leaflet map (no API key). Popups show name/address/status/est.
-value + lead link. Admins select via popup buttons or "Select visible" (viewport
-bounds) and bulk-assign through the existing BulkAssignDialog — zero new assignment
-code. Free Nominatim geocoding: automatic on lead create, backfill script for
-imports, "N leads not on map" banner. Closers get their status-restricted view.
+What shipped:
+- `markets` table with per-market geocoding regions; `leads.market_id`,
+  `admin_users.market_id`.
+- Server resolves the market per request: explicit `?market_id`, else the
+  caller's home office, `market_id=all` to opt out. Wired into leads, geo,
+  stats, performance and analytics.
+- Pickers on Leads, Map, Dashboard, Performance, Analytics; required market
+  selector on Import; manage-offices card in Settings; home market on Users;
+  market shown on the lead detail Property card.
+- Geocoding is now per-market, fixing a latent bug: with one app-wide region a
+  street-only Minnesota address would have resolved into Arizona.
 
-**Verification:**
-- tsc clean · zero new lint issues · build exit 0 (`/admin/map` prerendered = no SSR
-  crash; geo route registered)
-- Geocode smoke: Mesa AZ address → 33.40698,-111.73181 (plausible) ✓
-- Backfill on real DB: 4/5 geocoded (the 4 real Mesa addresses); the fake
-  "123 main st" test lead correctly failed and feeds the missing-coords banner
-- API e2e (minted JWTs vs dev server): 401 unauth; admin 4 pins + missing:1;
-  closer 3 pins only appointment_set/sold; status filter works
-- UI e2e (production build via preview browser): tiles load through CSP, 4 pins
-  correct colors, fitBounds framed the cluster, legend/banner render, mobile layout
-  + bottom-tab Map link, "Select visible" → "4 selected · $33,500 est." → Assign
-  dialog with correct eligible reps. No real writes (dialog closed unsubmitted).
+Deliberate choices:
+- Home market is a DEFAULT, not an access boundary. Changing it does not revoke
+  sessions the way a role change does. Real per-office access control would
+  belong in middleware next to the role checks.
+- `market_id` is admin-only on lead PATCH — moving a lead between offices
+  changes whose book it lands in.
+- The home market is NOT read inside `getAuthenticatedAdmin`, though it would
+  save a query: a failed lookup there fails closed and would log every user out
+  in the window before the migration is applied. `marketFilterFor` fails soft
+  instead, so a missing column means "no filter", not "no leads".
+- Pickers hide themselves when fewer than two markets exist, so a single-office
+  company never sees a dropdown that can only say one thing.
 
-**Notes:**
-- Deploy = push main; no migrations (lat/long columns already existed)
-- Backfill needs running after each bulk import (or user can re-run anytime)
-- Google Maps can replace tiles later without touching the data layer
+Verified: 158 tests (8 new for market resolution), typecheck, build all pass.
+Lint errors went 2 -> 1; the one remaining is pre-existing and unrelated (an
+`any` in the email webhook route).
+
+Not done / follow-ups:
+- Calendar and Activity are not market-filtered yet.
+- Existing users all have a null home market, so nothing is scoped until you
+  assign offices on the Users page. That is intentional — the rollout can't
+  hide anyone's leads.

@@ -16,7 +16,9 @@ const DEMOGRAPHIC_REQUIRED_FIELDS = [
 
 // Fields only an admin may set. Everything financial/assignment-related lives here
 // so a setter/closer can't award themselves leads or edit deal value via the API.
-const LEAD_ADMIN_ONLY_FIELDS = new Set(['deal_value', 'assigned_setter_id', 'assigned_closer_id']);
+// market_id sits here with the other assignment fields: moving a lead to the
+// other office changes whose book it lands in, so it is an admin action.
+const LEAD_ADMIN_ONLY_FIELDS = new Set(['deal_value', 'assigned_setter_id', 'assigned_closer_id', 'market_id']);
 
 // The complete set of lead columns a client may write. Anything not listed
 // (id, coordinates, enrichment/estimate/normalized fields, timestamps, duplicate

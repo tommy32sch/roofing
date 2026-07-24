@@ -55,11 +55,33 @@ export async function geocodeAddress(
 }
 
 /**
- * Read the configured default geocoding region (city/state) from app_settings.
- * Used to fill in leads that lack their own city/state.
+ * Read the default geocoding region (city/state) used to fill in leads that
+ * lack their own city/state — the normal case, since street-only imports carry
+ * no city at all.
+ *
+ * The lead's own MARKET wins when it has one. app_settings holds a single
+ * app-wide region, which was fine with one office but silently resolves a
+ * street-only Minnesota address into Arizona once a second office exists. The
+ * app-wide value remains the fallback for leads with no market yet.
  */
-export async function getGeoDefaults(): Promise<{ city: string | null; state: string | null }> {
+export async function getGeoDefaults(
+  marketId?: number | null
+): Promise<{ city: string | null; state: string | null }> {
   const supabase = db();
+
+  if (marketId != null) {
+    const { data: market } = await supabase
+      .from('markets')
+      .select('default_geo_city, default_geo_state')
+      .eq('id', marketId)
+      .single();
+    const city = market?.default_geo_city?.trim() || null;
+    const state = market?.default_geo_state?.trim() || null;
+    // Only take the market's region if it actually declares one; a market with
+    // blank defaults should still fall through to the app-wide setting.
+    if (city || state) return { city, state };
+  }
+
   const { data } = await supabase
     .from('app_settings')
     .select('default_geo_city, default_geo_state')
@@ -82,13 +104,16 @@ export async function geocodeLeadIfNeeded(
     address_city: string | null;
     address_state: string | null;
     address_zip: string | null;
+    /** Office, when known — its region beats the app-wide default. */
+    market_id?: number | null;
   }
 ): Promise<boolean> {
   if (!lead.address_street?.trim()) return false;
 
-  // Fall back to the configured default region when the lead lacks its own
-  // city/state, so a bare street resolves within the right area.
-  const defaults = await getGeoDefaults();
+  // Fall back to the default region when the lead lacks its own city/state, so
+  // a bare street resolves within the right area — its own market's region
+  // first, so a Minnesota street doesn't land in Arizona.
+  const defaults = await getGeoDefaults(lead.market_id);
   const city = lead.address_city?.trim() || defaults.city;
   const state = lead.address_state?.trim() || defaults.state;
 

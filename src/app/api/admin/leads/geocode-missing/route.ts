@@ -32,15 +32,37 @@ export async function POST(request: NextRequest) {
     const supabase = db();
     const defaults = await getGeoDefaults();
 
+    // Each lead geocodes against ITS OWN market's region, so a street-only
+    // Minnesota address doesn't resolve into Arizona. Cached per market since a
+    // batch is usually all one office.
+    const marketDefaults = new Map<number, { city: string | null; state: string | null }>();
+    const defaultsFor = async (marketId: number | null | undefined) => {
+      if (marketId == null) return defaults;
+      const hit = marketDefaults.get(marketId);
+      if (hit) return hit;
+      const resolved = await getGeoDefaults(marketId);
+      marketDefaults.set(marketId, resolved);
+      return resolved;
+    };
+
+    // A street is geocodable without its own city/zip only when SOME region can
+    // stand in for it — the app-wide default or any market's.
+    const { data: geoMarkets } = await supabase
+      .from('markets')
+      .select('id')
+      .not('default_geo_city', 'is', null)
+      .limit(1);
+    const haveAnyDefaultCity = !!defaults.city || (geoMarkets?.length ?? 0) > 0;
+
     let query = supabase
       .from('leads')
-      .select('id, address_street, address_city, address_state, address_zip')
+      .select('id, address_street, address_city, address_state, address_zip, market_id')
       .is('latitude', null)
       .not('address_street', 'is', null)
       .order('id', { ascending: true })
       .limit(BATCH);
-    // Without a default region, a street needs its own city/zip to be geocodable.
-    if (!defaults.city) query = query.or('address_city.not.is.null,address_zip.not.is.null');
+    // Without any default region, a street needs its own city/zip to be geocodable.
+    if (!haveAnyDefaultCity) query = query.or('address_city.not.is.null,address_zip.not.is.null');
     if (after) query = query.gt('id', after);
 
     const { data: rows, error } = await query;
@@ -53,10 +75,11 @@ export async function POST(request: NextRequest) {
 
     for (let i = 0; i < batch.length; i++) {
       const lead = batch[i];
+      const region = await defaultsFor(lead.market_id);
       const result = await geocodeAddress(
         lead.address_street!.trim(),
-        lead.address_city?.trim() || defaults.city,
-        lead.address_state?.trim() || defaults.state,
+        lead.address_city?.trim() || region.city,
+        lead.address_state?.trim() || region.state,
         lead.address_zip
       );
       if (result) {
@@ -79,7 +102,7 @@ export async function POST(request: NextRequest) {
       .select('id', { count: 'exact', head: true })
       .is('latitude', null)
       .not('address_street', 'is', null);
-    if (!defaults.city) remainingQuery = remainingQuery.or('address_city.not.is.null,address_zip.not.is.null');
+    if (!haveAnyDefaultCity) remainingQuery = remainingQuery.or('address_city.not.is.null,address_zip.not.is.null');
     const { count: remaining } = await remainingQuery;
 
     return NextResponse.json({

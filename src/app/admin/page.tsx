@@ -13,6 +13,8 @@ import { Badge } from '@/components/ui/badge';
 import { DuplicateReviewPanel } from '@/components/leads/DuplicateReviewPanel';
 import type { DashboardStats, LeadStatus, LeadWithSource, UserRole } from '@/types';
 import { PageHeader } from '@/components/layout/page-header';
+import { MarketFilter } from '@/components/markets/market-filter';
+import { useMarkets, ALL_MARKETS } from '@/components/markets/use-markets';
 
 const STATUS_COLORS: Record<LeadStatus, string> = {
   new: 'bg-pipeline-new text-white',
@@ -42,6 +44,10 @@ export default function DashboardPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [followUps, setFollowUps] = useState<LeadWithSource[]>([]);
 
+  const { markets, homeMarketId, loading: marketsLoading } = useMarkets();
+  const [market, setMarket] = useState('');
+  const marketValue = market || (homeMarketId != null ? String(homeMarketId) : ALL_MARKETS);
+
   const fetchStats = useCallback(async (isRefresh = false) => {
     if (isRefresh) {
       setRefreshing(true);
@@ -50,9 +56,10 @@ export default function DashboardPage() {
     }
     try {
       const today = new Date().toISOString().slice(0, 10);
+      const scope = market ? `&market_id=${market}` : '';
       const [statsRes, followUpRes] = await Promise.all([
-        fetch('/api/admin/stats'),
-        fetch(`/api/admin/leads?follow_up_before=${today}&limit=20&sort=follow_up_date&order=asc`),
+        fetch(`/api/admin/stats${market ? `?market_id=${market}` : ''}`),
+        fetch(`/api/admin/leads?follow_up_before=${today}&limit=20&sort=follow_up_date&order=asc${scope}`),
       ]);
       const [statsData, followUpData] = await Promise.all([statsRes.json(), followUpRes.json()]);
       if (statsData.success) {
@@ -68,7 +75,7 @@ export default function DashboardPage() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [market]);
 
   useEffect(() => {
     fetchStats();
@@ -123,10 +130,15 @@ export default function DashboardPage() {
         title="Dashboard"
         description={lastUpdated ? `Updated ${formatDistanceToNow(lastUpdated, { addSuffix: true })}` : undefined}
         actions={
-          <Button variant="outline" size="sm" onClick={() => fetchStats(true)} disabled={refreshing}>
-            <RefreshCw className={`h-3.5 w-3.5 mr-1 ${refreshing ? 'animate-spin' : ''}`} />
-            Refresh
-          </Button>
+          <div className="flex items-center gap-2">
+            {!marketsLoading && (
+              <MarketFilter markets={markets} value={marketValue} onChange={setMarket} className="w-[150px]" />
+            )}
+            <Button variant="outline" size="sm" onClick={() => fetchStats(true)} disabled={refreshing}>
+              <RefreshCw className={`h-3.5 w-3.5 mr-1 ${refreshing ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
+          </div>
         }
       />
 
