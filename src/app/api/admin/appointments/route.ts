@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/supabase/server';
 import { getAuthenticatedAdmin } from '@/lib/auth/jwt';
+import { marketFilterFor } from '@/lib/leads/market-context';
 
 const CLOSER_STATUSES = new Set(['appointment_set', 'inspected', 'proposal_sent', 'sold', 'lost']);
 const MAX_WINDOW_MS = 90 * 24 * 60 * 60 * 1000;
@@ -26,14 +27,25 @@ export async function GET(request: NextRequest) {
     }
 
     const supabase = db();
-    const { data: appointments, error } = await supabase
+
+    // Office scoping runs through the appointment's lead. The embed is only
+    // made inner when a market is actually selected — forcing it always would
+    // silently drop any appointment whose lead row is missing.
+    const marketId = await marketFilterFor(admin.sub, searchParams.get('market_id'));
+    const leadEmbed = marketId != null ? 'leads!lead_id!inner' : 'leads!lead_id';
+
+    let apptQuery = supabase
       .from('lead_appointments')
       .select(
-        '*, leads!lead_id(id, first_name, last_name, address_street, address_city, status, assigned_closer_id)'
+        `*, ${leadEmbed}(id, first_name, last_name, address_street, address_city, status, assigned_closer_id, market_id)`
       )
       .gte('scheduled_at', start)
       .lt('scheduled_at', end)
       .order('scheduled_at', { ascending: true });
+
+    if (marketId != null) apptQuery = apptQuery.eq('leads.market_id', marketId);
+
+    const { data: appointments, error } = await apptQuery;
 
     if (error) {
       return NextResponse.json({ success: false, error: error.message }, { status: 500 });

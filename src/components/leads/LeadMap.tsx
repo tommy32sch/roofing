@@ -42,6 +42,43 @@ function FitBounds({ leads }: { leads: GeoLead[] }) {
   return null;
 }
 
+/**
+ * Move the map to the selected office.
+ *
+ * FitBounds handles the case where the market has leads — fitting to them is
+ * strictly better than a fixed center. This covers the case it can't: a market
+ * with no mapped leads yet, where FitBounds bails out and the map would
+ * otherwise sit over the previous office. Switching to Minnesota left you
+ * looking at Phoenix.
+ *
+ * Keyed on the market id, so it fires on every switch but does NOT fight the
+ * user's own panning and zooming while they stay in one market.
+ */
+function MarketView({
+  marketId,
+  center,
+  hasLeads,
+  loading,
+}: {
+  marketId: number | null;
+  center: { lat: number; lng: number; zoom: number | null } | null;
+  hasLeads: boolean;
+  loading: boolean;
+}) {
+  const map = useMap();
+  useEffect(() => {
+    // Wait for the new market's leads to land before deciding there are none.
+    // Mid-fetch, `leads` still holds the PREVIOUS market's pins, so acting
+    // early would fly to the centre and then FitBounds would immediately refit
+    // to the leads — two animations for one click.
+    if (loading || hasLeads || !center) return;
+    map.flyTo([center.lat, center.lng], center.zoom ?? DEFAULT_ZOOM, { duration: 0.8 });
+    // marketId is the trigger: re-centre on switch, not on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [marketId, hasLeads, loading, map]);
+  return null;
+}
+
 function MapReady({ onMapReady }: { onMapReady?: (map: LeafletMap) => void }) {
   const map = useMap();
   useEffect(() => {
@@ -110,6 +147,11 @@ interface LeadMapProps {
   onLogKnock?: (lead: GeoLead, disposition: KnockDisposition) => void;
   /** Lead id currently being written, so its buttons can disable. */
   loggingKnockFor?: string | null;
+  /** Selected office, so the map can move to it when there's nothing to fit. */
+  marketId?: number | null;
+  marketCenter?: { lat: number; lng: number; zoom: number | null } | null;
+  /** True while leads are being refetched, so the view waits for the result. */
+  marketLoading?: boolean;
   /** Territory-drawing mode */
   drawing?: boolean;
   drawPoints?: [number, number][];
@@ -125,6 +167,9 @@ export default function LeadMap({
   stormType = 'hail',
   onLogKnock,
   loggingKnockFor,
+  marketId = null,
+  marketCenter = null,
+  marketLoading = false,
   drawing = false,
   drawPoints = [],
   onDrawPoint,
@@ -147,6 +192,7 @@ export default function LeadMap({
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
       />
       <FitBounds leads={leads} />
+      <MarketView marketId={marketId} center={marketCenter} hasLeads={leads.length > 0} loading={marketLoading} />
       <MapReady onMapReady={onMapReady} />
       {onDrawPoint && <DrawLayer drawing={drawing} points={drawPoints} onPoint={onDrawPoint} />}
       {/* NOAA storm reports — drawn first so lead pins sit on top */}

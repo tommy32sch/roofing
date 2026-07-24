@@ -17,6 +17,8 @@ import {
 import { formatAddressShort } from '@/lib/utils/format';
 import { PageHeader } from '@/components/layout/page-header';
 import { EmptyState } from '@/components/layout/empty-state';
+import { MarketFilter } from '@/components/markets/market-filter';
+import { useMarkets, ALL_MARKETS } from '@/components/markets/use-markets';
 
 const ACTIVITY_ICONS: Record<string, React.ElementType> = {
   note: MessageSquare,
@@ -62,6 +64,9 @@ export default function ActivityPage() {
   const [typeFilter, setTypeFilter] = useState('');
   const [userFilter, setUserFilter] = useState('');
   const [activityUsers, setActivityUsers] = useState<{id: string, name: string}[]>([]);
+  const { markets, homeMarketId, loading: marketsLoading } = useMarkets();
+  const [market, setMarket] = useState('');
+  const marketValue = market || (homeMarketId != null ? String(homeMarketId) : ALL_MARKETS);
   const limit = 50;
 
   useEffect(() => {
@@ -79,6 +84,7 @@ export default function ActivityPage() {
       params.set('limit', limit.toString());
       if (typeFilter) params.set('type', typeFilter);
       if (userFilter) params.set('user_id', userFilter);
+      if (market) params.set('market_id', market);
       const res = await fetch(`/api/admin/activity?${params}`);
       const data = await res.json();
       if (data.success) {
@@ -90,7 +96,7 @@ export default function ActivityPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, typeFilter, userFilter]);
+  }, [page, typeFilter, userFilter, market]);
 
   useEffect(() => { fetchActivities(); }, [fetchActivities]);
 
@@ -100,11 +106,23 @@ export default function ActivityPage() {
     <div className="space-y-4">
       <PageHeader
         title="Activity"
-        description={`${total.toLocaleString()} event${total === 1 ? '' : 's'} across all leads`}
+        description={`${total.toLocaleString()} event${total === 1 ? '' : 's'} ${
+          marketValue === ALL_MARKETS
+            ? 'across all leads'
+            : `in ${markets.find(m => String(m.id) === marketValue)?.name ?? 'this market'}`
+        }`}
       />
 
       {/* Filters */}
       <div className="flex flex-wrap gap-3">
+        {!marketsLoading && (
+          <MarketFilter
+            markets={markets}
+            value={marketValue}
+            onChange={v => { setMarket(v); setPage(1); }}
+            className="w-[150px]"
+          />
+        )}
         <Select value={typeFilter} onValueChange={v => { setTypeFilter(v === 'all' ? '' : (v ?? '')); setPage(1); }}>
           <SelectTrigger className="w-[160px]">
             <SelectValue placeholder="All Types" />
