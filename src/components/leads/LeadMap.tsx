@@ -8,6 +8,7 @@ import 'leaflet/dist/leaflet.css';
 import { formatDistanceToNow } from 'date-fns';
 import { KNOCK_DISPOSITIONS, knockLabel, knockRecency, type KnockDisposition } from '@/lib/leads/knocks';
 import { Button } from '@/components/ui/button';
+import { FollowUpMenu } from '@/components/leads/FollowUpMenu';
 import { LEAD_STATUS_OPTIONS } from '@/types';
 import { shouldRecenterMap } from '@/lib/leads/markets';
 import { STATUS_COLORS, DNC_RING_COLOR, DO_NOT_KNOCK_RING_COLOR, stormColor, stormRadius, stormLabel, type GeoLead, type StormReport, type StormType } from './map-constants';
@@ -203,6 +204,8 @@ interface LeadMapProps {
   onLogKnock?: (lead: GeoLead, disposition: KnockDisposition) => void;
   /** Lead id currently being written, so its buttons can disable. */
   loggingKnockFor?: string | null;
+  /** Refetch after a follow-up is set from a popup. */
+  onFollowUpChange?: () => void;
   /** Selected office, so the map can move to it when there's nothing to fit. */
   marketId?: number | null;
   marketCenter?: { lat: number; lng: number; zoom: number | null } | null;
@@ -223,6 +226,7 @@ export default function LeadMap({
   stormType = 'hail',
   onLogKnock,
   loggingKnockFor,
+  onFollowUpChange,
   marketId = null,
   marketCenter = null,
   marketLoading = false,
@@ -357,6 +361,22 @@ export default function LeadMap({
                         </button>
                       ))}
                     </div>
+                  </div>
+                )}
+
+                {/* A "Callback" knock is a promise to return. Without capturing
+                    when, it was recorded and then lost — so the control is
+                    promoted here rather than buried on the lead page. */}
+                {onLogKnock && (lead.last_disposition === 'callback' || lead.follow_up_date) && (
+                  <div className="border-t pt-1.5">
+                    <p className="mb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                      {lead.follow_up_date ? 'Following up' : 'Come back when?'}
+                    </p>
+                    <FollowUpMenu
+                      leadId={lead.id}
+                      followUpDate={lead.follow_up_date}
+                      onChange={onFollowUpChange}
+                    />
                   </div>
                 )}
 

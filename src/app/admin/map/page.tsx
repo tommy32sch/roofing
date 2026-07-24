@@ -492,6 +492,7 @@ export default function MapPage() {
             onMapReady={(map) => { mapRef.current = map; setMapInstance(map); }}
             onLogKnock={logKnock}
             loggingKnockFor={loggingKnockFor}
+            onFollowUpChange={fetchLeads}
             marketId={selectedMarket?.id ?? null}
             marketCenter={marketCenter}
             marketLoading={loading}

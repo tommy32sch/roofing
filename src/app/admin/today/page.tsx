@@ -13,6 +13,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { PageHeader } from '@/components/layout/page-header';
 import { EmptyState } from '@/components/layout/empty-state';
 import { LeadStatusBadge } from '@/components/leads/lead-status-badge';
+import { FollowUpMenu } from '@/components/leads/FollowUpMenu';
 import { MarketFilter } from '@/components/markets/market-filter';
 import { useMarkets, ALL_MARKETS } from '@/components/markets/use-markets';
 import { formatPhone, formatAddressShort, mapsUrl } from '@/lib/utils/format';
@@ -52,7 +53,18 @@ function firstPhone(lead: TodayLead): string | null {
  * One tappable row. The lead name and address open the lead; the actions are
  * separate targets so a mis-tap on a phone doesn't dial someone by accident.
  */
-function LeadRow({ lead, trailing }: { lead: TodayLead; trailing?: React.ReactNode }) {
+function LeadRow({
+  lead,
+  trailing,
+  followUp,
+  onFollowUpChange,
+}: {
+  lead: TodayLead;
+  trailing?: React.ReactNode;
+  /** Show the one-tap follow-up control. */
+  followUp?: boolean;
+  onFollowUpChange?: () => void;
+}) {
   const phone = firstPhone(lead);
   const directions = mapsUrl(lead);
 
@@ -88,6 +100,14 @@ function LeadRow({ lead, trailing }: { lead: TodayLead; trailing?: React.ReactNo
 
       {/* Big, separated tap targets — this is used one-handed in a truck. */}
       <div className="flex shrink-0 items-center gap-1 self-end sm:self-auto">
+        {followUp && (
+          <FollowUpMenu
+            leadId={lead.id}
+            followUpDate={lead.follow_up_date}
+            onChange={onFollowUpChange}
+            compact
+          />
+        )}
         {phone && (
           <>
             <a href={`tel:${phone}`} aria-label={`Call ${lead.first_name}`}>
@@ -316,6 +336,8 @@ export default function TodayPage() {
                 <LeadRow
                   key={lead.id}
                   lead={lead}
+                  followUp
+                  onFollowUpChange={fetchToday}
                   trailing={
                     <p
                       className={`mt-0.5 flex items-center gap-1 text-xs font-medium ${
@@ -358,6 +380,8 @@ export default function TodayPage() {
               <LeadRow
                 key={lead.id}
                 lead={lead}
+                followUp
+                onFollowUpChange={fetchToday}
                 trailing={
                   lead.last_knock_at ? (
                     <p className="mt-0.5 text-xs text-muted-foreground">

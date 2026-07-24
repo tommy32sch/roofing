@@ -27,7 +27,6 @@ import {
   CalendarClock,
   PhoneOff,
   Navigation,
-  X,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatDistanceToNow, format } from 'date-fns';
@@ -63,6 +62,7 @@ import { EmptyState } from '@/components/layout/empty-state';
 import { LeadPhotos } from '@/components/leads/LeadPhotos';
 import { DateTimeFields } from '@/components/leads/DateTimeFields';
 import { useMarkets } from '@/components/markets/use-markets';
+import { FollowUpMenu } from '@/components/leads/FollowUpMenu';
 
 const SETTER_ALLOWED_STATUSES = new Set(['new', 'contacted', 'appointment_set', 'lost']);
 const CLOSER_ALLOWED_STATUSES = new Set(['sold', 'lost']);
@@ -495,18 +495,15 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
                 onChange={(e) => handleFollowUpChange(e.target.value)}
                 className="h-9 w-[165px] text-sm"
               />
-              {lead.follow_up_date && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-9 px-2 text-muted-foreground hover:text-destructive"
-                  onClick={() => handleFollowUpChange('')}
-                  title="Clear follow-up"
-                  aria-label="Clear follow-up date"
-                >
-                  <X className="h-4 w-4" />
-                </Button>
-              )}
+              {/* The picker handles an exact date; the menu handles what a rep
+                  actually reaches for ("next week") and owns clearing, so there
+                  aren't two separate clear affordances. */}
+              <FollowUpMenu
+                leadId={leadId}
+                followUpDate={lead.follow_up_date}
+                onChange={fetchLead}
+                compact
+              />
             </div>
           </div>
         )}
