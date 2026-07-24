@@ -1,6 +1,8 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/supabase/server';
 import { getAuthenticatedAdmin } from '@/lib/auth/jwt';
+import { marketFilterFor } from '@/lib/leads/market-context';
+import { applyMarketFilter } from '@/lib/leads/markets';
 
 export interface RepStats {
   id: string;
@@ -17,7 +19,7 @@ export interface RepStats {
   totalRevenue: number;
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const admin = await getAuthenticatedAdmin();
     if (!admin) {
@@ -57,11 +59,14 @@ export async function GET() {
     }
 
     // Fetch all leads assigned to any of these users (as setter or closer)
-    const { data: leads } = await supabase
+    // Office scoping: a blended close rate across two offices describes neither.
+    const marketId = await marketFilterFor(admin.sub, new URL(request.url).searchParams.get('market_id'));
+
+    const { data: leads } = await applyMarketFilter(supabase
       .from('leads')
       .select('id, status, deal_value, assigned_setter_id, assigned_closer_id')
       .or(`assigned_setter_id.in.(${userIds.join(',')}),assigned_closer_id.in.(${userIds.join(',')})`)
-      .eq('is_flagged_duplicate', false);
+      .eq('is_flagged_duplicate', false), marketId);
 
     const allLeads = leads || [];
 

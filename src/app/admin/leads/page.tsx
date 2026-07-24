@@ -7,6 +7,8 @@ import { Search, Upload, Sparkles, Download, CalendarClock, MapPin, UserCheck, P
 import { toast } from 'sonner';
 import { formatPhone, formatAddress, mapsUrl } from '@/lib/utils/format';
 import { PageHeader } from '@/components/layout/page-header';
+import { MarketFilter } from '@/components/markets/market-filter';
+import { useMarkets, ALL_MARKETS } from '@/components/markets/use-markets';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
@@ -75,9 +77,14 @@ function LeadsListContent() {
   const streetsParam = searchParams.get('streets') || '';
   const selectedStreets = streetsParam ? streetsParam.split('|').filter(Boolean) : [];
   const dncOnly = searchParams.get('is_dnc') === 'true';
+  const { markets, homeMarketId, loading: marketsLoading } = useMarkets();
+  // Absent param means "my office" — the server resolves it the same way, so the
+  // URL stays clean until the rep actually switches markets.
+  const marketParam = searchParams.get('market_id') || '';
+  const marketValue = marketParam || (homeMarketId != null ? String(homeMarketId) : ALL_MARKETS);
   const page = parseInt(searchParams.get('page') || '1', 10);
   // Drives the mobile filter button's active state
-  const activeFilterCount = [status, priority, streetNumber, streetDir, streetName, streetsParam, dncOnly ? 'dnc' : ''].filter(Boolean).length;
+  const activeFilterCount = [status, priority, streetNumber, streetDir, streetName, streetsParam, dncOnly ? 'dnc' : '', marketParam].filter(Boolean).length;
 
   // Only show optional columns that actually carry data. Freshly imported lists
   // have no source or values yet, and three columns of "—" on every row is noise
@@ -97,6 +104,7 @@ function LeadsListContent() {
     if (streetName) params.set('street_name', streetName);
     if (streetsParam) params.set('streets', streetsParam);
     if (dncOnly) params.set('is_dnc', 'true');
+    if (marketParam) params.set('market_id', marketParam);
   }
 
   function toggleStreetFilter(name: string, selected: boolean) {
@@ -123,6 +131,7 @@ function LeadsListContent() {
     if (streetName) params.set('street_name', streetName);
     if (streetsParam) params.set('streets', streetsParam);
     if (dncOnly) params.set('is_dnc', 'true');
+    if (marketParam) params.set('market_id', marketParam);
     params.set('page', page.toString());
     params.set('limit', '25');
 
@@ -139,17 +148,19 @@ function LeadsListContent() {
     } finally {
       setLoading(false);
     }
-  }, [status, priority, search, streetNumber, streetDir, streetName, streetsParam, dncOnly, page]);
+  }, [status, priority, search, streetNumber, streetDir, streetName, streetsParam, dncOnly, page, marketParam]);
 
   const fetchDncCount = useCallback(async () => {
     try {
-      const res = await fetch('/api/admin/leads?is_dnc=true&limit=1');
+      const params = new URLSearchParams({ is_dnc: 'true', limit: '1' });
+      if (marketParam) params.set('market_id', marketParam);
+      const res = await fetch(`/api/admin/leads?${params}`);
       const data = await res.json();
       if (data.success) setDncCount(data.total);
     } catch {
       // ignore
     }
-  }, []);
+  }, [marketParam]);
 
   async function handleScrubDnc() {
     setDncScrubbing(true);
@@ -322,6 +333,13 @@ function LeadsListContent() {
       </div>
 
       <div className={`${filtersOpen ? 'flex' : 'hidden'} sm:flex flex-col sm:flex-row gap-3`}>
+        {!marketsLoading && (
+          <MarketFilter
+            markets={markets}
+            value={marketValue}
+            onChange={(v) => updateFilter('market_id', v)}
+          />
+        )}
         <Select value={status} onValueChange={(v) => updateFilter('status', v === 'all' ? '' : v ?? '')}>
           <SelectTrigger className="sm:w-[160px]">
             <SelectValue placeholder="All Statuses" />

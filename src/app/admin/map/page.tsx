@@ -22,6 +22,8 @@ import type { UserRole } from '@/types';
 import { LIMITS } from '@/lib/utils/validation';
 import { pointInPolygon } from '@/lib/leads/geo-polygon';
 import { PageHeader } from '@/components/layout/page-header';
+import { MarketFilter } from '@/components/markets/market-filter';
+import { useMarkets, ALL_MARKETS } from '@/components/markets/use-markets';
 
 // Leaflet touches `window` at import time — client-only
 const LeadMap = dynamic(() => import('@/components/leads/LeadMap'), {
@@ -35,6 +37,10 @@ export default function MapPage() {
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState('');
   const [priority, setPriority] = useState('');
+  const { markets, homeMarketId, loading: marketsLoading } = useMarkets();
+  // '' means "not chosen yet" — fall back to the rep's own office once loaded.
+  const [market, setMarket] = useState('');
+  const marketValue = market || (homeMarketId != null ? String(homeMarketId) : ALL_MARKETS);
   const [userRole, setUserRole] = useState<UserRole>('setter');
   const [selection, setSelection] = useState<Map<string, number>>(new Map());
   const [visibleIds, setVisibleIds] = useState<Set<string>>(new Set());
@@ -58,6 +64,7 @@ export default function MapPage() {
     const params = new URLSearchParams();
     if (status) params.set('status', status);
     if (priority) params.set('priority', priority);
+    if (market) params.set('market_id', market);
     try {
       const res = await fetch(`/api/admin/leads/geo?${params}`);
       const data = await res.json();
@@ -70,7 +77,7 @@ export default function MapPage() {
     } finally {
       setLoading(false);
     }
-  }, [status, priority]);
+  }, [status, priority, market]);
 
   useEffect(() => {
     fetchLeads();
@@ -355,6 +362,9 @@ export default function MapPage() {
                   </SelectContent>
                 </Select>
               </>
+            )}
+            {!marketsLoading && (
+              <MarketFilter markets={markets} value={marketValue} onChange={setMarket} className="w-[150px]" />
             )}
             <Select value={status} onValueChange={(v) => setStatus(v === 'all' ? '' : v ?? '')}>
               <SelectTrigger className="w-[150px]">

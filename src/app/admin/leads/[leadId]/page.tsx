@@ -62,6 +62,7 @@ import { estimateRoofValue } from '@/lib/leads/roof-value';
 import { EmptyState } from '@/components/layout/empty-state';
 import { LeadPhotos } from '@/components/leads/LeadPhotos';
 import { DateTimeFields } from '@/components/leads/DateTimeFields';
+import { useMarkets } from '@/components/markets/use-markets';
 
 const SETTER_ALLOWED_STATUSES = new Set(['new', 'contacted', 'appointment_set', 'lost']);
 const CLOSER_ALLOWED_STATUSES = new Set(['sold', 'lost']);
@@ -92,6 +93,7 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
   const [userRole, setUserRole] = useState<UserRole>('admin');
   const [wonModalOpen, setWonModalOpen] = useState(false);
   const [apptModalOpen, setApptModalOpen] = useState(false);
+  const { markets } = useMarkets();
   const [addApptOpen, setAddApptOpen] = useState(false);
   const [apptType, setApptType] = useState<AppointmentType>('inspection');
   const [apptDateTime, setApptDateTime] = useState('');
@@ -639,6 +641,11 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
                   {lead.bathrooms && <div><span className="text-muted-foreground">Baths:</span> {lead.bathrooms}</div>}
                   {lead.stories && <div><span className="text-muted-foreground">Stories:</span> {lead.stories}</div>}
                   {lead.owner_type && <div><span className="text-muted-foreground">Type:</span> {lead.owner_type}</div>}
+                  {markets.length > 1 && (
+                    <div><span className="text-muted-foreground">Market:</span>{' '}
+                      {markets.find((m) => m.id === lead.market_id)?.name ?? 'Unassigned'}
+                    </div>
+                  )}
                   {lead.apn && <div className="col-span-2"><span className="text-muted-foreground">APN:</span> {lead.apn}</div>}
                   {lead.last_sale_date && <div><span className="text-muted-foreground">Last sold:</span> {lead.last_sale_date}</div>}
                   {lead.last_sale_price && <div><span className="text-muted-foreground">Sale price:</span> ${Number(lead.last_sale_price).toLocaleString()}</div>}

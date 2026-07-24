@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/supabase/server';
 import { getAuthenticatedAdmin } from '@/lib/auth/jwt';
+import { marketFilterFor } from '@/lib/leads/market-context';
+import { applyMarketFilter } from '@/lib/leads/markets';
 
 type Breakdown = { value: string; count: number; pct: number }[];
 
@@ -71,14 +73,17 @@ export async function GET(request: NextRequest) {
       demographic_captured_at: string | null;
     }
 
-    let dbQuery = supabase
+    // Office scoping: who buys in Phoenix is a different profile than Minnesota.
+    const marketId = await marketFilterFor(admin.sub, searchParams.get('market_id'));
+
+    let dbQuery = applyMarketFilter(supabase
       .from('leads')
       .select(
         'career, family_size, marital_status, age_range, household_income_range, ' +
         'education_level, decision_maker, insurance_carrier, referral_source, demographic_captured_at'
       )
       .eq('status', 'sold')
-      .not('demographic_captured_at', 'is', null);
+      .not('demographic_captured_at', 'is', null), marketId);
 
     if (range !== 'all') {
       const days = range === '30d' ? 30 : range === '90d' ? 90 : 365;

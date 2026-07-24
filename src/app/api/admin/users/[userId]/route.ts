@@ -24,7 +24,7 @@ export async function PATCH(
     }
 
     const body = await request.json();
-    const { name, role, password } = body;
+    const { name, role, password, market_id } = body;
 
     if (role && !['setter', 'closer'].includes(role)) {
       return NextResponse.json(
@@ -44,6 +44,12 @@ export async function PATCH(
     const updates: Record<string, unknown> = {};
     if (name?.trim()) updates.name = name.trim();
     if (role) updates.role = role;
+    // Home office. A default for their filters, not an access restriction, so
+    // it deliberately does NOT revoke sessions the way a role change does.
+    if (market_id !== undefined) {
+      const parsed = Number(market_id);
+      updates.market_id = Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+    }
     if (password) {
       if (password.length < 8) {
         return NextResponse.json(
@@ -63,7 +69,7 @@ export async function PATCH(
       .from('admin_users')
       .update(updates)
       .eq('id', userId)
-      .select('id, email, name, role, created_at')
+      .select('id, email, name, role, market_id, created_at')
       .single();
 
     if (error) {

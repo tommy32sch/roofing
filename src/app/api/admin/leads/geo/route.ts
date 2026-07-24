@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/supabase/server';
 import { getAuthenticatedAdmin } from '@/lib/auth/jwt';
+import { marketFilterFor } from '@/lib/leads/market-context';
+import { applyMarketFilter } from '@/lib/leads/markets';
 
 const CLOSER_STATUSES = ['appointment_set', 'inspected', 'proposal_sent', 'sold', 'lost'];
 
@@ -36,6 +38,9 @@ export async function GET(request: NextRequest) {
       query = query.eq('status', status);
     }
     if (priority) query = query.eq('priority', priority);
+
+    // Office scoping: explicit ?market_id, else the caller's home market.
+    query = applyMarketFilter(query, await marketFilterFor(admin.sub, searchParams.get('market_id')));
 
     const { data: leads, error } = await query;
     if (error) {

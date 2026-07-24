@@ -7,6 +7,8 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { PageHeader } from '@/components/layout/page-header';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useMarkets } from '@/components/markets/use-markets';
 
 export default function ImportPage() {
   const fileRef = useRef<HTMLInputElement>(null);
@@ -17,6 +19,14 @@ export default function ImportPage() {
     skipped: number;
     errors: string[];
   } | null>(null);
+  const { markets, homeMarketId, loading: marketsLoading } = useMarkets();
+  const [market, setMarket] = useState('');
+  // Default to the importer's own office; they can switch before uploading.
+  const marketValue = market || (homeMarketId != null ? String(homeMarketId) : '');
+  const multiMarket = markets.length > 1;
+  // With more than one office the list MUST be attributed, since a street-only
+  // storm list carries nothing that could identify it later.
+  const marketMissing = multiMarket && !marketValue;
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const selected = e.target.files?.[0];
@@ -40,6 +50,7 @@ export default function ImportPage() {
     try {
       const formData = new FormData();
       formData.append('file', file);
+      if (marketValue) formData.append('market_id', marketValue);
 
       const res = await fetch('/api/admin/import', {
         method: 'POST',
@@ -147,9 +158,39 @@ export default function ImportPage() {
             </div>
           </div>
 
+          {/* Which office this list belongs to. Not derivable from the file —
+              street-only storm lists have no city or state at all — so it is
+              asked for up front rather than guessed. */}
+          {!marketsLoading && multiMarket && (
+            <div className="space-y-1">
+              <label htmlFor="import_market" className="text-sm font-medium">
+                Market<span className="ml-0.5 text-destructive">*</span>
+              </label>
+              <Select value={marketValue} onValueChange={(v) => v && setMarket(v)}>
+                <SelectTrigger id="import_market" className="w-full">
+                  <SelectValue placeholder="Choose the office this list is for" />
+                </SelectTrigger>
+                <SelectContent>
+                  {markets.map((m) => (
+                    <SelectItem key={m.id} value={String(m.id)}>{m.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Every lead in this file is assigned to this office.
+              </p>
+            </div>
+          )}
+
           {/* Reads as a live CTA otherwise, even though it's disabled until a file is chosen */}
-          <Button onClick={handleImport} disabled={!file || loading} className="w-full">
-            {loading ? 'Importing…' : file ? `Import ${file.name}` : 'Choose a file to import'}
+          <Button onClick={handleImport} disabled={!file || loading || marketMissing} className="w-full">
+            {loading
+              ? 'Importing…'
+              : marketMissing
+                ? 'Choose a market first'
+                : file
+                  ? `Import ${file.name}`
+                  : 'Choose a file to import'}
           </Button>
         </CardContent>
       </Card>

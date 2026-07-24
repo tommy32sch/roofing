@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/supabase/server';
 import { getAuthenticatedAdmin } from '@/lib/auth/jwt';
+import { marketFilterFor } from '@/lib/leads/market-context';
+import { applyMarketFilter } from '@/lib/leads/markets';
 import { parsePhoneNumber } from 'libphonenumber-js';
 import { enrichLead } from '@/lib/integrations/regrid';
 import { geocodeLeadIfNeeded } from '@/lib/integrations/geocode';
@@ -34,6 +36,9 @@ export async function GET(request: NextRequest) {
     let query = supabase
       .from('leads')
       .select('*, lead_sources!source_id(id, display_name)', { count: 'exact' });
+
+    // Office scoping: explicit ?market_id, else the caller's home market.
+    query = applyMarketFilter(query, await marketFilterFor(admin.sub, searchParams.get('market_id')));
 
     // Closers see leads from appointment_set onwards (their working pipeline + history)
     const CLOSER_STATUSES = ['appointment_set', 'inspected', 'proposal_sent', 'sold', 'lost'];

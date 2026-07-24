@@ -17,6 +17,7 @@ import {
 import { LEAD_STATUS_OPTIONS, LEAD_PRIORITY_OPTIONS } from '@/types';
 import type { AppSettings } from '@/types';
 import { PageHeader } from '@/components/layout/page-header';
+import { MarketsCard } from '@/components/markets/markets-card';
 
 export default function SettingsPage() {
   const [settings, setSettings] = useState<AppSettings | null>(null);
@@ -222,14 +223,17 @@ export default function SettingsPage() {
         </CardContent>
       </Card>
 
+      <MarketsCard />
+
       {/* Default geocoding region */}
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Map / Geocoding Region</CardTitle>
           <CardDescription>
-            When a lead has no city/state of its own, the map uses this region so a bare street
-            (e.g. &quot;1149 N 34th St&quot;) lands in the right area instead of a same-named street
-            elsewhere. Set it to the city/state most of your leads are in.
+            Fallback for leads that aren&apos;t assigned to a market. A lead in a market uses
+            that market&apos;s region instead (set above). When a lead has no city/state of its
+            own, this is what makes a bare street (e.g. &quot;1149 N 34th St&quot;) land in the
+            right area rather than a same-named street elsewhere.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">

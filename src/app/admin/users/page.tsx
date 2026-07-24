@@ -35,17 +35,26 @@ import { Skeleton } from '@/components/ui/skeleton';
 import type { AdminUser } from '@/types';
 import { PageHeader } from '@/components/layout/page-header';
 import { EmptyState } from '@/components/layout/empty-state';
+import { useMarkets } from '@/components/markets/use-markets';
 
 interface UserForm {
   name: string;
   email: string;
   password: string;
   role: 'setter' | 'closer';
+  /** Home office as a string for the Select; '' means none. */
+  market_id?: string;
 }
+
+/** Sentinel for "no home office" — a Select item cannot carry an empty value. */
+const NO_MARKET = 'none';
 
 const EMPTY_FORM: UserForm = { name: '', email: '', password: '', role: 'setter' };
 
 export default function UsersPage() {
+  const { markets } = useMarkets();
+  const marketName = (id: number | null | undefined) =>
+    markets.find((m) => m.id === id)?.name ?? '—';
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentUserId, setCurrentUserId] = useState<string>('');
@@ -113,7 +122,10 @@ export default function UsersPage() {
       const res = await fetch(`/api/admin/users/${editTarget.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(editForm),
+        body: JSON.stringify({
+          ...editForm,
+          market_id: editForm.market_id === NO_MARKET ? null : editForm.market_id,
+        }),
       });
       const data = await res.json();
       if (data.success) {
@@ -204,6 +216,7 @@ export default function UsersPage() {
                   <TableHead>Name</TableHead>
                   <TableHead>Email</TableHead>
                   <TableHead>Role</TableHead>
+                  {markets.length > 1 && <TableHead>Market</TableHead>}
                   <TableHead>Created</TableHead>
                   <TableHead className="w-[80px]" />
                 </TableRow>
@@ -221,6 +234,11 @@ export default function UsersPage() {
                     <TableCell>
                       <RoleBadge role={user.role} />
                     </TableCell>
+                    {markets.length > 1 && (
+                      <TableCell className="text-muted-foreground text-sm">
+                        {marketName(user.market_id)}
+                      </TableCell>
+                    )}
                     <TableCell className="text-muted-foreground text-sm">
                       {format(new Date(user.created_at), 'MMM d, yyyy')}
                     </TableCell>
@@ -243,7 +261,7 @@ export default function UsersPage() {
                             className="h-7 w-7"
                             title={`Edit ${user.name}`}
                             aria-label={`Edit ${user.name}`}
-                            onClick={() => { setEditTarget(user); setEditForm({ name: user.name, email: user.email, role: user.role as 'setter' | 'closer' }); }}
+                            onClick={() => { setEditTarget(user); setEditForm({ name: user.name, email: user.email, role: user.role as 'setter' | 'closer', market_id: user.market_id != null ? String(user.market_id) : NO_MARKET }); }}
                           >
                             <Pencil className="h-3.5 w-3.5" />
                           </Button>
@@ -353,6 +371,26 @@ export default function UsersPage() {
                 </SelectContent>
               </Select>
             </div>
+            {markets.length > 1 && (
+              <div className="space-y-1">
+                <Label>Home market</Label>
+                <Select
+                  value={editForm.market_id || NO_MARKET}
+                  onValueChange={v => v && setEditForm(p => ({ ...p, market_id: v }))}
+                >
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={NO_MARKET}>All markets</SelectItem>
+                    {markets.map(m => (
+                      <SelectItem key={m.id} value={String(m.id)}>{m.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Their Leads, Map and reporting default to this office. They can still switch.
+                </p>
+              </div>
+            )}
             <div className="space-y-1">
               <Label htmlFor="edit-password">New Password <span className="text-muted-foreground text-xs">(leave blank to keep current)</span></Label>
               <Input id="edit-password" type="password" value={editForm.password || ''} onChange={e => setEditForm(p => ({ ...p, password: e.target.value }))} />
