@@ -24,7 +24,14 @@ export function MarketFilter({ markets, value, onChange, className }: Props) {
   return (
     <Select value={value} onValueChange={(v) => v && onChange(v)}>
       <SelectTrigger className={className ?? 'sm:w-[150px]'} aria-label="Market">
-        <SelectValue placeholder="All Markets" />
+        {/* This Select renders the raw value unless SelectValue is given
+            explicit children — without this the trigger reads "all" or "2"
+            instead of "All Markets" or "Minnesota". */}
+        <SelectValue>
+          {value === ALL_MARKETS
+            ? 'All Markets'
+            : markets.find((m) => String(m.id) === value)?.name ?? 'All Markets'}
+        </SelectValue>
       </SelectTrigger>
       <SelectContent>
         <SelectItem value={ALL_MARKETS}>All Markets</SelectItem>
