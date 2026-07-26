@@ -11,6 +11,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuGroup,
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
@@ -448,8 +449,13 @@ export default function MapPage() {
                     }
                   />
                   <DropdownMenuContent align="start" className="w-44">
+                    {/* Each labelled section must be a real DropdownMenuGroup:
+                        the label renders Base UI's GroupLabel, which THROWS
+                        ("MenuGroupRootContext is missing") outside a Menu.Group
+                        and takes the whole page down with it. A Fragment is not
+                        a substitute. */}
                     {stormTypes.includes('hail') && (
-                      <>
+                      <DropdownMenuGroup>
                         <DropdownMenuLabel>Hail size</DropdownMenuLabel>
                         {STORM_MIN_VALUES.hail.map((o) => (
                           <DropdownMenuItem key={`h${o.value}`} onClick={() => setHailMin(o.value)}>
@@ -457,11 +463,11 @@ export default function MapPage() {
                             {hailMin === o.value && <Check className="h-3.5 w-3.5" />}
                           </DropdownMenuItem>
                         ))}
-                      </>
+                      </DropdownMenuGroup>
                     )}
                     {stormTypes.length === 2 && <DropdownMenuSeparator />}
                     {stormTypes.includes('wind') && (
-                      <>
+                      <DropdownMenuGroup>
                         <DropdownMenuLabel>Wind speed</DropdownMenuLabel>
                         {STORM_MIN_VALUES.wind.map((o) => (
                           <DropdownMenuItem key={`w${o.value}`} onClick={() => setWindMin(o.value)}>
@@ -469,7 +475,7 @@ export default function MapPage() {
                             {windMin === o.value && <Check className="h-3.5 w-3.5" />}
                           </DropdownMenuItem>
                         ))}
-                      </>
+                      </DropdownMenuGroup>
                     )}
                   </DropdownMenuContent>
                 </DropdownMenu>
