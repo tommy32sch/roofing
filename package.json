@@ -11,7 +11,8 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "schema:build": "./scripts/build-schema.sh",
-    "backup": "tsx --env-file=.env.local scripts/backup-db.ts"
+    "backup": "tsx --env-file=.env.local scripts/backup-db.ts",
+    "storms": "tsx --env-file=.env.local scripts/backfill-storms.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.2.0",

@@ -2,11 +2,19 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
-import { BoxSelect, UserCheck, LocateFixed, CloudHail, Wind, Pencil } from 'lucide-react';
+import { BoxSelect, UserCheck, LocateFixed, CloudHail, Wind, Pencil, ChevronDown, Check } from 'lucide-react';
 import { toast } from 'sonner';
 import { knockLabel, type KnockDisposition } from '@/lib/leads/knocks';
 import type { Map as LeafletMap } from 'leaflet';
 import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   Select,
@@ -18,7 +26,8 @@ import {
 import { BulkAssignDialog } from '@/components/leads/BulkAssignDialog';
 import {
   STATUS_COLORS, DNC_RING_COLOR, STORM_TYPES, toggleStormType, countStormsByType,
-  stormLegendEntries, type GeoLead, type StormReport, type StormType,
+  stormLegendEntries, STORM_WINDOWS, stormWindowLabel, STORM_MIN_VALUES, stormMinLabel,
+  type GeoLead, type StormReport, type StormType,
 } from '@/components/leads/map-constants';
 import { LEAD_STATUS_OPTIONS, LEAD_PRIORITY_OPTIONS } from '@/types';
 import type { UserRole } from '@/types';
@@ -70,6 +79,10 @@ export default function MapPage() {
   // shows up where the two layers overlap.
   const [stormTypes, setStormTypes] = useState<StormType[]>([]);
   const [stormDays, setStormDays] = useState(30);
+  // Thresholds are per type because the units differ (inches vs mph); one shared
+  // number could not mean both.
+  const [hailMin, setHailMin] = useState(0);
+  const [windMin, setWindMin] = useState(0);
   const [stormReports, setStormReports] = useState<StormReport[]>([]);
   const stormOn = stormTypes.length > 0;
   const stormCounts = countStormsByType(stormReports);
@@ -257,17 +270,19 @@ export default function MapPage() {
     if (b.getNorth() === b.getSouth() || b.getEast() === b.getWest()) return;
     setStormLoading(true);
     try {
-      const params = new URLSearchParams({
+      const bounds = {
         days: String(stormDays),
         n: String(b.getNorth()),
         s: String(b.getSouth()),
         e: String(b.getEast()),
         w: String(b.getWest()),
-      });
+      };
       // One request per active overlay, in parallel. The API is per-type and
       // caches per type, so this keeps its cache keys intact.
       const results = await Promise.all(
         stormTypes.map(async (type) => {
+          const min = type === 'hail' ? hailMin : windMin;
+          const params = new URLSearchParams(min > 0 ? { ...bounds, min: String(min) } : bounds);
           const res = await fetch(`/api/admin/storm/${type}?${params}`);
           const data = await res.json();
           if (!data.success) throw new Error(data.error || `Failed to load ${type} data`);
@@ -284,7 +299,7 @@ export default function MapPage() {
     } finally {
       setStormLoading(false);
     }
-  }, [stormDays, stormTypes]);
+  }, [stormDays, stormTypes, hailMin, windMin]);
 
   // Fetch when an overlay turns on or the window changes; clear when all are off.
   //
@@ -406,19 +421,58 @@ export default function MapPage() {
             {stormOn && (
               <>
                 <Select value={String(stormDays)} onValueChange={(v) => v && setStormDays(parseInt(v, 10))}>
-                  <SelectTrigger className="w-[130px]" aria-label="Storm window">
+                  <SelectTrigger className="w-[140px]" aria-label="Storm window">
                     {/* Needs explicit children — this Select renders the raw
                         value otherwise, so the trigger read "30" instead of
                         "Last 30 days". */}
-                    <SelectValue>{`Last ${stormDays} days`}</SelectValue>
+                    <SelectValue>{stormWindowLabel(stormDays)}</SelectValue>
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="7">Last 7 days</SelectItem>
-                    <SelectItem value="30">Last 30 days</SelectItem>
-                    <SelectItem value="60">Last 60 days</SelectItem>
-                    <SelectItem value="90">Last 90 days</SelectItem>
+                    {STORM_WINDOWS.map((w) => (
+                      <SelectItem key={w.days} value={String(w.days)}>{w.label}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
+                {/* Minimum severity. Two years of reports includes a lot of
+                    marginal ones, and severity is what qualifies a roof — 1"
+                    hail is the usual insurer threshold, 58 mph the severe-wind
+                    criterion. Rendered as one control listing whichever
+                    overlays are on, since the units differ. */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger
+                    render={
+                      <Button variant="outline" size="sm" className="min-w-[140px] justify-between">
+                        {stormMinLabel(stormTypes, hailMin, windMin)}
+                        <ChevronDown className="ml-1 h-3.5 w-3.5 opacity-60" />
+                      </Button>
+                    }
+                  />
+                  <DropdownMenuContent align="start" className="w-44">
+                    {stormTypes.includes('hail') && (
+                      <>
+                        <DropdownMenuLabel>Hail size</DropdownMenuLabel>
+                        {STORM_MIN_VALUES.hail.map((o) => (
+                          <DropdownMenuItem key={`h${o.value}`} onClick={() => setHailMin(o.value)}>
+                            <span className="flex-1">{o.label}</span>
+                            {hailMin === o.value && <Check className="h-3.5 w-3.5" />}
+                          </DropdownMenuItem>
+                        ))}
+                      </>
+                    )}
+                    {stormTypes.length === 2 && <DropdownMenuSeparator />}
+                    {stormTypes.includes('wind') && (
+                      <>
+                        <DropdownMenuLabel>Wind speed</DropdownMenuLabel>
+                        {STORM_MIN_VALUES.wind.map((o) => (
+                          <DropdownMenuItem key={`w${o.value}`} onClick={() => setWindMin(o.value)}>
+                            <span className="flex-1">{o.label}</span>
+                            {windMin === o.value && <Check className="h-3.5 w-3.5" />}
+                          </DropdownMenuItem>
+                        ))}
+                      </>
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </>
             )}
             {!marketsLoading && (

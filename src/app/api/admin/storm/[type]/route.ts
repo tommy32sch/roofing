@@ -1,87 +1,97 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthenticatedAdmin } from '@/lib/auth/jwt';
+import { db } from '@/lib/supabase/server';
+import { dedupeKey, type StormType } from '@/lib/storm/parse';
+import { eachDate, fetchDailyDate, mapLimit, FETCH_CONCURRENCY } from '@/lib/storm/fetch';
 
 export const maxDuration = 60;
 
-const SPC_BASE = 'https://www.spc.noaa.gov/climo/reports';
-const MAX_DAYS = 90;
+/** Two years. The window the stored history is loaded for. */
+const MAX_DAYS = 730;
+/** Cap on returned markers. A metro view holds a couple of hundred; this guards a zoomed-out one. */
 const MAX_POINTS = 3000;
-const CACHE_TTL_MS = 3 * 60 * 60 * 1000; // 3 hours
-const TYPES = new Set(['hail', 'wind']);
+const TYPES = new Set<StormType>(['hail', 'wind']);
 
-export interface StormReport {
-  lat: number;
-  lon: number;
-  value: number | null; // hail: inches; wind: mph (null = UNK/damage-only)
-  date: string;
-  location: string;
-  state: string;
+/**
+ * How many recent days may be filled in live, per request.
+ *
+ * History comes from storm_reports (see migration 017 and `npm run storms`), but
+ * a storm-restoration company needs TODAY's reports the day they happen, and the
+ * backfill only runs when someone runs it. So a request tops up the tail of the
+ * window from NOAA's daily feed. Bounded hard: this is a cache fill, not a
+ * backfill, and it must never turn one map pan into hundreds of NOAA requests.
+ */
+const TOPUP_MAX_DAYS = 10;
+
+/** Don't re-check for a top-up on every pan of the map. */
+const TOPUP_COOLDOWN_MS = 10 * 60 * 1000;
+const lastTopup = new Map<string, number>();
+
+function todayIso(): string {
+  return new Date().toISOString().slice(0, 10);
 }
 
-// Cache US-wide parsed reports, keyed by "type:days".
-const cache = new Map<string, { expires: number; reports: StormReport[] }>();
-
-function yymmdd(d: Date): { url: string; iso: string } {
-  const yy = String(d.getUTCFullYear()).slice(2);
-  const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
-  const dd = String(d.getUTCDate()).padStart(2, '0');
-  return { url: `${yy}${mm}${dd}`, iso: `20${yy}-${mm}-${dd}` };
+function isoDaysAgo(days: number): string {
+  const d = new Date();
+  d.setUTCDate(d.getUTCDate() - days);
+  return d.toISOString().slice(0, 10);
 }
 
-function parseCsv(text: string, iso: string, type: string): StormReport[] {
-  const out: StormReport[] = [];
-  for (const line of text.split('\n')) {
-    if (!line.trim() || line.startsWith('Time,')) continue;
-    const parts = line.split(',');
-    if (parts.length < 7) continue;
-    const lat = parseFloat(parts[5]);
-    const lon = parseFloat(parts[6]);
-    if (Number.isNaN(lat) || Number.isNaN(lon)) continue;
+/**
+ * Pull any of the last few days that the stored history doesn't have yet.
+ *
+ * Best-effort throughout: a NOAA hiccup must degrade to "slightly stale map",
+ * never to a failed request.
+ */
+async function topUpRecent(type: StormType): Promise<void> {
+  const last = lastTopup.get(type) ?? 0;
+  if (Date.now() - last < TOPUP_COOLDOWN_MS) return;
+  lastTopup.set(type, Date.now());
 
-    const raw = parseInt(parts[1], 10);
-    let value: number | null;
-    if (type === 'hail') {
-      if (Number.isNaN(raw)) continue; // hail with no size is useless
-      value = raw / 100; // hundredths of an inch -> inches
-    } else {
-      value = Number.isNaN(raw) ? null : raw; // wind mph; UNK -> null but still plotted
-    }
-
-    out.push({ lat, lon, value, date: iso, location: parts[2] || '', state: parts[4] || '' });
-  }
-  return out;
-}
-
-async function fetchDay(d: Date, type: string): Promise<StormReport[]> {
-  const { url, iso } = yymmdd(d);
   try {
-    const res = await fetch(`${SPC_BASE}/${url}_rpts_${type}.csv`, {
-      headers: { 'User-Agent': 'RoofLeadsCRM/1.0 (storm overlay)' },
-      signal: AbortSignal.timeout(10000),
+    const supabase = db();
+    const { data, error } = await supabase
+      .from('storm_reports')
+      .select('occurred_on')
+      .eq('type', type)
+      .order('occurred_on', { ascending: false })
+      .limit(1);
+    if (error) return;
+
+    const newest = (data?.[0] as { occurred_on?: string } | undefined)?.occurred_on;
+    const today = todayIso();
+    // Start the day AFTER the newest stored date, but never reach further back
+    // than the top-up cap — an empty table is the backfill's job, not this.
+    const from = newest && newest > isoDaysAgo(TOPUP_MAX_DAYS)
+      ? eachDate(newest, today).slice(1) // exclude the day we already have
+      : eachDate(isoDaysAgo(TOPUP_MAX_DAYS), today);
+    const dates = from.slice(-TOPUP_MAX_DAYS);
+    if (dates.length === 0) return;
+
+    const perDay = await mapLimit(dates, FETCH_CONCURRENCY, (d) => fetchDailyDate(d, type));
+    const rows = perDay.flat().map((r) => ({
+      type: r.type,
+      occurred_on: r.occurred_on,
+      occurred_at: r.occurred_at,
+      lat: r.lat,
+      lon: r.lon,
+      value: r.value,
+      location: r.location,
+      state: r.state,
+      source: r.source,
+      dedupe_key: dedupeKey(r),
+    }));
+    if (rows.length === 0) return;
+
+    // ignoreDuplicates so a preliminary row can never overwrite the archive's
+    // quality-controlled value for a date the backfill already settled.
+    await supabase.from('storm_reports').upsert(rows, {
+      onConflict: 'dedupe_key',
+      ignoreDuplicates: true,
     });
-    if (!res.ok) return [];
-    return parseCsv(await res.text(), iso, type);
   } catch {
-    return [];
+    // Stale is fine; broken is not.
   }
-}
-
-async function getReports(type: string, days: number): Promise<StormReport[]> {
-  const key = `${type}:${days}`;
-  const cached = cache.get(key);
-  if (cached && cached.expires > Date.now()) return cached.reports;
-
-  const today = new Date();
-  const dates: Date[] = [];
-  for (let i = 0; i < days; i++) {
-    const d = new Date(today);
-    d.setUTCDate(d.getUTCDate() - i);
-    dates.push(d);
-  }
-  const perDay = await Promise.all(dates.map((d) => fetchDay(d, type)));
-  const reports = perDay.flat();
-  cache.set(key, { expires: Date.now() + CACHE_TTL_MS, reports });
-  return reports;
 }
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ type: string }> }) {
@@ -92,9 +102,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     const { type } = await params;
-    if (!TYPES.has(type)) {
+    if (!TYPES.has(type as StormType)) {
       return NextResponse.json({ success: false, error: 'Invalid storm type' }, { status: 400 });
     }
+    const stormType = type as StormType;
 
     const { searchParams } = new URL(request.url);
     const days = Math.min(Math.max(parseInt(searchParams.get('days') || '30', 10) || 30, 1), MAX_DAYS);
@@ -106,16 +117,57 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     });
     const hasBbox = [n, s, e, w].every((v) => v !== null && !Number.isNaN(v));
 
-    let reports = await getReports(type, days);
-    if (minValue > 0) reports = reports.filter((r) => r.value != null && r.value >= minValue);
+    await topUpRecent(stormType);
+
+    let query = db()
+      .from('storm_reports')
+      .select('occurred_on, lat, lon, value, location, state', { count: 'exact' })
+      .eq('type', stormType)
+      .gte('occurred_on', isoDaysAgo(days))
+      // Worst first, so a view that has to be capped keeps the reports that
+      // actually qualify a roof rather than an arbitrary slice.
+      .order('value', { ascending: false, nullsFirst: false })
+      .limit(MAX_POINTS);
+
+    if (minValue > 0) query = query.gte('value', minValue);
     if (hasBbox) {
-      reports = reports.filter((r) => r.lat <= n! && r.lat >= s! && r.lon <= e! && r.lon >= w!);
+      query = query.lte('lat', n!).gte('lat', s!).lte('lon', e!).gte('lon', w!);
     }
 
-    const truncated = reports.length > MAX_POINTS;
-    if (truncated) reports = reports.slice(0, MAX_POINTS);
+    const { data, error, count } = await query;
+    if (error) {
+      // Before migration 017 the table doesn't exist. Report it plainly rather
+      // than a bare 500, so the cause is obvious.
+      const missing = /storm_reports/.test(error.message);
+      return NextResponse.json(
+        {
+          success: false,
+          error: missing
+            ? 'Storm history table is missing — apply migration 017, then run: npm run storms'
+            : error.message,
+        },
+        { status: missing ? 503 : 500 }
+      );
+    }
 
-    return NextResponse.json({ success: true, type, reports, days, count: reports.length, truncated });
+    const reports = (data ?? []).map((r) => ({
+      lat: r.lat,
+      lon: r.lon,
+      value: r.value,
+      date: r.occurred_on,
+      location: r.location ?? '',
+      state: r.state ?? '',
+    }));
+
+    return NextResponse.json({
+      success: true,
+      type: stormType,
+      reports,
+      days,
+      count: reports.length,
+      total: count ?? reports.length,
+      truncated: (count ?? 0) > reports.length,
+    });
   } catch {
     return NextResponse.json({ success: false, error: 'Internal server error' }, { status: 500 });
   }

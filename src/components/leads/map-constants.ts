@@ -46,6 +46,55 @@ export const DO_NOT_KNOCK_RING_COLOR = 'oklch(0.45 0.02 45)';
 
 export type StormType = 'hail' | 'wind';
 
+/** Storm history windows. Two years is what the stored history covers. */
+export const STORM_WINDOWS = [
+  { days: 7, label: 'Last 7 days' },
+  { days: 30, label: 'Last 30 days' },
+  { days: 90, label: 'Last 90 days' },
+  { days: 182, label: 'Last 6 months' },
+  { days: 365, label: 'Last year' },
+  { days: 730, label: 'Last 2 years' },
+] as const;
+
+export function stormWindowLabel(days: number): string {
+  return STORM_WINDOWS.find((w) => w.days === days)?.label ?? `Last ${days} days`;
+}
+
+/**
+ * Minimum-severity steps, per type.
+ *
+ * Over two years a wide view fills with marginal reports, and severity is what
+ * actually qualifies a roof — 1" hail is the usual insurer threshold, 58 mph is
+ * the severe-wind criterion. Values are in the stored units: inches and mph.
+ */
+export const STORM_MIN_VALUES: Record<StormType, { value: number; label: string }[]> = {
+  hail: [
+    { value: 0, label: 'Any hail' },
+    { value: 1, label: '1"+' },
+    { value: 1.5, label: '1.5"+' },
+    { value: 2, label: '2"+' },
+  ],
+  wind: [
+    { value: 0, label: 'Any wind' },
+    { value: 58, label: '58+ mph' },
+    { value: 74, label: '74+ mph' },
+    { value: 90, label: '90+ mph' },
+  ],
+};
+
+/**
+ * Label for the shared minimum-severity control.
+ *
+ * With both overlays on, one threshold has to describe two different units, so
+ * the control shows the pair rather than pretending it's one number.
+ */
+export function stormMinLabel(active: StormType[], hailMin: number, windMin: number): string {
+  const parts: string[] = [];
+  if (active.includes('hail')) parts.push(hailMin > 0 ? `${hailMin}"` : 'any');
+  if (active.includes('wind')) parts.push(windMin > 0 ? `${windMin}mph` : 'any');
+  return parts.length ? `Min ${parts.join(' / ')}` : 'Min severity';
+}
+
 /** Selectable overlays, in the order they appear in the toolbar. */
 export const STORM_TYPES: StormType[] = ['wind', 'hail'];
 
