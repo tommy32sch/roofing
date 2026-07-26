@@ -46,6 +46,9 @@ export const DO_NOT_KNOCK_RING_COLOR = 'oklch(0.45 0.02 45)';
 
 export type StormType = 'hail' | 'wind';
 
+/** Selectable overlays, in the order they appear in the toolbar. */
+export const STORM_TYPES: StormType[] = ['wind', 'hail'];
+
 export interface StormReport {
   lat: number;
   lon: number;
@@ -53,6 +56,60 @@ export interface StormReport {
   date: string;
   location: string;
   state: string;
+  /**
+   * Which overlay this report came from.
+   *
+   * Required because wind and hail can be shown together: a merged list has no
+   * single ambient type, so colour, radius and label must come from the report
+   * itself rather than from whatever the toolbar currently has selected.
+   */
+  type: StormType;
+}
+
+/** Add or remove a type from the active set, preserving STORM_TYPES order. */
+export function toggleStormType(active: StormType[], type: StormType): StormType[] {
+  const next = active.includes(type) ? active.filter((t) => t !== type) : [...active, type];
+  return STORM_TYPES.filter((t) => next.includes(t));
+}
+
+/** How many reports of each type are currently loaded, for the toolbar counts. */
+export function countStormsByType(reports: StormReport[]): Record<StormType, number> {
+  const counts: Record<StormType, number> = { wind: 0, hail: 0 };
+  for (const r of reports) {
+    if (r.type === 'wind' || r.type === 'hail') counts[r.type]++;
+  }
+  return counts;
+}
+
+/**
+ * Draw order for storm markers: largest first, so it ends up underneath.
+ *
+ * With both overlays on, a 2-inch hail circle is big enough to swallow several
+ * wind points; drawing descending by radius keeps the small ones clickable.
+ * Returns a new array — the caller's list is React state.
+ */
+export function sortStormsForDrawing(reports: StormReport[]): StormReport[] {
+  return [...reports].sort(
+    (a, b) => stormRadius(b.type, b.value) - stormRadius(a.type, a.value)
+  );
+}
+
+/** Severity thresholds shown in the legend for each active overlay. */
+export function stormLegendEntries(
+  types: StormType[]
+): { key: string; label: string; color: string }[] {
+  const entries: { key: string; label: string; color: string }[] = [];
+  for (const type of STORM_TYPES) {
+    if (!types.includes(type)) continue;
+    const steps =
+      type === 'hail'
+        ? [{ label: 'Hail 1"+', v: 1 }, { label: '1.5"+', v: 1.5 }, { label: '2"+', v: 2 }]
+        : [{ label: 'Wind 58+', v: 58 }, { label: '74+', v: 74 }, { label: '90+ mph', v: 90 }];
+    for (const s of steps) {
+      entries.push({ key: `${type}-${s.label}`, label: s.label, color: stormColor(type, s.v) });
+    }
+  }
+  return entries;
 }
 
 /** Marker fill for a NOAA storm report, scaled by severity. */

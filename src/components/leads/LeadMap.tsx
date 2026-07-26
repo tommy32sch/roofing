@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button';
 import { FollowUpMenu } from '@/components/leads/FollowUpMenu';
 import { LEAD_STATUS_OPTIONS } from '@/types';
 import { shouldRecenterMap } from '@/lib/leads/markets';
-import { STATUS_COLORS, DNC_RING_COLOR, DO_NOT_KNOCK_RING_COLOR, stormColor, stormRadius, stormLabel, type GeoLead, type StormReport, type StormType } from './map-constants';
+import { STATUS_COLORS, DNC_RING_COLOR, DO_NOT_KNOCK_RING_COLOR, stormColor, stormRadius, stormLabel, sortStormsForDrawing, type GeoLead, type StormReport } from './map-constants';
 
 // Phoenix metro — sensible default for an empty map until leads load
 const DEFAULT_CENTER: [number, number] = [33.4, -111.9];
@@ -197,9 +197,11 @@ interface LeadMapProps {
   /** Present for admins only — enables the Select button in popups */
   onToggleSelect?: (lead: GeoLead) => void;
   onMapReady?: (map: LeafletMap) => void;
-  /** NOAA storm reports to overlay beneath the lead pins */
+  /**
+   * NOAA storm reports to overlay beneath the lead pins. May mix wind and hail —
+   * each report carries its own `type`, so there is no ambient stormType prop.
+   */
   stormReports?: StormReport[];
-  stormType?: StormType;
   /** Log a knock straight from the pin popup. */
   onLogKnock?: (lead: GeoLead, disposition: KnockDisposition) => void;
   /** Lead id currently being written, so its buttons can disable. */
@@ -223,7 +225,6 @@ export default function LeadMap({
   onToggleSelect,
   onMapReady,
   stormReports = [],
-  stormType = 'hail',
   onLogKnock,
   loggingKnockFor,
   onFollowUpChange,
@@ -255,19 +256,21 @@ export default function LeadMap({
       <MarketView marketId={marketId} center={marketCenter} hasLeads={leads.length > 0} loading={marketLoading} />
       <MapReady onMapReady={onMapReady} />
       {onDrawPoint && <DrawLayer drawing={drawing} points={drawPoints} onPoint={onDrawPoint} />}
-      {/* NOAA storm reports — drawn first so lead pins sit on top */}
-      {stormReports.map((r, i) => {
-        const color = stormColor(stormType, r.value);
+      {/* NOAA storm reports — drawn first so lead pins sit on top. Sorted
+          largest-radius-first so a wide hail circle can't bury the wind points
+          underneath it when both overlays are on. */}
+      {sortStormsForDrawing(stormReports).map((r, i) => {
+        const color = stormColor(r.type, r.value);
         return (
           <CircleMarker
-            key={`storm-${i}`}
+            key={`storm-${r.type}-${i}`}
             center={[r.lat, r.lon]}
-            radius={stormRadius(stormType, r.value)}
+            radius={stormRadius(r.type, r.value)}
             pathOptions={{ fillColor: color, fillOpacity: 0.3, color, weight: 1 }}
           >
             <Popup>
               <div className="text-sm">
-                <p className="font-medium">{stormLabel(stormType, r.value)}</p>
+                <p className="font-medium">{stormLabel(r.type, r.value)}</p>
                 <p className="text-xs">
                   {r.date}
                   {r.location ? ` · ${r.location}` : ''}

@@ -16,7 +16,10 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { BulkAssignDialog } from '@/components/leads/BulkAssignDialog';
-import { STATUS_COLORS, DNC_RING_COLOR, stormColor, type GeoLead, type StormReport, type StormType } from '@/components/leads/map-constants';
+import {
+  STATUS_COLORS, DNC_RING_COLOR, STORM_TYPES, toggleStormType, countStormsByType,
+  stormLegendEntries, type GeoLead, type StormReport, type StormType,
+} from '@/components/leads/map-constants';
 import { LEAD_STATUS_OPTIONS, LEAD_PRIORITY_OPTIONS } from '@/types';
 import type { UserRole } from '@/types';
 import { LIMITS } from '@/lib/utils/validation';
@@ -60,11 +63,16 @@ export default function MapPage() {
   const [assignOpen, setAssignOpen] = useState(false);
   const [geocoding, setGeocoding] = useState(false);
   const [geocodeStatus, setGeocodeStatus] = useState('');
-  const [stormOn, setStormOn] = useState(false);
+
   const [legendOpen, setLegendOpen] = useState(false);
-  const [stormType, setStormType] = useState<StormType>('wind');
+  // Wind and hail are independent overlays and can both be on: a roof with both
+  // hail bruising and wind-lifted shingles is the strongest claim, and that only
+  // shows up where the two layers overlap.
+  const [stormTypes, setStormTypes] = useState<StormType[]>([]);
   const [stormDays, setStormDays] = useState(30);
   const [stormReports, setStormReports] = useState<StormReport[]>([]);
+  const stormOn = stormTypes.length > 0;
+  const stormCounts = countStormsByType(stormReports);
   const [stormLoading, setStormLoading] = useState(false);
   const [mapInstance, setMapInstance] = useState<LeafletMap | null>(null);
   const [drawing, setDrawing] = useState(false);
@@ -239,7 +247,14 @@ export default function MapPage() {
   const fetchStorm = useCallback(async () => {
     const map = mapRef.current;
     if (!map) return;
+    // A map whose container hasn't been laid out yet reports a ZERO-AREA bounds
+    // (north === south), and querying that returns no reports — indistinguishable
+    // from "this area had no storms". Wait for a real size; the resize listener
+    // below re-runs this once the container settles.
+    const size = map.getSize();
+    if (size.x === 0 || size.y === 0) return;
     const b = map.getBounds();
+    if (b.getNorth() === b.getSouth() || b.getEast() === b.getWest()) return;
     setStormLoading(true);
     try {
       const params = new URLSearchParams({
@@ -249,30 +264,55 @@ export default function MapPage() {
         e: String(b.getEast()),
         w: String(b.getWest()),
       });
-      const res = await fetch(`/api/admin/storm/${stormType}?${params}`);
-      const data = await res.json();
-      if (data.success) setStormReports(data.reports);
-      else toast.error(data.error || 'Failed to load storm data');
-    } catch {
-      toast.error('Failed to load storm data');
+      // One request per active overlay, in parallel. The API is per-type and
+      // caches per type, so this keeps its cache keys intact.
+      const results = await Promise.all(
+        stormTypes.map(async (type) => {
+          const res = await fetch(`/api/admin/storm/${type}?${params}`);
+          const data = await res.json();
+          if (!data.success) throw new Error(data.error || `Failed to load ${type} data`);
+          // Tag each report with the overlay it came from — a merged list has no
+          // ambient type, and colour/radius/label are read per report.
+          return (data.reports as Omit<StormReport, 'type'>[]).map((r) => ({ ...r, type }));
+        })
+      );
+      setStormReports(results.flat());
+    } catch (e) {
+      // One overlay failing shouldn't blank the other, but the list is replaced
+      // wholesale, so say what happened rather than showing a partial map.
+      toast.error(e instanceof Error ? e.message : 'Failed to load storm data');
     } finally {
       setStormLoading(false);
     }
-  }, [stormDays, stormType]);
+  }, [stormDays, stormTypes]);
 
-  // Fetch when storm mode turns on or the type/window changes; clear when off.
+  // Fetch when an overlay turns on or the window changes; clear when all are off.
+  //
+  // Depends on mapInstance because fetchStorm needs the map's bounds and bails
+  // out when the map isn't mounted yet. Without it, switching an overlay on
+  // while the map was still initialising silently fetched nothing and never
+  // retried — the layer stayed empty until the user happened to pan.
   useEffect(() => {
-    if (stormOn) fetchStorm();
-    else setStormReports([]);
-  }, [stormOn, fetchStorm]);
+    if (!stormOn) {
+      setStormReports([]);
+      return;
+    }
+    if (!mapInstance) return;
+    fetchStorm();
+  }, [stormOn, mapInstance, fetchStorm]);
 
   // Keep the storm layer in sync with the map as it pans/zooms (debounced).
+  //
+  // Listens for 'resize' as well as 'moveend': the container is often 0x0 on
+  // first paint, so the initial fetch is skipped, and only invalidateSize's
+  // resize event signals that real bounds are finally available.
   useEffect(() => {
     if (!mapInstance || !stormOn) return;
     let t: ReturnType<typeof setTimeout>;
     const onMove = () => { clearTimeout(t); t = setTimeout(() => fetchStorm(), 500); };
-    mapInstance.on('moveend', onMove);
-    return () => { clearTimeout(t); mapInstance.off('moveend', onMove); };
+    const events = 'moveend resize';
+    mapInstance.on(events, onMove);
+    return () => { clearTimeout(t); mapInstance.off(events, onMove); };
   }, [mapInstance, stormOn, fetchStorm]);
 
   function finishDraw() {
@@ -341,32 +381,36 @@ export default function MapPage() {
                 </Button>
               </>
             )}
-            <Button
-              variant={stormOn ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setStormOn((v) => !v)}
-            >
-              {stormType === 'wind' ? (
-                <Wind className={`h-4 w-4 mr-1 ${stormLoading ? 'animate-pulse' : ''}`} />
-              ) : (
-                <CloudHail className={`h-4 w-4 mr-1 ${stormLoading ? 'animate-pulse' : ''}`} />
-              )}
-              Storm{stormOn && stormReports.length > 0 ? ` (${stormReports.length})` : ''}
-            </Button>
+            {/* Two independent toggles rather than one button plus a type
+                dropdown. A dropdown can only ever express one choice, and the
+                overlap of wind and hail is exactly what a rep wants to see. Each
+                carries its own count so the layers stay distinguishable. */}
+            {STORM_TYPES.map((type) => {
+              const active = stormTypes.includes(type);
+              const Icon = type === 'wind' ? Wind : CloudHail;
+              const count = stormCounts[type];
+              return (
+                <Button
+                  key={type}
+                  variant={active ? 'default' : 'outline'}
+                  size="sm"
+                  aria-pressed={active}
+                  onClick={() => setStormTypes((prev) => toggleStormType(prev, type))}
+                >
+                  <Icon className={`h-4 w-4 mr-1 ${stormLoading && active ? 'animate-pulse' : ''}`} />
+                  {type === 'wind' ? 'Wind' : 'Hail'}
+                  {active && count > 0 ? ` (${count})` : ''}
+                </Button>
+              );
+            })}
             {stormOn && (
               <>
-                <Select value={stormType} onValueChange={(v) => v && setStormType(v as StormType)}>
-                  <SelectTrigger className="w-[110px]">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="wind">Wind</SelectItem>
-                    <SelectItem value="hail">Hail</SelectItem>
-                  </SelectContent>
-                </Select>
                 <Select value={String(stormDays)} onValueChange={(v) => v && setStormDays(parseInt(v, 10))}>
-                  <SelectTrigger className="w-[130px]">
-                    <SelectValue />
+                  <SelectTrigger className="w-[130px]" aria-label="Storm window">
+                    {/* Needs explicit children — this Select renders the raw
+                        value otherwise, so the trigger read "30" instead of
+                        "Last 30 days". */}
+                    <SelectValue>{`Last ${stormDays} days`}</SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="7">Last 7 days</SelectItem>
@@ -460,16 +504,13 @@ export default function MapPage() {
         {stormOn && (
           <>
             <span className="text-muted-foreground/60">|</span>
-            {(stormType === 'hail'
-              ? [{ label: 'Hail 1"+', v: 1 }, { label: '1.5"+', v: 1.5 }, { label: '2"+', v: 2 }]
-              : [{ label: 'Wind 58+', v: 58 }, { label: '74+', v: 74 }, { label: '90+ mph', v: 90 }]
-            ).map((h) => (
-              <span key={h.label} className="flex items-center gap-1.5">
+            {stormLegendEntries(stormTypes).map((entry) => (
+              <span key={entry.key} className="flex items-center gap-1.5">
                 <span
                   className="inline-block h-2.5 w-2.5 rounded-full"
-                  style={{ backgroundColor: stormColor(stormType, h.v), opacity: 0.6 }}
+                  style={{ backgroundColor: entry.color, opacity: 0.6 }}
                 />
-                {h.label}
+                {entry.label}
               </span>
             ))}
           </>
@@ -485,7 +526,6 @@ export default function MapPage() {
             selectedIds={new Set(selection.keys())}
             onToggleSelect={isAdmin ? toggleSelect : undefined}
             stormReports={stormReports}
-            stormType={stormType}
             drawing={drawing}
             drawPoints={drawPoints}
             onDrawPoint={isAdmin ? (lat, lng) => setDrawPoints((p) => [...p, [lat, lng]]) : undefined}
