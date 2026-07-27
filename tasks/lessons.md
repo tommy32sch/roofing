@@ -55,3 +55,20 @@
   - Don't trust a green browser check that relied on synthetic keystrokes or
     programmatic value sets for native date/time controls; those bypass the exact
     sanitization that causes the bug.
+
+## Map encodings: never share a hue family across meanings; labels beat ramps
+- **Correction:** owner rejected the storm-zone age view — "everything just
+  looks orange and red." Age was drawn red→orange→amber ON TOP of wind severity
+  markers already coloured amber→orange→red. Same hues, two meanings, one
+  screen; and adjacent warm hues don't visibly order anyway.
+- **Rules:**
+  - One variable per hue family on screen at a time. If two variables must
+    coexist, hide one layer (view toggle) rather than blending them.
+  - Ordered data gets a single-hue sequential ramp (strong → pale), not a
+    multi-hue one.
+  - When the value must be readable at any zoom, write it on the mark
+    (screen-space label) — a label needs no legend. Leaflet: permanent Tooltip;
+    style needs `.leaflet-tooltip.your-class` or Leaflet's own CSS wins the tie.
+  - Verify by LOOKING at the render with real data, not by reasoning that the
+    encoding "should" work — both zone bugs (slivers, colour mush) were only
+    visible on screen.
