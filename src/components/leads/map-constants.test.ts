@@ -9,6 +9,8 @@ import {
   stormColor,
   stormAgeDays,
   stormAgeBucket,
+  stormAgeShort,
+  stormZoneStyle,
   type StormReport,
   type StormType,
 } from './map-constants';
@@ -188,5 +190,47 @@ describe('sortStormsForDrawing with age', () => {
     const copy = [...input];
     sortStormsForDrawing(input, NOW);
     expect(input).toEqual(copy);
+  });
+});
+
+describe('stormAgeShort', () => {
+  const NOW = Date.parse('2026-07-26T12:00:00Z');
+  const daysAgo = (n: number) =>
+    new Date(NOW - n * 86_400_000).toISOString().slice(0, 10);
+
+  // The label written on each zone — it must read instantly, so the unit
+  // steps up as the number grows.
+  it('picks the unit a person would say', () => {
+    expect(stormAgeShort(daysAgo(0), NOW)).toBe('today');
+    expect(stormAgeShort(daysAgo(3), NOW)).toBe('3d');
+    expect(stormAgeShort(daysAgo(21), NOW)).toBe('3w');
+    expect(stormAgeShort(daysAgo(240), NOW)).toBe('8mo');
+    expect(stormAgeShort(daysAgo(400), NOW)).toBe('1y+');
+    expect(stormAgeShort(daysAgo(730), NOW)).toBe('2y+');
+  });
+
+  it('never emits 0 of a larger unit at a boundary', () => {
+    expect(stormAgeShort(daysAgo(7), NOW)).toBe('1w');
+    expect(stormAgeShort(daysAgo(60), NOW)).toBe('2mo');
+    expect(stormAgeShort(daysAgo(365), NOW)).toBe('1y+');
+  });
+});
+
+describe('stormZoneStyle', () => {
+  it('fades fill monotonically with age — the single-hue ramp', () => {
+    const keys = ['fresh', 'recent', 'aging', 'stale'];
+    const fills = keys.map((k) => stormZoneStyle(k).fillOpacity);
+    for (let i = 1; i < fills.length; i++) expect(fills[i]).toBeLessThan(fills[i - 1]);
+  });
+
+  // Past the filing window a zone is context, not opportunity: outline only.
+  it('gives stale zones no fill and a dashed outline', () => {
+    expect(stormZoneStyle('stale').fillOpacity).toBe(0);
+    expect(stormZoneStyle('stale').dashArray).toBeTruthy();
+    expect(stormZoneStyle('fresh').dashArray).toBeUndefined();
+  });
+
+  it('falls back to stale for an unknown bucket', () => {
+    expect(stormZoneStyle('nope')).toEqual(stormZoneStyle('stale'));
   });
 });

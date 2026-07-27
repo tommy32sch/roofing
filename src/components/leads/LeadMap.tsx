@@ -2,7 +2,7 @@
 
 import { useEffect } from 'react';
 import Link from 'next/link';
-import { MapContainer, TileLayer, CircleMarker, Popup, Polygon, Polyline, useMap, useMapEvents } from 'react-leaflet';
+import { MapContainer, TileLayer, CircleMarker, Popup, Polygon, Polyline, Tooltip, useMap, useMapEvents } from 'react-leaflet';
 import type { Map as LeafletMap } from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { formatDistanceToNow } from 'date-fns';
@@ -11,8 +11,8 @@ import { Button } from '@/components/ui/button';
 import { FollowUpMenu } from '@/components/leads/FollowUpMenu';
 import { LEAD_STATUS_OPTIONS } from '@/types';
 import { shouldRecenterMap } from '@/lib/leads/markets';
-import { STATUS_COLORS, DNC_RING_COLOR, DO_NOT_KNOCK_RING_COLOR, stormColor, stormRadius, stormLabel, sortStormsForDrawing, stormAgeBucket, stormZoneColor, type GeoLead, type StormReport } from './map-constants';
-import { buildStormZones } from '@/lib/storm/zones';
+import { STATUS_COLORS, DNC_RING_COLOR, DO_NOT_KNOCK_RING_COLOR, stormColor, stormRadius, stormLabel, sortStormsForDrawing, stormAgeBucket, stormZoneStyle, stormAgeShort, type GeoLead, type StormReport } from './map-constants';
+import { partitionStormReports } from '@/lib/storm/zones';
 
 // Phoenix metro — sensible default for an empty map until leads load
 const DEFAULT_CENTER: [number, number] = [33.4, -111.9];
@@ -276,64 +276,97 @@ export default function LeadMap({
       <MapReady onMapReady={onMapReady} />
       {onDrawPoint && <DrawLayer drawing={drawing} points={drawPoints} onPoint={onDrawPoint} />}
       {/* Storm ZONES — the swath each storm cut, coloured by age.
-          This is the view that answers "where should we be canvassing": at metro
-          zoom individual reports are a few pixels and their opacity and shape are
-          unreadable, but a filled hull has area and hue, which both survive. */}
-      {stormZones &&
-        buildStormZones(stormReports).map((zone) => {
-          const age = stormAgeBucket(zone.latestDate, stormNow);
-          const color = stormZoneColor(age.key);
-          return (
-            <Polygon
-              key={`zone-${zone.key}`}
-              positions={zone.hull}
-              pathOptions={{
-                color,
-                fillColor: color,
-                // Recent swaths read solid from across the metro; old ones sit
-                // back far enough to be context rather than competition.
-                fillOpacity: age.key === 'fresh' ? 0.35 : age.key === 'recent' ? 0.25 : 0.12,
-                weight: age.key === 'fresh' ? 3 : 2,
-                opacity: age.key === 'stale' ? 0.45 : 0.9,
-                // Dashed for anything past the usual filing window, so the two
-                // oldest bands stay separable even in greyscale or at a glance.
-                dashArray: age.key === 'stale' ? '6 5' : undefined,
-              }}
-            >
-              <Popup>
-                <div className="space-y-0.5 text-sm">
-                  <p className="font-medium capitalize">
-                    {zone.type} zone · {zone.reportCount} reports
-                  </p>
-                  <p className="text-xs font-medium" style={{ color }}>
-                    {formatDistanceToNow(new Date(`${zone.latestDate}T12:00:00Z`), { addSuffix: true })}
-                    {' · '}
-                    {age.label.toLowerCase()}
-                  </p>
-                  {zone.peakValue != null && (
+          The zoomed-out planning view. One red ramp, fading with age, and the
+          age written straight onto each zone in screen pixels — a label needs no
+          legend. The severity markers are hidden while this is on: age and
+          severity sharing one screen was unreadable mush ("everything just
+          looks orange and red"), and severity is the marker view's job. */}
+      {stormZones && (() => {
+        const { zones, strays } = partitionStormReports(stormReports);
+        return (
+          <>
+            {/* Strays: hits that formed no swath. Quiet grey dots so the data
+                is still on the map without shouting over the zones. */}
+            {strays.map((r, i) => (
+              <CircleMarker
+                key={`stray-${r.type}-${i}`}
+                center={[r.lat, r.lon]}
+                radius={3}
+                pathOptions={{ fillColor: '#94a3b8', fillOpacity: 0.5, weight: 0 }}
+              >
+                <Popup>
+                  <div className="text-sm">
+                    <p className="font-medium">{stormLabel(r.type, r.value)}</p>
                     <p className="text-xs">
-                      Peak {zone.type === 'hail'
-                        ? `${zone.peakValue.toFixed(2)}" hail`
-                        : `${zone.peakValue} mph`}
+                      {formatDistanceToNow(new Date(`${r.date}T12:00:00Z`), { addSuffix: true })}
+                      {' · '}
+                      {r.date}
                     </p>
-                  )}
-                  <p className="text-[11px] text-muted-foreground">
-                    {zone.earliestDate === zone.latestDate
-                      ? zone.latestDate
-                      : `${zone.earliestDate} – ${zone.latestDate}`}
-                  </p>
-                </div>
-              </Popup>
-            </Polygon>
-          );
-        })}
+                    <p className="text-[11px] text-muted-foreground">Isolated report — no zone</p>
+                  </div>
+                </Popup>
+              </CircleMarker>
+            ))}
+            {zones.map((zone) => {
+              const age = stormAgeBucket(zone.latestDate, stormNow);
+              const style = stormZoneStyle(age.key);
+              return (
+                <Polygon
+                  key={`zone-${zone.key}`}
+                  positions={zone.hull}
+                  pathOptions={{
+                    color: style.stroke,
+                    fillColor: style.fill,
+                    fillOpacity: style.fillOpacity,
+                    weight: style.weight,
+                    opacity: style.opacity,
+                    dashArray: style.dashArray,
+                  }}
+                >
+                  {/* The age, written on the zone. Screen-space text survives
+                      any zoom level, which no colour encoding does. */}
+                  <Tooltip permanent direction="center" className="storm-zone-label">
+                    {zone.type === 'hail' ? 'Hail' : 'Wind'} · {stormAgeShort(zone.latestDate, stormNow)}
+                  </Tooltip>
+                  <Popup>
+                    <div className="space-y-0.5 text-sm">
+                      <p className="font-medium capitalize">
+                        {zone.type} zone · {zone.reportCount} reports
+                      </p>
+                      <p className="text-xs font-medium" style={{ color: style.stroke }}>
+                        {formatDistanceToNow(new Date(`${zone.latestDate}T12:00:00Z`), { addSuffix: true })}
+                        {' · '}
+                        {age.label.toLowerCase()}
+                      </p>
+                      {zone.peakValue != null && (
+                        <p className="text-xs">
+                          Peak {zone.type === 'hail'
+                            ? `${zone.peakValue.toFixed(2)}" hail`
+                            : `${zone.peakValue} mph`}
+                        </p>
+                      )}
+                      <p className="text-[11px] text-muted-foreground">
+                        {zone.earliestDate === zone.latestDate
+                          ? zone.latestDate
+                          : `${zone.earliestDate} – ${zone.latestDate}`}
+                      </p>
+                    </div>
+                  </Popup>
+                </Polygon>
+              );
+            })}
+          </>
+        );
+      })()}
 
-      {/* NOAA storm reports — drawn beneath the lead pins.
+      {/* NOAA storm reports — drawn beneath the lead pins. Hidden while the
+          zones view is on: that view answers "when/where", and layering
+          severity colours under the age ramp was unreadable.
           Colour and radius carry SEVERITY; opacity carries AGE. With two years
           of history on the map, a fresh 1" hailstorm is worth more than a 2" one
           from last spring, so recent reports read solid and old ones fade back.
           Sorted oldest-first so the fresh ones land on top and stay clickable. */}
-      {sortStormsForDrawing(stormReports, stormNow).map((r, i) => {
+      {!stormZones && sortStormsForDrawing(stormReports, stormNow).map((r, i) => {
         const color = stormColor(r.type, r.value);
         const age = stormAgeBucket(r.date, stormNow);
         return (

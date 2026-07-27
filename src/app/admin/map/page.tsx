@@ -581,15 +581,19 @@ export default function MapPage() {
         {stormOn && (
           <>
             <span className="text-muted-foreground/60">|</span>
-            {stormLegendEntries(stormTypes).map((entry) => (
-              <span key={entry.key} className="flex items-center gap-1.5">
-                <span
-                  className="inline-block h-2.5 w-2.5 rounded-full"
-                  style={{ backgroundColor: entry.color, opacity: 0.6 }}
-                />
-                {entry.label}
-              </span>
-            ))}
+            {/* Severity swatches only in marker view — the zones view hides
+                the markers that carry severity, so showing its key would be
+                explaining colours that aren't on screen. */}
+            {!stormZones &&
+              stormLegendEntries(stormTypes).map((entry) => (
+                <span key={entry.key} className="flex items-center gap-1.5">
+                  <span
+                    className="inline-block h-2.5 w-2.5 rounded-full"
+                    style={{ backgroundColor: entry.color, opacity: 0.6 }}
+                  />
+                  {entry.label}
+                </span>
+              ))}
             {/* The age ramp. Which encoding is live depends on the view: zones
                 carry age as colour (readable zoomed out), markers carry it as
                 opacity (colour there is already severity). Showing only the
@@ -601,7 +605,7 @@ export default function MapPage() {
                   <span key={entry.key} className="flex items-center gap-1.5">
                     <span
                       className="inline-block h-2.5 w-2.5 rounded-sm"
-                      style={{ backgroundColor: entry.color, opacity: 0.8 }}
+                      style={{ backgroundColor: entry.color, opacity: entry.opacity }}
                     />
                     {entry.label}
                   </span>
