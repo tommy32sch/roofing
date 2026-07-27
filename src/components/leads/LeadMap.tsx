@@ -11,7 +11,8 @@ import { Button } from '@/components/ui/button';
 import { FollowUpMenu } from '@/components/leads/FollowUpMenu';
 import { LEAD_STATUS_OPTIONS } from '@/types';
 import { shouldRecenterMap } from '@/lib/leads/markets';
-import { STATUS_COLORS, DNC_RING_COLOR, DO_NOT_KNOCK_RING_COLOR, stormColor, stormRadius, stormLabel, sortStormsForDrawing, stormAgeBucket, type GeoLead, type StormReport } from './map-constants';
+import { STATUS_COLORS, DNC_RING_COLOR, DO_NOT_KNOCK_RING_COLOR, stormColor, stormRadius, stormLabel, sortStormsForDrawing, stormAgeBucket, stormZoneColor, type GeoLead, type StormReport } from './map-constants';
+import { buildStormZones } from '@/lib/storm/zones';
 
 // Phoenix metro — sensible default for an empty map until leads load
 const DEFAULT_CENTER: [number, number] = [33.4, -111.9];
@@ -211,6 +212,13 @@ interface LeadMapProps {
    * different buckets mid-render.
    */
   stormNow?: number;
+  /**
+   * Draw storm swaths instead of relying on individual markers.
+   *
+   * The "which neighbourhoods got hit recently" view: reports are clustered into
+   * the swath each storm cut, and the swath is coloured by age.
+   */
+  stormZones?: boolean;
   /** Log a knock straight from the pin popup. */
   onLogKnock?: (lead: GeoLead, disposition: KnockDisposition) => void;
   /** Lead id currently being written, so its buttons can disable. */
@@ -235,6 +243,7 @@ export default function LeadMap({
   onMapReady,
   stormReports = [],
   stormNow = 0,
+  stormZones = false,
   onLogKnock,
   loggingKnockFor,
   onFollowUpChange,
@@ -266,6 +275,59 @@ export default function LeadMap({
       <MarketView marketId={marketId} center={marketCenter} hasLeads={leads.length > 0} loading={marketLoading} />
       <MapReady onMapReady={onMapReady} />
       {onDrawPoint && <DrawLayer drawing={drawing} points={drawPoints} onPoint={onDrawPoint} />}
+      {/* Storm ZONES — the swath each storm cut, coloured by age.
+          This is the view that answers "where should we be canvassing": at metro
+          zoom individual reports are a few pixels and their opacity and shape are
+          unreadable, but a filled hull has area and hue, which both survive. */}
+      {stormZones &&
+        buildStormZones(stormReports).map((zone) => {
+          const age = stormAgeBucket(zone.latestDate, stormNow);
+          const color = stormZoneColor(age.key);
+          return (
+            <Polygon
+              key={`zone-${zone.key}`}
+              positions={zone.hull}
+              pathOptions={{
+                color,
+                fillColor: color,
+                // Recent swaths read solid from across the metro; old ones sit
+                // back far enough to be context rather than competition.
+                fillOpacity: age.key === 'fresh' ? 0.35 : age.key === 'recent' ? 0.25 : 0.12,
+                weight: age.key === 'fresh' ? 3 : 2,
+                opacity: age.key === 'stale' ? 0.45 : 0.9,
+                // Dashed for anything past the usual filing window, so the two
+                // oldest bands stay separable even in greyscale or at a glance.
+                dashArray: age.key === 'stale' ? '6 5' : undefined,
+              }}
+            >
+              <Popup>
+                <div className="space-y-0.5 text-sm">
+                  <p className="font-medium capitalize">
+                    {zone.type} zone · {zone.reportCount} reports
+                  </p>
+                  <p className="text-xs font-medium" style={{ color }}>
+                    {formatDistanceToNow(new Date(`${zone.latestDate}T12:00:00Z`), { addSuffix: true })}
+                    {' · '}
+                    {age.label.toLowerCase()}
+                  </p>
+                  {zone.peakValue != null && (
+                    <p className="text-xs">
+                      Peak {zone.type === 'hail'
+                        ? `${zone.peakValue.toFixed(2)}" hail`
+                        : `${zone.peakValue} mph`}
+                    </p>
+                  )}
+                  <p className="text-[11px] text-muted-foreground">
+                    {zone.earliestDate === zone.latestDate
+                      ? zone.latestDate
+                      : `${zone.earliestDate} – ${zone.latestDate}`}
+                  </p>
+                </div>
+              </Popup>
+            </Polygon>
+          );
+        })}
+
       {/* NOAA storm reports — drawn beneath the lead pins.
           Colour and radius carry SEVERITY; opacity carries AGE. With two years
           of history on the map, a fresh 1" hailstorm is worth more than a 2" one

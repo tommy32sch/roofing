@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
-import { BoxSelect, UserCheck, LocateFixed, CloudHail, Wind, Pencil, ChevronDown, Check } from 'lucide-react';
+import { BoxSelect, UserCheck, LocateFixed, CloudHail, Wind, Pencil, ChevronDown, Check, Hexagon } from 'lucide-react';
 import { toast } from 'sonner';
 import { knockLabel, type KnockDisposition } from '@/lib/leads/knocks';
 import type { Map as LeafletMap } from 'leaflet';
@@ -27,7 +27,7 @@ import {
 import { BulkAssignDialog } from '@/components/leads/BulkAssignDialog';
 import {
   STATUS_COLORS, DNC_RING_COLOR, STORM_TYPES, toggleStormType, countStormsByType,
-  stormLegendEntries, stormAgeLegendEntries, STORM_WINDOWS, stormWindowLabel, STORM_MIN_VALUES, stormMinLabel,
+  stormLegendEntries, stormAgeLegendEntries, stormZoneLegendEntries, STORM_WINDOWS, stormWindowLabel, STORM_MIN_VALUES, stormMinLabel,
   type GeoLead, type StormReport, type StormType,
 } from '@/components/leads/map-constants';
 import { LEAD_STATUS_OPTIONS, LEAD_PRIORITY_OPTIONS } from '@/types';
@@ -89,6 +89,9 @@ export default function MapPage() {
   // Stamped when the reports land, so marker ages are relative to the data
   // rather than to an impure clock read during render.
   const [stormFetchedAt, setStormFetchedAt] = useState(0);
+  // Swath view: the "where should we canvass" read, as opposed to the
+  // per-report detail the markers give.
+  const [stormZones, setStormZones] = useState(false);
   const stormCounts = countStormsByType(stormReports);
   const [stormLoading, setStormLoading] = useState(false);
   const [mapInstance, setMapInstance] = useState<LeafletMap | null>(null);
@@ -438,6 +441,16 @@ export default function MapPage() {
                     ))}
                   </SelectContent>
                 </Select>
+                <Button
+                  variant={stormZones ? 'default' : 'outline'}
+                  size="sm"
+                  aria-pressed={stormZones}
+                  onClick={() => setStormZones((v) => !v)}
+                  title="Outline the swath each storm cut, coloured by how recent it is"
+                >
+                  <Hexagon className="h-4 w-4 mr-1" />
+                  Zones
+                </Button>
                 {/* Minimum severity. Two years of reports includes a lot of
                     marginal ones, and severity is what qualifies a roof — 1"
                     hail is the usual insurer threshold, 58 mph the severe-wind
@@ -577,20 +590,31 @@ export default function MapPage() {
                 {entry.label}
               </span>
             ))}
-            {/* The age ramp. Without it the fading reads as a rendering glitch
-                rather than "this one is older". Grey on purpose — it explains
-                the opacity channel, not a severity colour. */}
+            {/* The age ramp. Which encoding is live depends on the view: zones
+                carry age as colour (readable zoomed out), markers carry it as
+                opacity (colour there is already severity). Showing only the
+                active one keeps the legend honest. */}
             <span className="text-muted-foreground/60">|</span>
             <span className="text-muted-foreground">Age</span>
-            {stormAgeLegendEntries().map((entry) => (
-              <span key={entry.key} className="flex items-center gap-1.5">
-                <span
-                  className="inline-block h-2.5 w-2.5 rounded-full bg-foreground"
-                  style={{ opacity: entry.fillOpacity }}
-                />
-                {entry.label}
-              </span>
-            ))}
+            {stormZones
+              ? stormZoneLegendEntries().map((entry) => (
+                  <span key={entry.key} className="flex items-center gap-1.5">
+                    <span
+                      className="inline-block h-2.5 w-2.5 rounded-sm"
+                      style={{ backgroundColor: entry.color, opacity: 0.8 }}
+                    />
+                    {entry.label}
+                  </span>
+                ))
+              : stormAgeLegendEntries().map((entry) => (
+                  <span key={entry.key} className="flex items-center gap-1.5">
+                    <span
+                      className="inline-block h-2.5 w-2.5 rounded-full bg-foreground"
+                      style={{ opacity: entry.fillOpacity }}
+                    />
+                    {entry.label}
+                  </span>
+                ))}
           </>
         )}
       </div>
@@ -605,6 +629,7 @@ export default function MapPage() {
             onToggleSelect={isAdmin ? toggleSelect : undefined}
             stormReports={stormReports}
             stormNow={stormFetchedAt}
+            stormZones={stormZones}
             drawing={drawing}
             drawPoints={drawPoints}
             onDrawPoint={isAdmin ? (lat, lng) => setDrawPoints((p) => [...p, [lat, lng]]) : undefined}
