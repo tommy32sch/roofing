@@ -396,9 +396,14 @@ export default function MapPage() {
             )}
             {isAdmin && drawing && (
               <>
-                <Button variant="default" size="sm" onClick={finishDraw}>
+                <Button variant="default" size="sm" onClick={finishDraw} disabled={drawPoints.length < 3}>
                   Finish{drawPoints.length > 0 ? ` (${drawPoints.length})` : ''}
                 </Button>
+                {drawPoints.length > 0 && (
+                  <Button variant="outline" size="sm" onClick={() => setDrawPoints([])}>
+                    Clear
+                  </Button>
+                )}
                 <Button variant="ghost" size="sm" onClick={cancelDraw}>
                   Cancel
                 </Button>
@@ -529,7 +534,7 @@ export default function MapPage() {
 
       {drawing && (
         <div className="rounded-md border border-blue-300 bg-blue-50 dark:bg-blue-950/30 px-3 py-2 text-xs text-blue-700 dark:text-blue-300">
-          Click the map to drop corners around a neighborhood, then <strong>Finish</strong> to select every lead inside — the assign bar appears so you can hand the territory to a rep.
+          <strong>Drag</strong> to draw around a neighborhood, or <strong>tap</strong> to drop corners one at a time. Then <strong>Finish</strong> to select every lead inside — the assign bar appears so you can hand the territory to a rep.
         </div>
       )}
 
@@ -637,6 +642,8 @@ export default function MapPage() {
             drawing={drawing}
             drawPoints={drawPoints}
             onDrawPoint={isAdmin ? (lat, lng) => setDrawPoints((p) => [...p, [lat, lng]]) : undefined}
+            // A freehand trace is one shape, so it replaces rather than appends.
+            onDrawPath={isAdmin ? (path) => setDrawPoints(path) : undefined}
             onMapReady={(map) => { mapRef.current = map; setMapInstance(map); }}
             onLogKnock={logKnock}
             loggingKnockFor={loggingKnockFor}

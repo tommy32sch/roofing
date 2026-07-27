@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import Link from 'next/link';
-import { MapContainer, TileLayer, CircleMarker, Popup, Polygon, Polyline, Tooltip, useMap, useMapEvents } from 'react-leaflet';
+import { MapContainer, TileLayer, CircleMarker, Popup, Polygon, Polyline, Tooltip, useMap } from 'react-leaflet';
 import type { Map as LeafletMap } from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { formatDistanceToNow } from 'date-fns';
@@ -11,12 +11,16 @@ import { Button } from '@/components/ui/button';
 import { FollowUpMenu } from '@/components/leads/FollowUpMenu';
 import { LEAD_STATUS_OPTIONS } from '@/types';
 import { shouldRecenterMap } from '@/lib/leads/markets';
+import { isDrag, shouldCapture, simplifyPath } from '@/lib/leads/draw';
 import { STATUS_COLORS, DNC_RING_COLOR, DO_NOT_KNOCK_RING_COLOR, stormColor, stormRadius, stormLabel, sortStormsForDrawing, stormAgeBucket, stormZoneStyle, stormAgeShort, type GeoLead, type StormReport } from './map-constants';
 import { partitionStormReports } from '@/lib/storm/zones';
 
 // Phoenix metro — sensible default for an empty map until leads load
 const DEFAULT_CENTER: [number, number] = [33.4, -111.9];
 const DEFAULT_ZOOM = 10;
+
+/** Freehand smoothing, in screen pixels — converted to degrees at draw time. */
+const SIMPLIFY_TOLERANCE_PX = 4;
 
 const STATUS_LABELS = Object.fromEntries(LEAD_STATUS_OPTIONS.map((o) => [o.value, o.label]));
 
@@ -158,20 +162,138 @@ function MapReady({ onMapReady }: { onMapReady?: (map: LeafletMap) => void }) {
   return null;
 }
 
+/**
+ * Territory drawing: drag to lasso, or tap to place corners.
+ *
+ * One gesture covers both. A press that moves past DRAG_THRESHOLD_PX starts a
+ * freehand trace and replaces whatever was there; a press that doesn't move
+ * appends a single vertex, which is the old click-to-place behaviour and is
+ * still the better tool for a straight boundary along a highway.
+ *
+ * Map panning is disabled for the duration, otherwise dragging on a map does
+ * what dragging on a map normally does and no lasso is ever drawn.
+ */
 function DrawLayer({
   drawing,
   points,
   onPoint,
+  onPath,
 }: {
   drawing: boolean;
   points: [number, number][];
   onPoint: (lat: number, lng: number) => void;
+  onPath: (path: [number, number][]) => void;
 }) {
-  useMapEvents({
-    click(e) {
-      if (drawing) onPoint(e.latlng.lat, e.latlng.lng);
-    },
-  });
+  const map = useMap();
+  // Refs, not state: these change on every pointer event and must not each
+  // trigger a render.
+  const startRef = useRef<{ x: number; y: number } | null>(null);
+  const lastRef = useRef<{ x: number; y: number } | null>(null);
+  const pathRef = useRef<[number, number][]>([]);
+  const freehandRef = useRef(false);
+
+  useEffect(() => {
+    if (!drawing) return;
+    const container = map.getContainer();
+
+    // Leaflet owns drag-to-pan; it has to yield while the lasso is active.
+    map.dragging.disable();
+    const previousCursor = container.style.cursor;
+    container.style.cursor = 'crosshair';
+
+    const toPoint = (e: PointerEvent) => {
+      const rect = container.getBoundingClientRect();
+      return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    };
+
+    // Capture keeps the trace alive when the pointer wanders off the map, but
+    // holding it is never guaranteed — a pointercancel releases it implicitly,
+    // and both calls throw NotFoundError when the pointer isn't active. Letting
+    // that escape would abort the handler before the shape is committed.
+    const capture = (id: number) => {
+      try {
+        container.setPointerCapture(id);
+      } catch {
+        /* no active pointer — the drag still works, it just isn't captured */
+      }
+    };
+    const release = (id: number) => {
+      try {
+        container.releasePointerCapture(id);
+      } catch {
+        /* never held, or already released */
+      }
+    };
+
+    const onDown = (e: PointerEvent) => {
+      if (e.button !== 0 && e.pointerType === 'mouse') return;
+      startRef.current = toPoint(e);
+      lastRef.current = null;
+      pathRef.current = [];
+      freehandRef.current = false;
+      capture(e.pointerId);
+    };
+
+    const onMove = (e: PointerEvent) => {
+      const start = startRef.current;
+      if (!start) return;
+      const at = toPoint(e);
+
+      if (!freehandRef.current) {
+        if (!isDrag(start, at)) return;
+        freehandRef.current = true;
+      }
+      // Stop the browser turning the drag into a scroll or text selection.
+      e.preventDefault();
+
+      if (!shouldCapture(lastRef.current, at, { capturedCount: pathRef.current.length })) return;
+      lastRef.current = at;
+      const ll = map.containerPointToLatLng([at.x, at.y]);
+      pathRef.current = [...pathRef.current, [ll.lat, ll.lng]];
+      onPath(pathRef.current);
+    };
+
+    const onUp = (e: PointerEvent) => {
+      const start = startRef.current;
+      startRef.current = null;
+      release(e.pointerId);
+      if (!start) return;
+
+      if (!freehandRef.current) {
+        // Never really moved — treat it as placing one corner.
+        const ll = map.containerPointToLatLng([start.x, start.y]);
+        onPoint(ll.lat, ll.lng);
+        return;
+      }
+
+      // Collapse the trace to the handful of vertices that describe it. The
+      // tolerance is derived from the current scale so it means the same number
+      // of SCREEN pixels at every zoom — a fixed value in degrees would erase a
+      // whole neighbourhood when zoomed out.
+      const raw = pathRef.current;
+      if (raw.length < 3) return;
+      const origin = map.containerPointToLatLng([0, 0]);
+      const offset = map.containerPointToLatLng([SIMPLIFY_TOLERANCE_PX, 0]);
+      const tolerance = Math.abs(offset.lng - origin.lng);
+      onPath(simplifyPath(raw, tolerance));
+      freehandRef.current = false;
+    };
+
+    container.addEventListener('pointerdown', onDown);
+    container.addEventListener('pointermove', onMove, { passive: false });
+    container.addEventListener('pointerup', onUp);
+    container.addEventListener('pointercancel', onUp);
+
+    return () => {
+      container.removeEventListener('pointerdown', onDown);
+      container.removeEventListener('pointermove', onMove);
+      container.removeEventListener('pointerup', onUp);
+      container.removeEventListener('pointercancel', onUp);
+      map.dragging.enable();
+      container.style.cursor = previousCursor;
+    };
+  }, [drawing, map, onPoint, onPath]);
+
   if (!drawing || points.length === 0) return null;
   return (
     <>
@@ -180,14 +302,17 @@ function DrawLayer({
       ) : (
         <Polyline positions={points} pathOptions={{ color: '#2563eb', weight: 2, dashArray: '5' }} />
       )}
-      {points.map((p, i) => (
-        <CircleMarker
-          key={`draw-${i}`}
-          center={p}
-          radius={4}
-          pathOptions={{ fillColor: '#2563eb', fillOpacity: 1, color: '#fff', weight: 1.5 }}
-        />
-      ))}
+      {/* Vertex handles only for a hand-placed shape. A freehand trace has
+          dozens of vertices and dotting every one buries the outline. */}
+      {points.length <= 12 &&
+        points.map((p, i) => (
+          <CircleMarker
+            key={`draw-${i}`}
+            center={p}
+            radius={4}
+            pathOptions={{ fillColor: '#2563eb', fillOpacity: 1, color: '#fff', weight: 1.5 }}
+          />
+        ))}
     </>
   );
 }
@@ -234,6 +359,8 @@ interface LeadMapProps {
   drawing?: boolean;
   drawPoints?: [number, number][];
   onDrawPoint?: (lat: number, lng: number) => void;
+  /** Replaces the whole outline — a freehand trace, not a single vertex. */
+  onDrawPath?: (path: [number, number][]) => void;
 }
 
 export default function LeadMap({
@@ -253,6 +380,7 @@ export default function LeadMap({
   drawing = false,
   drawPoints = [],
   onDrawPoint,
+  onDrawPath,
 }: LeadMapProps) {
   return (
     <MapContainer
@@ -274,7 +402,9 @@ export default function LeadMap({
       <FitBounds leads={leads} />
       <MarketView marketId={marketId} center={marketCenter} hasLeads={leads.length > 0} loading={marketLoading} />
       <MapReady onMapReady={onMapReady} />
-      {onDrawPoint && <DrawLayer drawing={drawing} points={drawPoints} onPoint={onDrawPoint} />}
+      {onDrawPoint && onDrawPath && (
+        <DrawLayer drawing={drawing} points={drawPoints} onPoint={onDrawPoint} onPath={onDrawPath} />
+      )}
       {/* Storm ZONES — the swath each storm cut, coloured by age.
           The zoomed-out planning view. One red ramp, fading with age, and the
           age written straight onto each zone in screen pixels — a label needs no
