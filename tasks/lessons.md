@@ -72,3 +72,46 @@
   - Verify by LOOKING at the render with real data, not by reasoning that the
     encoding "should" work — both zone bugs (slivers, colour mush) were only
     visible on screen.
+
+## "Verified" means verified WHERE THE USER RUNS IT — check deploy state first
+- **Correction:** owner reported a login bug four times ("still says poopsybelle",
+  "it signs into chris", "still doing the same thing", "IT'S STILL DOING THE SAME
+  THING"). Each time I fixed it on localhost, ran tests/build, reproduced the bug
+  and the fix in the local browser, and reported it fixed and verified. All four
+  reports were about `roofing-ebon.vercel.app`. Nothing had been pushed —
+  `main` sat 11 commits ahead of `origin/main` the entire time, so the deployed
+  app still had the ORIGINAL bug. Every "verified" claim was true and useless.
+- **Rules:**
+  - This repo auto-deploys `main` to Vercel. Local `main` being correct means
+    NOTHING to the user. Before saying "fixed", run
+    `git log --oneline origin/main..main` — if it is non-empty, the user does not
+    have the fix, and say so explicitly instead of claiming it works.
+  - When a user reports a bug in a deployed app, FIRST establish where they are
+    testing. Ask, or infer it and state the assumption. Do not start debugging
+    until that is settled.
+  - When a user says "still broken" after I claimed a fix, hypothesis #1 is
+    **my change never reached them** — not a new theory about the code. Check
+    deploy state and cache before writing another line. I skipped this four
+    times and produced three real fixes the user could not use.
+  - Prove a fix against the ORIGIN THE USER USES. `curl` the production URL for
+    a signature only the new build has (a header, a status code) — that is the
+    only evidence that counts. Localhost proves the patch is correct, not that
+    it is delivered.
+  - Never say "verified" / "fixed" for a deployed app without naming the
+    environment the evidence came from.
+
+## Don't burn shared state the user depends on while testing
+- **Correction:** while testing the login fix I made ~20 login attempts, which
+  exhausted the login rate limiter (5 per 15 min, per IP, in-memory, so a shared
+  bucket on localhost). The owner then could not log in at all, and because I had
+  also left their browser holding a different user's session cookie, every
+  rejected attempt dropped them back into that account. The symptom I was hired
+  to fix was, at that point, partly one I had caused.
+- **Rules:**
+  - Testing against a live system consumes real budgets: rate limits, quotas,
+    tokens, sessions. Note what a test consumes BEFORE running it in a loop.
+  - Restore the state afterwards — log out, clear cookies I set, reset counters,
+    restart what I exhausted — and say what I touched.
+  - Never leave the user's browser signed in as a test account.
+  - If a credential has to be minted for a test, revoke it in the same turn
+    (here: bump `token_version`) and tell the user.
