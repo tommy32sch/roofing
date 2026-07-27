@@ -63,6 +63,8 @@ import { LeadPhotos } from '@/components/leads/LeadPhotos';
 import { DateTimeFields } from '@/components/leads/DateTimeFields';
 import { useMarkets } from '@/components/markets/use-markets';
 import { FollowUpMenu } from '@/components/leads/FollowUpMenu';
+import { AppointmentConflictWarning } from '@/components/leads/AppointmentConflictWarning';
+import type { AppointmentConflict } from '@/lib/leads/appointment-conflicts';
 import { isMachineAttribution } from '@/lib/leads/attribution';
 
 const SETTER_ALLOWED_STATUSES = new Set(['new', 'contacted', 'appointment_set', 'lost']);
@@ -100,6 +102,10 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
   const [apptDateTime, setApptDateTime] = useState('');
   const [apptNotes, setApptNotes] = useState('');
   const [apptSaving, setApptSaving] = useState(false);
+  const [apptConflicts, setApptConflicts] = useState<AppointmentConflict[]>([]);
+  // Set once the server has refused for a clash, so the next press means
+  // "I've seen the warning, book it anyway" rather than silently overriding.
+  const [apptOverride, setApptOverride] = useState(false);
   const [editingApptId, setEditingApptId] = useState<string | null>(null);
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [dealValueInput, setDealValueInput] = useState('');
@@ -232,6 +238,8 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
   }
 
   function openAddAppointment() {
+    setApptConflicts([]);
+    setApptOverride(false);
     setEditingApptId(null);
     setApptType('inspection');
     setApptDateTime('');
@@ -240,6 +248,8 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
   }
 
   function openEditAppointment(appt: LeadAppointment) {
+    setApptConflicts([]);
+    setApptOverride(false);
     setEditingApptId(appt.id);
     setApptType(appt.appointment_type);
     // datetime-local wants local wall time without zone suffix
@@ -266,9 +276,19 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
           ...(editingApptId ? {} : { appointment_type: apptType }),
           scheduled_at: new Date(apptDateTime).toISOString(),
           notes: apptNotes.trim() || null,
+          allow_conflict: apptOverride,
         }),
       });
       const data = await res.json();
+      // 409: the slot is taken. Show what it clashes with and let the next
+      // press through — legitimate double-booking exists (two crews), so this
+      // warns rather than blocks.
+      if (res.status === 409 && data.error === 'appointment_conflict') {
+        setApptConflicts(data.conflicts ?? []);
+        setApptOverride(true);
+        toast.error('That time is already booked — save again to book it anyway');
+        return;
+      }
       if (data.success) {
         toast.success(editingApptId ? 'Appointment updated' : 'Appointment added');
         setAddApptOpen(false);
@@ -1048,12 +1068,17 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
                 </Select>
               </div>
             )}
-            <div className="space-y-1">
+            <div className="space-y-2">
               <DateTimeFields
                 idPrefix="card_appt"
                 value={apptDateTime}
                 onChange={setApptDateTime}
                 disabled={apptSaving}
+              />
+              <AppointmentConflictWarning
+                value={apptDateTime}
+                excludeAppointmentId={editingApptId}
+                onConflictsChange={setApptConflicts}
               />
             </div>
             <div className="space-y-1">
@@ -1074,7 +1099,13 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
               onClick={handleSaveAppointment}
               disabled={apptSaving || !apptDateTime || Number.isNaN(new Date(apptDateTime).getTime())}
             >
-              {apptSaving ? 'Saving...' : editingApptId ? 'Save Changes' : 'Add Appointment'}
+              {apptSaving
+                ? 'Saving...'
+                : apptConflicts.length > 0
+                  ? 'Book anyway'
+                  : editingApptId
+                    ? 'Save Changes'
+                    : 'Add Appointment'}
             </Button>
           </DialogFooter>
         </DialogContent>

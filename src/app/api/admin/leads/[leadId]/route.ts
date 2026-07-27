@@ -4,6 +4,7 @@ import { getAuthenticatedAdmin } from '@/lib/auth/jwt';
 import { isValidUUID } from '@/lib/utils/validation';
 import { parsePhoneNumber } from 'libphonenumber-js';
 import { estimateRoofValue } from '@/lib/leads/roof-value';
+import { findAppointmentConflicts, conflictResponseBody } from '@/lib/leads/appointment-guard';
 import { getRoofPricePerSquare } from '@/lib/leads/roof-value.server';
 import { notifyAppointmentBooked } from '@/lib/notifications/notify-appointment';
 
@@ -154,7 +155,20 @@ export async function PATCH(
           { status: 400 }
         );
       }
-      appointmentScheduledAt = body.appointment_scheduled_at;
+      const scheduledAt: string = body.appointment_scheduled_at;
+      appointmentScheduledAt = scheduledAt;
+
+      // Booking a slot from the status change is still a booking, so it takes
+      // the same conflict check as the Appointments card.
+      if (!body.allow_conflict) {
+        const conflicts = await findAppointmentConflicts(supabase, {
+          leadId,
+          scheduledAt,
+        });
+        if (conflicts.length > 0) {
+          return NextResponse.json(conflictResponseBody(conflicts), { status: 409 });
+        }
+      }
       appointmentNotes =
         typeof body.appointment_notes === 'string' && body.appointment_notes.trim()
           ? body.appointment_notes.trim()
