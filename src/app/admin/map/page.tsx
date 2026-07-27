@@ -27,7 +27,7 @@ import {
 import { BulkAssignDialog } from '@/components/leads/BulkAssignDialog';
 import {
   STATUS_COLORS, DNC_RING_COLOR, STORM_TYPES, toggleStormType, countStormsByType,
-  stormLegendEntries, STORM_WINDOWS, stormWindowLabel, STORM_MIN_VALUES, stormMinLabel,
+  stormLegendEntries, stormAgeLegendEntries, STORM_WINDOWS, stormWindowLabel, STORM_MIN_VALUES, stormMinLabel,
   type GeoLead, type StormReport, type StormType,
 } from '@/components/leads/map-constants';
 import { LEAD_STATUS_OPTIONS, LEAD_PRIORITY_OPTIONS } from '@/types';
@@ -86,6 +86,9 @@ export default function MapPage() {
   const [windMin, setWindMin] = useState(0);
   const [stormReports, setStormReports] = useState<StormReport[]>([]);
   const stormOn = stormTypes.length > 0;
+  // Stamped when the reports land, so marker ages are relative to the data
+  // rather than to an impure clock read during render.
+  const [stormFetchedAt, setStormFetchedAt] = useState(0);
   const stormCounts = countStormsByType(stormReports);
   const [stormLoading, setStormLoading] = useState(false);
   const [mapInstance, setMapInstance] = useState<LeafletMap | null>(null);
@@ -293,6 +296,7 @@ export default function MapPage() {
         })
       );
       setStormReports(results.flat());
+      setStormFetchedAt(Date.now());
     } catch (e) {
       // One overlay failing shouldn't blank the other, but the list is replaced
       // wholesale, so say what happened rather than showing a partial map.
@@ -573,6 +577,20 @@ export default function MapPage() {
                 {entry.label}
               </span>
             ))}
+            {/* The age ramp. Without it the fading reads as a rendering glitch
+                rather than "this one is older". Grey on purpose — it explains
+                the opacity channel, not a severity colour. */}
+            <span className="text-muted-foreground/60">|</span>
+            <span className="text-muted-foreground">Age</span>
+            {stormAgeLegendEntries().map((entry) => (
+              <span key={entry.key} className="flex items-center gap-1.5">
+                <span
+                  className="inline-block h-2.5 w-2.5 rounded-full bg-foreground"
+                  style={{ opacity: entry.fillOpacity }}
+                />
+                {entry.label}
+              </span>
+            ))}
           </>
         )}
       </div>
@@ -586,6 +604,7 @@ export default function MapPage() {
             selectedIds={new Set(selection.keys())}
             onToggleSelect={isAdmin ? toggleSelect : undefined}
             stormReports={stormReports}
+            stormNow={stormFetchedAt}
             drawing={drawing}
             drawPoints={drawPoints}
             onDrawPoint={isAdmin ? (lat, lng) => setDrawPoints((p) => [...p, [lat, lng]]) : undefined}

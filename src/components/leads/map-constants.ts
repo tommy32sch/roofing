@@ -46,6 +46,58 @@ export const DO_NOT_KNOCK_RING_COLOR = 'oklch(0.45 0.02 45)';
 
 export type StormType = 'hail' | 'wind';
 
+/**
+ * Age buckets for a storm report.
+ *
+ * With two years of history on the map, age matters more than severity for
+ * deciding where to knock: a 2" hailstorm from last spring is worth far less
+ * than 1" from last month. The boundaries are the ones the business actually
+ * turns on — most carriers give roughly a year from the date of loss to file, so
+ * crossing 365 days is the point a lead stops being a claim and starts being a
+ * conversation.
+ *
+ * Encoded as OPACITY because colour and radius are already carrying severity,
+ * and fading is the intuitive reading of "older". Ordered newest first.
+ */
+export const STORM_AGE_BUCKETS = [
+  { key: 'fresh', maxDays: 30, label: 'Under 1 month', fillOpacity: 0.75, weight: 2 },
+  { key: 'recent', maxDays: 180, label: '1–6 months', fillOpacity: 0.45, weight: 1 },
+  { key: 'aging', maxDays: 365, label: '6–12 months', fillOpacity: 0.25, weight: 1 },
+  // Past the usual filing deadline — kept visible for door-knock context, but
+  // deliberately quiet so it never competes with a live opportunity.
+  { key: 'stale', maxDays: Infinity, label: 'Over a year', fillOpacity: 0.12, weight: 1 },
+] as const;
+
+export type StormAgeBucket = (typeof STORM_AGE_BUCKETS)[number];
+
+/** Whole days between a report's date and now. Negative dates clamp to 0. */
+export function stormAgeDays(date: string, now: number = Date.now()): number {
+  const t = Date.parse(`${date}T12:00:00Z`);
+  if (Number.isNaN(t)) return 0;
+  return Math.max(0, Math.floor((now - t) / 86_400_000));
+}
+
+/** Which age bucket a report falls in. */
+export function stormAgeBucket(date: string, now: number = Date.now()): StormAgeBucket {
+  const days = stormAgeDays(date, now);
+  return STORM_AGE_BUCKETS.find((b) => days <= b.maxDays) ?? STORM_AGE_BUCKETS[STORM_AGE_BUCKETS.length - 1];
+}
+
+/**
+ * Draw order: oldest first, so recent storms sit on top and stay clickable.
+ *
+ * Within one age bucket, larger radius goes first for the same reason a wide
+ * hail circle shouldn't bury the wind points inside it. Age wins over size
+ * because a fresh small report outranks an old large one.
+ */
+export function sortStormsForDrawing(reports: StormReport[], now: number = Date.now()): StormReport[] {
+  return [...reports].sort((a, b) => {
+    const ageDiff = stormAgeDays(b.date, now) - stormAgeDays(a.date, now);
+    if (ageDiff !== 0) return ageDiff;
+    return stormRadius(b.type, b.value) - stormRadius(a.type, a.value);
+  });
+}
+
 /** Storm history windows. Two years is what the stored history covers. */
 export const STORM_WINDOWS = [
   { days: 7, label: 'Last 7 days' },
@@ -131,16 +183,18 @@ export function countStormsByType(reports: StormReport[]): Record<StormType, num
 }
 
 /**
- * Draw order for storm markers: largest first, so it ends up underneath.
+ * Legend swatches for the age ramp.
  *
- * With both overlays on, a 2-inch hail circle is big enough to swallow several
- * wind points; drawing descending by radius keeps the small ones clickable.
- * Returns a new array — the caller's list is React state.
+ * Without this the fading reads as a rendering glitch rather than information.
+ * Rendered in a neutral grey so it explains the OPACITY channel without implying
+ * a severity colour.
  */
-export function sortStormsForDrawing(reports: StormReport[]): StormReport[] {
-  return [...reports].sort(
-    (a, b) => stormRadius(b.type, b.value) - stormRadius(a.type, a.value)
-  );
+export function stormAgeLegendEntries(): { key: string; label: string; fillOpacity: number }[] {
+  return STORM_AGE_BUCKETS.map((b) => ({
+    key: `age-${b.key}`,
+    label: b.label,
+    fillOpacity: b.fillOpacity,
+  }));
 }
 
 /** Severity thresholds shown in the legend for each active overlay. */

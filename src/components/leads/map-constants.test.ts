@@ -7,6 +7,8 @@ import {
   stormLegendEntries,
   stormRadius,
   stormColor,
+  stormAgeDays,
+  stormAgeBucket,
   type StormReport,
   type StormType,
 } from './map-constants';
@@ -110,5 +112,81 @@ describe('stormLegendEntries', () => {
   // Independent of the caller's array order, so the legend can't flip around.
   it('is stable regardless of input order', () => {
     expect(stormLegendEntries(['hail', 'wind'])).toEqual(stormLegendEntries(['wind', 'hail']));
+  });
+});
+
+describe('storm age', () => {
+  // Fixed "now" so the buckets are deterministic.
+  const NOW = Date.parse('2026-07-26T12:00:00Z');
+  const daysAgo = (n: number) =>
+    new Date(NOW - n * 86_400_000).toISOString().slice(0, 10);
+
+  it('counts whole days since the report', () => {
+    expect(stormAgeDays(daysAgo(0), NOW)).toBe(0);
+    expect(stormAgeDays(daysAgo(1), NOW)).toBe(1);
+    expect(stormAgeDays(daysAgo(400), NOW)).toBe(400);
+  });
+
+  it('clamps a future date to 0 instead of going negative', () => {
+    expect(stormAgeDays('2027-01-01', NOW)).toBe(0);
+  });
+
+  it('returns 0 rather than NaN on a malformed date', () => {
+    expect(stormAgeDays('nope', NOW)).toBe(0);
+  });
+
+  it('buckets by the boundaries the business turns on', () => {
+    expect(stormAgeBucket(daysAgo(5), NOW).key).toBe('fresh');
+    expect(stormAgeBucket(daysAgo(30), NOW).key).toBe('fresh');
+    expect(stormAgeBucket(daysAgo(31), NOW).key).toBe('recent');
+    expect(stormAgeBucket(daysAgo(180), NOW).key).toBe('recent');
+    expect(stormAgeBucket(daysAgo(181), NOW).key).toBe('aging');
+    expect(stormAgeBucket(daysAgo(365), NOW).key).toBe('aging');
+    // Past the usual one-year filing deadline.
+    expect(stormAgeBucket(daysAgo(366), NOW).key).toBe('stale');
+    expect(stormAgeBucket(daysAgo(720), NOW).key).toBe('stale');
+  });
+
+  it('fades monotonically with age, so newer always reads stronger', () => {
+    const ops = [5, 90, 300, 700].map((d) => stormAgeBucket(daysAgo(d), NOW).fillOpacity);
+    for (let i = 1; i < ops.length; i++) expect(ops[i]).toBeLessThan(ops[i - 1]);
+  });
+
+  it('gives only the freshest bucket a heavier ring', () => {
+    expect(stormAgeBucket(daysAgo(5), NOW).weight).toBeGreaterThan(
+      stormAgeBucket(daysAgo(90), NOW).weight
+    );
+  });
+});
+
+describe('sortStormsForDrawing with age', () => {
+  const NOW = Date.parse('2026-07-26T12:00:00Z');
+  const daysAgo = (n: number) => new Date(NOW - n * 86_400_000).toISOString().slice(0, 10);
+  const at = (type: StormType, value: number, days: number): StormReport => ({
+    lat: 33, lon: -112, value, date: daysAgo(days), location: '', state: 'AZ', type,
+  });
+
+  // The whole point: a fresh report must never be buried under an old one.
+  it('draws oldest first so recent reports land on top', () => {
+    const old = at('hail', 2, 700);
+    const fresh = at('wind', 58, 3);
+    expect(sortStormsForDrawing([fresh, old], NOW).at(-1)).toBe(fresh);
+    expect(sortStormsForDrawing([old, fresh], NOW).at(-1)).toBe(fresh);
+  });
+
+  it('still puts the bigger circle underneath within one age bucket', () => {
+    const bigSameDay = at('hail', 2, 5);
+    const smallSameDay = at('wind', 58, 5);
+    const sorted = sortStormsForDrawing([smallSameDay, bigSameDay], NOW);
+    expect(stormRadius(sorted[0].type, sorted[0].value)).toBeGreaterThanOrEqual(
+      stormRadius(sorted[1].type, sorted[1].value)
+    );
+  });
+
+  it('does not mutate the input, which is React state', () => {
+    const input = [at('hail', 1, 10), at('wind', 60, 400)];
+    const copy = [...input];
+    sortStormsForDrawing(input, NOW);
+    expect(input).toEqual(copy);
   });
 });

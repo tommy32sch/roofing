@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button';
 import { FollowUpMenu } from '@/components/leads/FollowUpMenu';
 import { LEAD_STATUS_OPTIONS } from '@/types';
 import { shouldRecenterMap } from '@/lib/leads/markets';
-import { STATUS_COLORS, DNC_RING_COLOR, DO_NOT_KNOCK_RING_COLOR, stormColor, stormRadius, stormLabel, sortStormsForDrawing, type GeoLead, type StormReport } from './map-constants';
+import { STATUS_COLORS, DNC_RING_COLOR, DO_NOT_KNOCK_RING_COLOR, stormColor, stormRadius, stormLabel, sortStormsForDrawing, stormAgeBucket, type GeoLead, type StormReport } from './map-constants';
 
 // Phoenix metro — sensible default for an empty map until leads load
 const DEFAULT_CENTER: [number, number] = [33.4, -111.9];
@@ -202,6 +202,15 @@ interface LeadMapProps {
    * each report carries its own `type`, so there is no ambient stormType prop.
    */
   stormReports?: StormReport[];
+  /**
+   * When the storm data was fetched, used to age each report.
+   *
+   * Supplied by the caller rather than read from the clock here: calling
+   * Date.now() during render is impure, and ageing every marker against one
+   * fetch-time instant also keeps reports from the same storm from landing in
+   * different buckets mid-render.
+   */
+  stormNow?: number;
   /** Log a knock straight from the pin popup. */
   onLogKnock?: (lead: GeoLead, disposition: KnockDisposition) => void;
   /** Lead id currently being written, so its buttons can disable. */
@@ -225,6 +234,7 @@ export default function LeadMap({
   onToggleSelect,
   onMapReady,
   stormReports = [],
+  stormNow = 0,
   onLogKnock,
   loggingKnockFor,
   onFollowUpChange,
@@ -256,27 +266,51 @@ export default function LeadMap({
       <MarketView marketId={marketId} center={marketCenter} hasLeads={leads.length > 0} loading={marketLoading} />
       <MapReady onMapReady={onMapReady} />
       {onDrawPoint && <DrawLayer drawing={drawing} points={drawPoints} onPoint={onDrawPoint} />}
-      {/* NOAA storm reports — drawn first so lead pins sit on top. Sorted
-          largest-radius-first so a wide hail circle can't bury the wind points
-          underneath it when both overlays are on. */}
-      {sortStormsForDrawing(stormReports).map((r, i) => {
+      {/* NOAA storm reports — drawn beneath the lead pins.
+          Colour and radius carry SEVERITY; opacity carries AGE. With two years
+          of history on the map, a fresh 1" hailstorm is worth more than a 2" one
+          from last spring, so recent reports read solid and old ones fade back.
+          Sorted oldest-first so the fresh ones land on top and stay clickable. */}
+      {sortStormsForDrawing(stormReports, stormNow).map((r, i) => {
         const color = stormColor(r.type, r.value);
+        const age = stormAgeBucket(r.date, stormNow);
         return (
           <CircleMarker
             key={`storm-${r.type}-${i}`}
             center={[r.lat, r.lon]}
             radius={stormRadius(r.type, r.value)}
-            pathOptions={{ fillColor: color, fillOpacity: 0.3, color, weight: 1 }}
+            pathOptions={{
+              fillColor: color,
+              fillOpacity: age.fillOpacity,
+              color,
+              weight: age.weight,
+              // A crisp outline on the freshest reports so they pop out of a
+              // field of faded old ones even at a glance.
+              opacity: age.key === 'fresh' ? 1 : 0.5,
+            }}
           >
             <Popup>
               <div className="text-sm">
                 <p className="font-medium">{stormLabel(r.type, r.value)}</p>
                 <p className="text-xs">
+                  {/* Relative age first — "3 weeks ago" is the number a rep
+                      acts on; the calendar date is the supporting detail. */}
+                  <span className="font-medium">
+                    {formatDistanceToNow(new Date(`${r.date}T12:00:00Z`), { addSuffix: true })}
+                  </span>
+                  {' · '}
                   {r.date}
-                  {r.location ? ` · ${r.location}` : ''}
-                  {r.state ? `, ${r.state}` : ''}
                 </p>
-                <p className="text-[11px] text-muted-foreground">NOAA storm report</p>
+                {(r.location || r.state) && (
+                  <p className="text-xs">
+                    {r.location}
+                    {r.location && r.state ? ', ' : ''}
+                    {r.state}
+                  </p>
+                )}
+                <p className="text-[11px] text-muted-foreground">
+                  NOAA storm report · {age.label.toLowerCase()}
+                </p>
               </div>
             </Popup>
           </CircleMarker>
