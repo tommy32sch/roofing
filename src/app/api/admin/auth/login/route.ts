@@ -1,17 +1,40 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { compare } from 'bcryptjs';
 import { db } from '@/lib/supabase/server';
-import { createToken, setAuthCookie, clearImpersonationCookie } from '@/lib/auth/jwt';
-import { checkConfiguredRateLimit, getClientIP } from '@/lib/utils/rate-limit';
+import { createToken, setAuthCookie, clearAuthCookie, clearImpersonationCookie } from '@/lib/auth/jwt';
+import { checkConfiguredRateLimit, resetRateLimit, getClientIP } from '@/lib/utils/rate-limit';
+
+const LOGIN_LIMIT = { prefix: 'login', max: 5, window: '15 m' } as const;
+
+/** "Try again in 4 minutes" beats "try again later" when you're locked out. */
+function retryHint(resetAt: number): string {
+  const minutes = Math.max(1, Math.ceil((resetAt - Date.now()) / 60_000));
+  return `Too many login attempts. Try again in ${minutes} minute${minutes === 1 ? '' : 's'}.`;
+}
+
+/**
+ * A rejected sign-in must not leave the previous session running.
+ *
+ * Someone typing credentials on the login screen is asserting an identity. If
+ * that fails and the browser still holds an earlier session, the next click
+ * silently drops them back into the previous person's account — which reads as
+ * "it logged me in as the wrong user" rather than "your attempt was rejected".
+ */
+async function failedAttempt(error: string, status: number) {
+  await clearAuthCookie();
+  return NextResponse.json({ success: false, error }, { status });
+}
 
 export async function POST(request: NextRequest) {
   const clientIP = getClientIP(request.headers);
-  const rateLimit = await checkConfiguredRateLimit(clientIP, 'login', 5, '15 m');
+  const rateLimit = await checkConfiguredRateLimit(
+    clientIP,
+    LOGIN_LIMIT.prefix,
+    LOGIN_LIMIT.max,
+    LOGIN_LIMIT.window
+  );
   if (!rateLimit.success) {
-    return NextResponse.json(
-      { success: false, error: 'Too many login attempts. Try again later.' },
-      { status: 429 }
-    );
+    return await failedAttempt(retryHint(rateLimit.reset), 429);
   }
 
   try {
@@ -33,18 +56,12 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (error || !admin) {
-      return NextResponse.json(
-        { success: false, error: 'Invalid email or password' },
-        { status: 401 }
-      );
+      return await failedAttempt('Invalid email or password', 401);
     }
 
     const passwordValid = await compare(password, admin.password_hash);
     if (!passwordValid) {
-      return NextResponse.json(
-        { success: false, error: 'Invalid email or password' },
-        { status: 401 }
-      );
+      return await failedAttempt('Invalid email or password', 401);
     }
 
     const token = await createToken({
@@ -59,6 +76,12 @@ export async function POST(request: NextRequest) {
     // Signing in starts a new session, which must not inherit a parked admin
     // token from whoever used this browser before.
     await clearImpersonationCookie();
+
+    // Proving you know the password clears the brute-force budget. Counting
+    // successes against it locks people out of their own app for switching
+    // accounts, and the rejection lands before the password is checked, so it
+    // looks like the right credentials stopped working.
+    await resetRateLimit(clientIP, LOGIN_LIMIT.prefix, LOGIN_LIMIT.max, LOGIN_LIMIT.window);
 
     return NextResponse.json({
       success: true,

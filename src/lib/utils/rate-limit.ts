@@ -104,6 +104,32 @@ export async function checkConfiguredRateLimit(
   }
 }
 
+/**
+ * Forget an identifier's recorded attempts.
+ *
+ * Called after a successful login so that signing in doesn't spend the
+ * brute-force budget. Without it, the limit punishes the wrong people: an
+ * attacker's guesses are failures by definition, while a legitimate user
+ * switching between accounts a few times gets locked out of their own app —
+ * and, because the rejection happens before the password is even checked, it
+ * looks like the correct password stopped working.
+ */
+export async function resetRateLimit(
+  identifier: string,
+  prefix: string,
+  maxRequests: number,
+  window: string = '1 m'
+): Promise<void> {
+  memoryHits.delete(`${prefix}:${identifier}`);
+  try {
+    const limiter = await getLimiter(prefix, maxRequests, window);
+    await limiter?.resetUsedTokens?.(identifier);
+  } catch {
+    // Best effort — the in-memory copy is already cleared, and failing to reset
+    // a limiter must never fail the login that just succeeded.
+  }
+}
+
 export function getClientIP(headers: Headers): string {
   const vercelForwarded = headers.get('x-vercel-forwarded-for');
   if (vercelForwarded) return vercelForwarded.split(',')[0].trim();
