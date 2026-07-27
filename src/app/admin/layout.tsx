@@ -30,7 +30,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [duplicateCount, setDuplicateCount] = useState(0);
 
   useEffect(() => {
-    fetch('/api/admin/auth/me')
+    // no-store, not just for freshness: this answer decides whose name and
+    // whose navigation render, so a cached copy shows the previous user to
+    // whoever signed in next.
+    fetch('/api/admin/auth/me', { cache: 'no-store' })
       .then((res) => res.json())
       .then((data) => {
         if (data.success) {
