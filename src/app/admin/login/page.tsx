@@ -1,13 +1,14 @@
 'use client';
 
 import { Suspense, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { Building2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { safeRedirect } from '@/lib/auth/redirect';
 
 export default function LoginPage() {
   return (
@@ -18,9 +19,8 @@ export default function LoginPage() {
 }
 
 function LoginForm() {
-  const router = useRouter();
   const searchParams = useSearchParams();
-  const redirect = searchParams.get('redirect') || '/admin';
+  const redirect = safeRedirect(searchParams.get('redirect'));
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -40,14 +40,22 @@ function LoginForm() {
 
       if (!res.ok || !data.success) {
         toast.error(data.error || 'Login failed');
+        setLoading(false);
         return;
       }
 
-      toast.success('Logged in successfully');
-      router.push(redirect);
+      // A full document load, not router.push. The admin layout is shared with
+      // this page, so a client-side navigation leaves it mounted and holding
+      // the PREVIOUS user's name, role and company — a setter would land on the
+      // admin's name in the header and the admin's sidebar. Same reason the
+      // impersonate and restore flows already hard-navigate.
+      //
+      // Deliberately stays in the loading state: the navigation is async, and
+      // re-enabling the button would let a second login fire while the new page
+      // is still on its way.
+      window.location.href = redirect;
     } catch {
       toast.error('An error occurred. Please try again.');
-    } finally {
       setLoading(false);
     }
   }
