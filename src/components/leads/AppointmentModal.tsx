@@ -6,6 +6,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { DateTimeFields } from '@/components/leads/DateTimeFields';
+import { AppointmentConflictWarning } from '@/components/leads/AppointmentConflictWarning';
+import type { AppointmentConflict } from '@/lib/leads/appointment-conflicts';
 
 interface AppointmentModalProps {
   leadId: string;
@@ -24,6 +26,9 @@ export function AppointmentModal({ leadId, open, onOpenChange, onSuccess }: Appo
   const [notes, setNotes] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [conflicts, setConflicts] = useState<AppointmentConflict[]>([]);
+  // Set after the server refuses, so the next press is an explicit override.
+  const [override, setOverride] = useState(false);
 
   const isValid = scheduledAt !== '' && !Number.isNaN(new Date(scheduledAt).getTime());
 
@@ -40,10 +45,19 @@ export function AppointmentModal({ leadId, open, onOpenChange, onSuccess }: Appo
           status: 'appointment_set',
           appointment_scheduled_at: new Date(scheduledAt).toISOString(),
           appointment_notes: notes.trim() || null,
+          allow_conflict: override,
         }),
       });
 
       const data = await res.json();
+      // 409: the slot is taken. Surface what it clashes with and let the next
+      // press through rather than blocking outright.
+      if (res.status === 409 && data.error === 'appointment_conflict') {
+        setConflicts(data.conflicts ?? []);
+        setOverride(true);
+        setError('That time is already booked — save again to book it anyway.');
+        return;
+      }
       if (!data.success) {
         setError(data.error || 'Failed to save');
         return;
@@ -64,6 +78,8 @@ export function AppointmentModal({ leadId, open, onOpenChange, onSuccess }: Appo
     setScheduledAt('');
     setNotes('');
     setError(null);
+    setConflicts([]);
+    setOverride(false);
     onOpenChange(false);
   }
 
@@ -78,13 +94,14 @@ export function AppointmentModal({ leadId, open, onOpenChange, onSuccess }: Appo
         </DialogHeader>
 
         <div className="space-y-4 py-2">
-          <div className="space-y-1">
+          <div className="space-y-2">
             <DateTimeFields
               idPrefix="appt"
               value={scheduledAt}
               onChange={setScheduledAt}
               disabled={loading}
             />
+            <AppointmentConflictWarning value={scheduledAt} onConflictsChange={setConflicts} />
           </div>
           <div className="space-y-1">
             <Label htmlFor="appt_notes">Notes from the call / knock</Label>
@@ -105,7 +122,7 @@ export function AppointmentModal({ leadId, open, onOpenChange, onSuccess }: Appo
             Cancel
           </Button>
           <Button onClick={handleSubmit} disabled={!isValid || loading}>
-            {loading ? 'Saving...' : 'Set Appointment'}
+            {loading ? 'Saving...' : conflicts.length > 0 ? 'Book anyway' : 'Set Appointment'}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -3,6 +3,7 @@ import { db } from '@/lib/supabase/server';
 import { getAuthenticatedAdmin } from '@/lib/auth/jwt';
 import { isValidUUID } from '@/lib/utils/validation';
 import { notifyAppointmentBooked } from '@/lib/notifications/notify-appointment';
+import { findAppointmentConflicts, conflictResponseBody } from '@/lib/leads/appointment-guard';
 
 const APPOINTMENT_TYPES = new Set(['inspection', 'adjuster']);
 
@@ -36,6 +37,19 @@ export async function POST(
     const { data: lead } = await supabase.from('leads').select('id').eq('id', leadId).single();
     if (!lead) {
       return NextResponse.json({ success: false, error: 'Lead not found' }, { status: 404 });
+    }
+
+    // Refuse a clashing time unless the caller has seen the warning and said
+    // book anyway. Enforced here, not just in the dialog: two people booking the
+    // same slot seconds apart would both pass a client-side check.
+    if (!body.allow_conflict) {
+      const conflicts = await findAppointmentConflicts(supabase, {
+        leadId,
+        scheduledAt: body.scheduled_at,
+      });
+      if (conflicts.length > 0) {
+        return NextResponse.json(conflictResponseBody(conflicts), { status: 409 });
+      }
     }
 
     const { data: appointment, error } = await supabase

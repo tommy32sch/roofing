@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/supabase/server';
 import { getAuthenticatedAdmin } from '@/lib/auth/jwt';
 import { isValidUUID } from '@/lib/utils/validation';
+import { findAppointmentConflicts, conflictResponseBody } from '@/lib/leads/appointment-guard';
 
 async function getOwnedAppointment(leadId: string, appointmentId: string) {
   const supabase = db();
@@ -51,6 +52,21 @@ export async function PATCH(
     }
 
     const supabase = db();
+
+    // Same guard as creating one. excludeAppointmentId matters here: without it
+    // this appointment would always clash with itself and no reschedule could
+    // ever succeed.
+    if (updates.scheduled_at && !body.allow_conflict) {
+      const conflicts = await findAppointmentConflicts(supabase, {
+        leadId,
+        scheduledAt: updates.scheduled_at as string,
+        excludeAppointmentId: appointmentId,
+      });
+      if (conflicts.length > 0) {
+        return NextResponse.json(conflictResponseBody(conflicts), { status: 409 });
+      }
+    }
+
     const { data: appointment, error } = await supabase
       .from('lead_appointments')
       .update(updates)
