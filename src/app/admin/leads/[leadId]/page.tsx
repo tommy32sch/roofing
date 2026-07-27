@@ -370,6 +370,11 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
 
   if (!lead) return null;
 
+  // The upload this lead arrived in, when it came from a file. Embedded by the
+  // detail route so the Source card can name the list.
+  const importBatch =
+    (lead.lead_import_batches as { filename?: string; uploaded_by_name?: string } | null) ?? null;
+
   const fullAddress = [lead.address_street, lead.address_city, lead.address_state, lead.address_zip]
     .filter(Boolean)
     .join(', ');
@@ -644,14 +649,6 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
                       {markets.find((m) => m.id === lead.market_id)?.name ?? 'Unassigned'}
                     </div>
                   )}
-                  {lead.created_by_name && (
-                    <div className="col-span-2">
-                      <span className="text-muted-foreground">Added by:</span>{' '}
-                      <span className={isMachineAttribution(lead.created_by_name) ? 'italic' : ''}>
-                        {lead.created_by_name}
-                      </span>
-                    </div>
-                  )}
                   {lead.apn && <div className="col-span-2"><span className="text-muted-foreground">APN:</span> {lead.apn}</div>}
                   {lead.last_sale_date && <div><span className="text-muted-foreground">Last sold:</span> {lead.last_sale_date}</div>}
                   {lead.last_sale_price && <div><span className="text-muted-foreground">Sale price:</span> ${Number(lead.last_sale_price).toLocaleString()}</div>}
@@ -840,9 +837,33 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
                 <CardTitle className="text-sm font-medium text-muted-foreground">Source</CardTitle>
               </CardHeader>
               <CardContent className="text-sm">
-                <p>{(lead.lead_sources as { display_name: string } | undefined)?.display_name || 'Unknown'}</p>
+                {/* Vendor channel when one is set, otherwise who brought it in.
+                    For an uploaded list "where did this come from" IS "who
+                    uploaded it", and this card said "Unknown" while the answer
+                    was sitting one table away. Only genuinely unattributed
+                    leads — the ones predating tracking — still say Unknown. */}
+                <p>
+                  {(lead.lead_sources as { display_name: string } | undefined)?.display_name ||
+                    lead.created_by_name ||
+                    'Unknown'}
+                </p>
                 {lead.source_notes && (
                   <p className="text-muted-foreground mt-1">{lead.source_notes}</p>
+                )}
+                {/* Named separately when a vendor source is ALSO set, so the two
+                    facts never overwrite each other. */}
+                {lead.created_by_name && (lead.lead_sources as { display_name: string } | undefined)?.display_name && (
+                  <p className="text-muted-foreground mt-1">
+                    Added by{' '}
+                    <span className={isMachineAttribution(lead.created_by_name) ? 'italic' : ''}>
+                      {lead.created_by_name}
+                    </span>
+                  </p>
+                )}
+                {importBatch?.filename && (
+                  <p className="text-muted-foreground mt-1 break-all">
+                    From <span className="text-foreground">{importBatch.filename}</span>
+                  </p>
                 )}
                 <p className="text-muted-foreground mt-2">
                   Created {format(new Date(lead.created_at), 'MMM d, yyyy')}
