@@ -68,8 +68,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   async function handleLogout() {
     try {
       await fetch('/api/admin/auth/logout', { method: 'POST' });
-      toast.success('Logged out');
-      router.push('/admin/login');
+      // Full document load — this layout stays mounted across a client-side
+      // navigation, so router.push would leave the departing user's name and
+      // role sitting in state for whoever signs in next.
+      window.location.href = '/admin/login';
     } catch {
       toast.error('Logout failed');
     }
