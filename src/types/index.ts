@@ -252,6 +252,8 @@ export interface LeadWithActivities extends Lead {
   lead_activities?: LeadActivity[];
   lead_sources?: LeadSource;
   lead_appointments?: LeadAppointment[];
+  /** The upload this lead arrived in, embedded by the detail route. */
+  lead_import_batches?: Pick<LeadImportBatch, 'id' | 'filename' | 'uploaded_by_name' | 'created_at'> | null;
 }
 
 export interface DashboardStats {

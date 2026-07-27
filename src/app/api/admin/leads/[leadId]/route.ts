@@ -57,7 +57,9 @@ export async function GET(
 
     const { data: lead, error } = await supabase
       .from('leads')
-      .select('*, lead_sources!source_id(id, name, display_name)')
+      // The import batch comes along so the Source card can name the file a
+      // lead arrived in, not just who uploaded it.
+      .select('*, lead_sources!source_id(id, name, display_name), lead_import_batches!import_batch_id(id, filename, uploaded_by_name, created_at)')
       .eq('id', leadId)
       .single();
 
