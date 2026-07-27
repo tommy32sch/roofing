@@ -80,3 +80,41 @@ Not done / follow-ups:
 - Existing users all have a null home market, so nothing is scoped until you
   assign offices on the Users page. That is intentional — the rollout can't
   hide anyone's leads.
+
+## Freehand territory drawing (map)
+
+Territory selection accepted only one vertex per click, so outlining a
+neighbourhood meant a dozen deliberate taps and a shape that never quite
+followed the streets.
+
+- `src/lib/leads/draw.ts` — `isDrag`, `shouldCapture`, `perpendicularDistance`,
+  `simplifyPath` (Ramer–Douglas–Peucker). 22 tests.
+- `DrawLayer` in `LeadMap.tsx` — one pointer gesture, two shapes: a press that
+  travels past 6px traces a freehand lasso and REPLACES the shape; a press that
+  doesn't appends a single corner, so click-to-place is untouched.
+- Map page: `onDrawPath`, a Clear button, `Finish (n)` showing the vertex count,
+  and Finish disabled below 3 points.
+
+Deliberate choices:
+- `map.dragging.disable()` for the duration of draw mode, restored on cleanup.
+  Leaflet owns drag-to-pan and the two gestures are the same input.
+- Thinned twice: nothing closer than 5px is captured, then RDP collapses the
+  rest on pointerup. A 240-event circle lands at 17 vertices.
+- Tolerance is derived from the current map scale, so 4 screen pixels means the
+  same amount of detail at every zoom. A fixed value in degrees would erase a
+  whole neighbourhood when zoomed out.
+- `MAX_CAPTURE_POINTS = 2000`. Simplification is O(n²) on a path where every
+  point is a genuine corner — measured, a 20,000-point zigzag takes 10.6s while
+  a 20,000-point smooth drag takes 7ms. Real drags are smooth; this is a valve.
+- Vertex dots only render at ≤12 points. Dotting a freehand trace buries it.
+- Pointer capture wrapped in try/catch: it throws NotFoundError when the pointer
+  isn't active, and the release sat ahead of the commit, so a pointercancel
+  would have thrown the shape away.
+
+Verified in the browser: a freehand drag produced a 17-vertex polygon with the
+map pane transform unchanged (no panning), taps still place one corner each and
+2px of hand-shake is not read as a drag, a drag replaced a hand-placed 4-point
+shape rather than appending to it (17, not 21), Finish selected 615 leads and
+opened the assign bar, and panning works again after leaving draw mode.
+
+363 tests, typecheck and build pass. Lint unchanged at 1 pre-existing error.
