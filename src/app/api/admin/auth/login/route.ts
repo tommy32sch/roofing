@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { compare } from 'bcryptjs';
 import { db } from '@/lib/supabase/server';
-import { createToken, setAuthCookie } from '@/lib/auth/jwt';
+import { createToken, setAuthCookie, clearImpersonationCookie } from '@/lib/auth/jwt';
 import { checkConfiguredRateLimit, getClientIP } from '@/lib/utils/rate-limit';
 
 export async function POST(request: NextRequest) {
@@ -56,6 +56,9 @@ export async function POST(request: NextRequest) {
     });
 
     await setAuthCookie(token);
+    // Signing in starts a new session, which must not inherit a parked admin
+    // token from whoever used this browser before.
+    await clearImpersonationCookie();
 
     return NextResponse.json({
       success: true,

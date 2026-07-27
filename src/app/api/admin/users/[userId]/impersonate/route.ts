@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/supabase/server';
-import { getAuthenticatedAdmin, createToken, setAuthCookie } from '@/lib/auth/jwt';
+import {
+  getAuthenticatedAdmin,
+  createToken,
+  setAuthCookie,
+  IMPERSONATION_COOKIE_NAME as IMPERSONATE_COOKIE,
+} from '@/lib/auth/jwt';
 import { isValidUUID } from '@/lib/utils/validation';
 import { cookies } from 'next/headers';
-
-const IMPERSONATE_COOKIE = 'admin_original_token';
 
 export async function POST(
   request: NextRequest,
