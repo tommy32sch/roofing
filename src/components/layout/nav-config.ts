@@ -55,7 +55,8 @@ export function getNavGroups(role: UserRole): NavGroup[] {
   ];
 
   const manage: NavItem[] = [];
-  if (role !== 'closer') manage.push({ href: '/admin/leads/import', label: 'Import', icon: Upload });
+  // Every role can import; leads are stamped with who added them.
+  manage.push({ href: '/admin/leads/import', label: 'Import', icon: Upload });
   if (role === 'admin') {
     manage.push(
       { href: '/admin/users', label: 'Users', icon: UserCog },
@@ -78,7 +79,7 @@ export function getBottomTabs(role: UserRole): NavItem[] {
     { href: '/admin/leads', label: 'Leads', icon: Users },
     { href: '/admin/map', label: 'Map', icon: Map },
   ];
-  if (role !== 'closer') tabs.push({ href: '/admin/leads/new', label: 'Add', icon: PlusCircle });
+  tabs.push({ href: '/admin/leads/new', label: 'Add', icon: PlusCircle });
   if (role === 'admin') tabs.push({ href: '/admin/settings', label: 'Settings', icon: Settings });
   return tabs;
 }

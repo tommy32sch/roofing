@@ -63,6 +63,7 @@ import { LeadPhotos } from '@/components/leads/LeadPhotos';
 import { DateTimeFields } from '@/components/leads/DateTimeFields';
 import { useMarkets } from '@/components/markets/use-markets';
 import { FollowUpMenu } from '@/components/leads/FollowUpMenu';
+import { isMachineAttribution } from '@/lib/leads/attribution';
 
 const SETTER_ALLOWED_STATUSES = new Set(['new', 'contacted', 'appointment_set', 'lost']);
 const CLOSER_ALLOWED_STATUSES = new Set(['sold', 'lost']);
@@ -641,6 +642,14 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
                   {markets.length > 1 && (
                     <div><span className="text-muted-foreground">Market:</span>{' '}
                       {markets.find((m) => m.id === lead.market_id)?.name ?? 'Unassigned'}
+                    </div>
+                  )}
+                  {lead.created_by_name && (
+                    <div className="col-span-2">
+                      <span className="text-muted-foreground">Added by:</span>{' '}
+                      <span className={isMachineAttribution(lead.created_by_name) ? 'italic' : ''}>
+                        {lead.created_by_name}
+                      </span>
                     </div>
                   )}
                   {lead.apn && <div className="col-span-2"><span className="text-muted-foreground">APN:</span> {lead.apn}</div>}

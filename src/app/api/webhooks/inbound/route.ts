@@ -3,6 +3,7 @@ import { db } from '@/lib/supabase/server';
 import { normalizeLeadData, NormalizedLead } from '@/lib/leads/normalize';
 import { checkConfiguredRateLimit, getClientIP } from '@/lib/utils/rate-limit';
 import { enrichLead } from '@/lib/integrations/regrid';
+import { webhookAttribution } from '@/lib/leads/attribution';
 
 export async function POST(request: NextRequest) {
   try {
@@ -166,6 +167,9 @@ export async function POST(request: NextRequest) {
       const batch = leadsToInsert.slice(i, i + batchSize).map(lead => ({
         ...lead,
         source_id: keyRecord.source_id,
+        // No account behind a webhook, so attribute the API key — that's what
+        // an admin revokes when a feed starts sending junk.
+        created_by_name: webhookAttribution(keyRecord.name),
       }));
 
       const { data: insertedLeads, error: insertError } = await supabase

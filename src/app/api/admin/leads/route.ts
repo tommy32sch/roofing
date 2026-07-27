@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/supabase/server';
 import { getAuthenticatedAdmin } from '@/lib/auth/jwt';
 import { marketFilterFor } from '@/lib/leads/market-context';
+import { resolveUploaderFilter } from '@/lib/leads/attribution';
 import { applyMarketFilter } from '@/lib/leads/markets';
 import { parsePhoneNumber } from 'libphonenumber-js';
 import { enrichLead } from '@/lib/integrations/regrid';
@@ -39,6 +40,11 @@ export async function GET(request: NextRequest) {
 
     // Office scoping: explicit ?market_id, else the caller's home market.
     query = applyMarketFilter(query, await marketFilterFor(admin.sub, searchParams.get('market_id')));
+
+    // "Show me what this person uploaded." A malformed id narrows to nothing
+    // rather than widening to every lead.
+    const uploader = resolveUploaderFilter(searchParams.get('created_by'));
+    if (uploader) query = query.eq('created_by', uploader);
 
     // Closers see leads from appointment_set onwards (their working pipeline + history)
     const CLOSER_STATUSES = ['appointment_set', 'inspected', 'proposal_sent', 'sold', 'lost'];
@@ -120,10 +126,6 @@ export async function POST(request: NextRequest) {
     if (!admin) {
       return NextResponse.json({ success: false, error: 'Not authenticated' }, { status: 401 });
     }
-    if (admin.role === 'closer') {
-      return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
-    }
-
     const supabase = db();
     const body = await request.json();
 
@@ -166,6 +168,8 @@ export async function POST(request: NextRequest) {
         email: email?.trim()?.toLowerCase() || null,
         ...rest,
         estimated_roof_value: estimate?.value ?? null,
+        created_by: admin.sub,
+        created_by_name: admin.name?.trim() || admin.email,
       })
       .select('*')
       .single();

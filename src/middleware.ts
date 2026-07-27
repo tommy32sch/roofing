@@ -15,9 +15,13 @@ const PUBLIC_PREFIXES = ['/api/webhooks/'];
 const ADMIN_ONLY_PAGE_PREFIXES = ['/admin/users', '/admin/analytics', '/admin/settings', '/admin/integrations'];
 const ADMIN_ONLY_API_PREFIXES = ['/api/admin/users', '/api/admin/analytics', '/api/admin/settings', '/api/admin/integrations'];
 
-// Routes blocked for closers
-const CLOSER_BLOCKED_PAGE_PREFIXES = ['/admin/leads/import', '/admin/leads/new'];
-const CLOSER_BLOCKED_API_PREFIXES = ['/api/admin/import'];
+// Routes blocked for closers.
+//
+// Importing and adding leads are deliberately NOT here: every role can bring in
+// leads now, and each one is stamped with the account that added it, so the
+// question "who uploaded this list" has an answer without needing a gate.
+const CLOSER_BLOCKED_PAGE_PREFIXES: string[] = [];
+const CLOSER_BLOCKED_API_PREFIXES: string[] = [];
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
