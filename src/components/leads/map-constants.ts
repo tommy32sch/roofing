@@ -70,6 +70,39 @@ export const STORM_AGE_BUCKETS = [
 
 export type StormAgeBucket = (typeof STORM_AGE_BUCKETS)[number];
 
+/**
+ * Zone fill colour by age — the channel that survives being zoomed out.
+ *
+ * Opacity and shape both fail at low zoom: a faded 6px dot disappears and a 6px
+ * triangle is indistinguishable from a 6px circle. Hue over a large area is the
+ * one encoding you can read across a whole metro, so ZONES carry age as colour
+ * while individual markers keep carrying severity.
+ *
+ * A deliberate hot-to-cold ramp: crimson reads as "go here now", slate as
+ * "historical context". Distinct enough in hue that the four steps separate at
+ * a glance rather than needing a side-by-side comparison.
+ */
+export const STORM_ZONE_COLORS: Record<string, string> = {
+  fresh: '#dc2626', // crimson — under a month, live
+  recent: '#f97316', // orange — 1-6 months
+  aging: '#a16207', // dark amber — 6-12 months, claim window closing
+  stale: '#64748b', // slate — over a year, context only
+};
+
+export function stormZoneColor(bucketKey: string): string {
+  return STORM_ZONE_COLORS[bucketKey] ?? STORM_ZONE_COLORS.stale;
+}
+
+/** Legend swatches for the zone age ramp. */
+export function stormZoneLegendEntries(): { key: string; label: string; color: string }[] {
+  return STORM_AGE_BUCKETS.map((b) => ({
+    key: `zone-${b.key}`,
+    label: b.label,
+    color: stormZoneColor(b.key),
+  }));
+}
+
+
 /** Whole days between a report's date and now. Negative dates clamp to 0. */
 export function stormAgeDays(date: string, now: number = Date.now()): number {
   const t = Date.parse(`${date}T12:00:00Z`);
