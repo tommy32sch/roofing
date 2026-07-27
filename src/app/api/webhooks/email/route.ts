@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/supabase/server';
 import { parseLeadCSV } from '@/lib/csv/parser';
 import { detectSource } from '@/lib/leads/source-detect';
+import { emailAttribution } from '@/lib/leads/attribution';
 import { normalizeStreet } from '@/lib/leads/dedupe';
 import { enrichLead } from '@/lib/integrations/regrid';
 import { checkConfiguredRateLimit, getClientIP } from '@/lib/utils/rate-limit';
@@ -202,6 +203,7 @@ export async function POST(request: NextRequest) {
         const batch = leadsToInsert.slice(i, i + batchSize).map(lead => ({
           ...lead,
           source_id: sourceId,
+          created_by_name: emailAttribution(senderEmail),
         }));
 
         const { data: insertedLeads, error: insertError } = await supabase

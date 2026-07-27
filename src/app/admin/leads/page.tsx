@@ -9,6 +9,7 @@ import { formatPhone, formatAddress, mapsUrl } from '@/lib/utils/format';
 import { PageHeader } from '@/components/layout/page-header';
 import { MarketFilter } from '@/components/markets/market-filter';
 import { useMarkets, ALL_MARKETS } from '@/components/markets/use-markets';
+import { isMachineAttribution } from '@/lib/leads/attribution';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
@@ -82,18 +83,22 @@ function LeadsListContent() {
   // URL stays clean until the rep actually switches markets.
   const marketParam = searchParams.get('market_id') || '';
   const marketValue = marketParam || (homeMarketId != null ? String(homeMarketId) : ALL_MARKETS);
+  // "Show me what this person uploaded." Admin-only because /api/admin/users is.
+  const createdBy = searchParams.get('created_by') || '';
+  const [uploaders, setUploaders] = useState<{ id: string; name: string }[]>([]);
   const page = parseInt(searchParams.get('page') || '1', 10);
   // Drives the mobile filter button's active state
-  const activeFilterCount = [status, priority, streetNumber, streetDir, streetName, streetsParam, dncOnly ? 'dnc' : '', marketParam].filter(Boolean).length;
+  const activeFilterCount = [status, priority, streetNumber, streetDir, streetName, streetsParam, dncOnly ? 'dnc' : '', marketParam, createdBy].filter(Boolean).length;
 
   // Only show optional columns that actually carry data. Freshly imported lists
   // have no source or values yet, and three columns of "—" on every row is noise
   // that pushes the fields a rep needs off to the side.
   const showSource = leads.some((l) => l.lead_sources?.display_name);
+  const showAddedBy = leads.some((l) => l.created_by_name);
   const showEstValue = leads.some((l) => l.estimated_roof_value != null);
   const showDealValue = leads.some((l) => l.deal_value != null);
   const columnCount =
-    (isAdmin ? 1 : 0) + 7 + [showSource, showEstValue, showDealValue].filter(Boolean).length;
+    (isAdmin ? 1 : 0) + 7 + [showSource, showAddedBy, showEstValue, showDealValue].filter(Boolean).length;
 
   function applyFilterParams(params: URLSearchParams) {
     if (status) params.set('status', status);
@@ -105,6 +110,7 @@ function LeadsListContent() {
     if (streetsParam) params.set('streets', streetsParam);
     if (dncOnly) params.set('is_dnc', 'true');
     if (marketParam) params.set('market_id', marketParam);
+    if (createdBy) params.set('created_by', createdBy);
   }
 
   function toggleStreetFilter(name: string, selected: boolean) {
@@ -132,6 +138,7 @@ function LeadsListContent() {
     if (streetsParam) params.set('streets', streetsParam);
     if (dncOnly) params.set('is_dnc', 'true');
     if (marketParam) params.set('market_id', marketParam);
+    if (createdBy) params.set('created_by', createdBy);
     params.set('page', page.toString());
     params.set('limit', '25');
 
@@ -148,7 +155,15 @@ function LeadsListContent() {
     } finally {
       setLoading(false);
     }
-  }, [status, priority, search, streetNumber, streetDir, streetName, streetsParam, dncOnly, page, marketParam]);
+  }, [status, priority, search, streetNumber, streetDir, streetName, streetsParam, dncOnly, page, marketParam, createdBy]);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    fetch('/api/admin/users')
+      .then((r) => r.json())
+      .then((d) => { if (d.success) setUploaders(d.users.map((u: { id: string; name: string }) => ({ id: u.id, name: u.name }))); })
+      .catch(() => {});
+  }, [isAdmin]);
 
   const fetchDncCount = useCallback(async () => {
     try {
@@ -340,6 +355,26 @@ function LeadsListContent() {
             onChange={(v) => updateFilter('market_id', v)}
           />
         )}
+        {isAdmin && uploaders.length > 0 && (
+          <Select
+            value={createdBy || 'all'}
+            onValueChange={(v) => updateFilter('created_by', v === 'all' ? '' : v ?? '')}
+          >
+            <SelectTrigger className="sm:w-[160px]" aria-label="Added by">
+              <SelectValue>
+                {createdBy
+                  ? uploaders.find((u) => u.id === createdBy)?.name ?? 'Added by'
+                  : 'Anyone'}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Anyone</SelectItem>
+              {uploaders.map((u) => (
+                <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
         <Select value={status} onValueChange={(v) => updateFilter('status', v === 'all' ? '' : v ?? '')}>
           <SelectTrigger className="sm:w-[160px]">
             <SelectValue placeholder="All Statuses" />
@@ -442,6 +477,7 @@ function LeadsListContent() {
               <TableHead>Status</TableHead>
               <TableHead className="hidden sm:table-cell">Priority</TableHead>
               {showSource && <TableHead className="hidden lg:table-cell">Source</TableHead>}
+              {showAddedBy && <TableHead className="hidden lg:table-cell">Added by</TableHead>}
               {showEstValue && <TableHead className="hidden lg:table-cell">Est. Value</TableHead>}
               {showDealValue && <TableHead className="hidden lg:table-cell">Deal Value</TableHead>}
               <TableHead className="hidden md:table-cell">Added</TableHead>
@@ -458,6 +494,7 @@ function LeadsListContent() {
                   <TableCell><Skeleton className="h-5 w-16" /></TableCell>
                   <TableCell className="hidden sm:table-cell"><Skeleton className="h-5 w-14" /></TableCell>
                   {showSource && <TableCell className="hidden lg:table-cell"><Skeleton className="h-4 w-20" /></TableCell>}
+                  {showAddedBy && <TableCell className="hidden lg:table-cell"><Skeleton className="h-4 w-20" /></TableCell>}
                   {showEstValue && <TableCell className="hidden lg:table-cell"><Skeleton className="h-4 w-16" /></TableCell>}
                   {showDealValue && <TableCell className="hidden lg:table-cell"><Skeleton className="h-4 w-16" /></TableCell>}
                   <TableCell className="hidden md:table-cell"><Skeleton className="h-4 w-16" /></TableCell>
@@ -600,6 +637,23 @@ function LeadsListContent() {
                   {showSource && (
                     <TableCell className="hidden lg:table-cell text-sm text-muted-foreground">
                       {(lead.lead_sources as { display_name: string } | undefined)?.display_name || '—'}
+                    </TableCell>
+                  )}
+                  {showAddedBy && (
+                    <TableCell className="hidden lg:table-cell text-sm text-muted-foreground">
+                      {lead.created_by_name ? (
+                        <span
+                          className={
+                            // A feed is not a person; italics keep the two
+                            // readable apart when scanning the column.
+                            isMachineAttribution(lead.created_by_name) ? 'italic opacity-80' : ''
+                          }
+                        >
+                          {lead.created_by_name}
+                        </span>
+                      ) : (
+                        '—'
+                      )}
                     </TableCell>
                   )}
                   {showEstValue && (

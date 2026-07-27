@@ -102,11 +102,32 @@ export async function POST(request: NextRequest) {
       })),
     ]);
 
+    // Record the upload itself before the leads, so every inserted row can point
+    // at it. The uploader's name is snapshotted onto the batch and each lead —
+    // this is an attribution trail, and it has to survive the account being
+    // renamed or removed.
+    const uploaderName = admin.name?.trim() || admin.email;
+    const { data: importBatch } = await supabase
+      .from('lead_import_batches')
+      .insert({
+        filename: file.name,
+        uploaded_by: admin.sub,
+        uploaded_by_name: uploaderName,
+        market_id: marketId,
+        row_count: leads.length + skipped,
+      })
+      .select('id')
+      .single();
+    const batchId = (importBatch as { id?: string } | null)?.id ?? null;
+
     const annotatedLeads = leads.map((lead, idx) => {
       const duplicateOfId = assigned.get(`new:${idx}`) ?? null;
       return {
         ...lead,
         market_id: marketId,
+        created_by: admin.sub,
+        created_by_name: uploaderName,
+        import_batch_id: batchId,
         is_flagged_duplicate: duplicateOfId !== null,
         // Duplicates of another row in this same file have no real UUID yet
         duplicate_of_id: duplicateOfId?.startsWith('new:') ? null : duplicateOfId,
@@ -151,12 +172,22 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Backfill the batch with what actually landed, so the record matches the
+    // numbers the uploader was shown.
+    if (batchId) {
+      await supabase
+        .from('lead_import_batches')
+        .update({ imported_count: imported, duplicate_count: flagged, dnc_count: dnc })
+        .eq('id', batchId);
+    }
+
     return NextResponse.json({
       success: true,
       imported,
       skipped,
       flagged,
       dnc,
+      uploadedBy: uploaderName,
       errors: importErrors,
     });
   } catch {

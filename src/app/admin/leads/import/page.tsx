@@ -18,6 +18,7 @@ export default function ImportPage() {
     imported: number;
     skipped: number;
     errors: string[];
+    uploadedBy?: string;
   } | null>(null);
   const { markets, homeMarketId, loading: marketsLoading } = useMarkets();
   const [market, setMarket] = useState('');
@@ -214,6 +215,14 @@ export default function ImportPage() {
                 </div>
               )}
             </div>
+            {/* Say who it was recorded against, so the attribution is visible at
+                the moment it's created rather than only discoverable later. */}
+            {result.uploadedBy && (
+              <p className="text-xs text-muted-foreground">
+                Added by <span className="font-medium text-foreground">{result.uploadedBy}</span>
+                {file ? <> · from <span className="font-medium text-foreground">{file.name}</span></> : null}
+              </p>
+            )}
             {result.errors.length > 0 && (
               <div className="rounded-md bg-muted p-3 max-h-40 overflow-y-auto">
                 {result.errors.map((err, i) => (

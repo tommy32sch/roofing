@@ -115,6 +115,12 @@ export interface Lead {
   /** Office this lead belongs to. Set at import, never derived from the
    *  address — most imported leads have no city/state at all. */
   market_id: number | null;
+  /** Account that added this lead; null for leads predating attribution. */
+  created_by: string | null;
+  /** Display name snapshot — also carries "Webhook: x" / "Email: x" for feeds. */
+  created_by_name: string | null;
+  /** The upload this lead arrived in, when it came from a file. */
+  import_batch_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -134,6 +140,20 @@ export interface Market {
   center_zoom: number | null;
   is_active: boolean;
   sort_order: number;
+  created_at: string;
+}
+
+/** A single uploaded list — who, what file, and what landed. */
+export interface LeadImportBatch {
+  id: string;
+  filename: string;
+  uploaded_by: string | null;
+  uploaded_by_name: string;
+  market_id: number | null;
+  row_count: number;
+  imported_count: number;
+  duplicate_count: number;
+  dnc_count: number;
   created_at: string;
 }
 
