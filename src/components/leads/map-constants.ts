@@ -71,35 +71,62 @@ export const STORM_AGE_BUCKETS = [
 export type StormAgeBucket = (typeof STORM_AGE_BUCKETS)[number];
 
 /**
- * Zone fill colour by age — the channel that survives being zoomed out.
+ * Zone style by age — a SINGLE-hue ramp, deliberately.
  *
- * Opacity and shape both fail at low zoom: a faded 6px dot disappears and a 6px
- * triangle is indistinguishable from a 6px circle. Hue over a large area is the
- * one encoding you can read across a whole metro, so ZONES carry age as colour
- * while individual markers keep carrying severity.
+ * The first version used red -> orange -> amber for age, which failed twice
+ * over: adjacent warm hues don't visibly order ("everything just looks orange
+ * and red"), and the wind severity markers underneath already use
+ * amber -> orange -> red, so the same hues meant two different things on the
+ * same screen. Sequential data gets a sequential ramp: one hue, fading with
+ * age. "How red is it" IS "how fresh is it" — nothing to decode, and no
+ * collision with any severity colour because the zones view hides the severity
+ * markers entirely.
  *
- * A deliberate hot-to-cold ramp: crimson reads as "go here now", slate as
- * "historical context". Distinct enough in hue that the four steps separate at
- * a glance rather than needing a side-by-side comparison.
+ * Past a year — the usual claim-filing window — a zone drops its fill and
+ * becomes a dashed grey outline: still there for door-knock context, visually
+ * finished as an opportunity.
  */
-export const STORM_ZONE_COLORS: Record<string, string> = {
-  fresh: '#dc2626', // crimson — under a month, live
-  recent: '#f97316', // orange — 1-6 months
-  aging: '#a16207', // dark amber — 6-12 months, claim window closing
-  stale: '#64748b', // slate — over a year, context only
+export const STORM_ZONE_STYLES: Record<
+  string,
+  { stroke: string; fill: string; fillOpacity: number; weight: number; opacity: number; dashArray?: string }
+> = {
+  fresh: { stroke: '#b91c1c', fill: '#dc2626', fillOpacity: 0.45, weight: 3, opacity: 1 },
+  recent: { stroke: '#dc2626', fill: '#ef4444', fillOpacity: 0.26, weight: 2, opacity: 0.85 },
+  aging: { stroke: '#f87171', fill: '#f87171', fillOpacity: 0.12, weight: 1.5, opacity: 0.6 },
+  stale: { stroke: '#94a3b8', fill: '#94a3b8', fillOpacity: 0, weight: 1.5, opacity: 0.6, dashArray: '6 5' },
 };
 
-export function stormZoneColor(bucketKey: string): string {
-  return STORM_ZONE_COLORS[bucketKey] ?? STORM_ZONE_COLORS.stale;
+export function stormZoneStyle(bucketKey: string) {
+  return STORM_ZONE_STYLES[bucketKey] ?? STORM_ZONE_STYLES.stale;
 }
 
-/** Legend swatches for the zone age ramp. */
-export function stormZoneLegendEntries(): { key: string; label: string; color: string }[] {
-  return STORM_AGE_BUCKETS.map((b) => ({
-    key: `zone-${b.key}`,
-    label: b.label,
-    color: stormZoneColor(b.key),
-  }));
+/**
+ * Compact age for the label written ON each zone: "6d", "3w", "8mo", "1y+".
+ *
+ * The label is the real fix for reading age at a distance — colour ramps need a
+ * legend, text doesn't. Rendered in screen pixels so it stays legible at any
+ * zoom.
+ */
+export function stormAgeShort(date: string, now: number = Date.now()): string {
+  const days = stormAgeDays(date, now);
+  if (days === 0) return 'today';
+  if (days < 7) return `${days}d`;
+  if (days < 60) return `${Math.round(days / 7)}w`;
+  if (days < 365) return `${Math.round(days / 30.44)}mo`;
+  return `${Math.floor(days / 365)}y+`;
+}
+
+/** Legend swatches for the zone age ramp. Stale shows its outline grey. */
+export function stormZoneLegendEntries(): { key: string; label: string; color: string; opacity: number }[] {
+  return STORM_AGE_BUCKETS.map((b) => {
+    const style = stormZoneStyle(b.key);
+    return {
+      key: `zone-${b.key}`,
+      label: b.label,
+      color: style.fillOpacity > 0 ? style.fill : style.stroke,
+      opacity: style.fillOpacity > 0 ? Math.min(style.fillOpacity + 0.35, 1) : 0.7,
+    };
+  });
 }
 
 

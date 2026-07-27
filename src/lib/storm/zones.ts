@@ -202,25 +202,39 @@ export function clusterReports(
   return clusters;
 }
 
+export interface StormZonePartition {
+  zones: StormZone[];
+  /**
+   * Reports that didn't form a zone — isolated hits and rejected slivers.
+   *
+   * Returned so the zones view can still show them (as quiet dots) instead of
+   * making data silently disappear: the Hail button may say (91) while only one
+   * zone is on screen, and the difference has to be visible somewhere.
+   */
+  strays: StormReport[];
+}
+
 /**
- * Turn reports into drawable zones.
+ * Split reports into drawable zones and the strays left over.
  *
- * Clusters are dropped when they can't describe a swath: too few reports, or a
- * hull too thin to have meaningful area. Both would draw a sliver implying
- * coverage the data doesn't support. Nothing is lost — those reports still
- * appear as individual markers.
+ * Clusters are dropped to strays when they can't describe a swath: too few
+ * reports, or a hull too thin to have meaningful area. Both would draw a sliver
+ * implying coverage the data doesn't support.
  */
-export function buildStormZones(reports: StormReport[]): StormZone[] {
+export function partitionStormReports(reports: StormReport[]): StormZonePartition {
   const zones: StormZone[] = [];
+  const strays: StormReport[] = [];
 
   for (const cluster of clusterReports(reports)) {
-    if (cluster.length < ZONE_MIN_REPORTS) continue;
+    const reject = () => strays.push(...cluster);
+    if (cluster.length < ZONE_MIN_REPORTS) { reject(); continue; }
 
     const hull = convexHull(cluster.map((r) => [r.lat, r.lon] as [number, number]));
-    if (hull.length < 3) continue; // perfectly collinear reports have no area
-    // Nearly-collinear ones pass the point count but render as a stray line.
-    if (polygonAreaKm2(hull) < ZONE_MIN_AREA_KM2) continue;
-    if (hullWidthKm(hull) < ZONE_MIN_WIDTH_KM) continue;
+    // Perfectly collinear reports have no area; nearly-collinear ones pass the
+    // point count but render as a stray line across the map.
+    if (hull.length < 3) { reject(); continue; }
+    if (polygonAreaKm2(hull) < ZONE_MIN_AREA_KM2) { reject(); continue; }
+    if (hullWidthKm(hull) < ZONE_MIN_WIDTH_KM) { reject(); continue; }
 
     const dates = cluster.map((r) => r.date).sort();
     const values = cluster.map((r) => r.value).filter((v): v is number => v != null);
@@ -245,5 +259,11 @@ export function buildStormZones(reports: StormReport[]): StormZone[] {
   }
 
   // Oldest first so recent zones paint on top.
-  return zones.sort((a, b) => (a.latestDate < b.latestDate ? -1 : a.latestDate > b.latestDate ? 1 : 0));
+  zones.sort((a, b) => (a.latestDate < b.latestDate ? -1 : a.latestDate > b.latestDate ? 1 : 0));
+  return { zones, strays };
+}
+
+/** Just the zones, for callers that don't render strays. */
+export function buildStormZones(reports: StormReport[]): StormZone[] {
+  return partitionStormReports(reports).zones;
 }

@@ -4,6 +4,7 @@ import {
   convexHull,
   clusterReports,
   buildStormZones,
+  partitionStormReports,
   polygonAreaKm2,
   hullWidthKm,
   ZONE_MIN_REPORTS,
@@ -301,5 +302,42 @@ describe('buildStormZones width filter', () => {
       report(45.1, -93.14), report(45.05, -93.07), report(44.98, -93.1),
     ];
     expect(buildStormZones(broad)).toHaveLength(1);
+  });
+});
+
+describe('partitionStormReports', () => {
+  // Every report must land somewhere: hiding the severity markers in zones
+  // view is only honest if nothing silently disappears.
+  it('accounts for every report as either zone member or stray', () => {
+    const reports = [
+      // a real swath
+      report(45.0, -93.0), report(45.06, -93.08), report(45.12, -93.0),
+      report(45.06, -92.92),
+      // an isolated hit far away
+      report(46.5, -95.0),
+    ];
+    const { zones, strays } = partitionStormReports(reports);
+    const zoned = zones.reduce((s, z) => s + z.reportCount, 0);
+    expect(zoned + strays.length).toBe(reports.length);
+    expect(zones).toHaveLength(1);
+    expect(strays).toHaveLength(1);
+    expect(strays[0].lat).toBe(46.5);
+  });
+
+  it('sends a rejected sliver to strays rather than dropping it', () => {
+    const sliver = Array.from({ length: 6 }, (_, i) =>
+      report(45.0 + (i % 2) * 0.003, -93.0 - i * 0.06)
+    );
+    const { zones, strays } = partitionStormReports(sliver);
+    expect(zones).toEqual([]);
+    expect(strays).toHaveLength(6);
+  });
+
+  it('matches buildStormZones for the zone half', () => {
+    const reports = [
+      report(45.0, -93.0), report(45.06, -93.08), report(45.12, -93.0),
+      report(45.06, -92.92),
+    ];
+    expect(buildStormZones(reports)).toEqual(partitionStormReports(reports).zones);
   });
 });
