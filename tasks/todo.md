@@ -513,3 +513,26 @@ Production review:
 - The live Leaflet DOM contains exactly one Canvas. `map-data` is z-index 350,
   its zone labels are in `tooltipPane` at 650, and click cards target
   `popupPane` at 700, so information renders above every vector mark
+
+## House-number visibility under lead dots
+
+Goal: retain lead markers while revealing the basemap house number underneath
+at close, door-level zoom.
+
+- [x] Measure the current dot footprint where OSM house numbers appear
+- [x] Keep normal lead visibility at neighborhood zoom
+- [x] Switch lead dots to a mostly hollow status ring at house-level zoom
+- [x] Preserve a stronger selected and restricted-lead outline
+- [x] Keep popup, territory, and storm interaction behavior unchanged
+- [x] Add pure regression coverage for zoom, selection, and knock-recency cases
+- [x] Run focused/full tests, TypeScript, lint, build, and diff checks
+- [ ] Deploy and visually verify a real lead over address-level basemap detail
+
+Pre-deployment review:
+- OSM address labels begin appearing at zoom 17 in the live Phoenix lead area.
+- Below zoom 17, lead dots retain their existing size, fill, and white outline.
+- At zoom 17+, ordinary leads become 7px, 10%-filled status rings; recently
+  knocked leads fade to 4% while remaining clickable.
+- Selected, do-not-knock, and DNC leads retain the existing 3px ring precedence.
+- Verification passed: 42 focused tests, 474 full tests, TypeScript, changed-file
+  ESLint, production build, and `git diff --check`.

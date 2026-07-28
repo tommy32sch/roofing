@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { MapContainer, TileLayer, CircleMarker, Pane, Popup, Polygon, Polyline, Tooltip, useMap } from 'react-leaflet';
 import type { Map as LeafletMap } from 'leaflet';
@@ -12,7 +12,7 @@ import { FollowUpMenu } from '@/components/leads/FollowUpMenu';
 import { LEAD_STATUS_OPTIONS } from '@/types';
 import { shouldRecenterMap } from '@/lib/leads/markets';
 import { classifyDrawGestureEnd, isDrag, shouldCapture, simplifyPath } from '@/lib/leads/draw';
-import { STATUS_COLORS, DNC_RING_COLOR, DO_NOT_KNOCK_RING_COLOR, stormColor, stormRadius, stormLabel, sortStormsForDrawing, stormAgeBucket, stormZoneStyle, stormAgeShort, type GeoLead, type StormReport } from './map-constants';
+import { STATUS_COLORS, DNC_RING_COLOR, DO_NOT_KNOCK_RING_COLOR, isLeadAddressDetailZoom, leadMarkerAppearance, stormColor, stormRadius, stormLabel, sortStormsForDrawing, stormAgeBucket, stormZoneStyle, stormAgeShort, type GeoLead, type StormReport } from './map-constants';
 import { buildStormZones } from '@/lib/storm/zones';
 import type { Territory } from '@/types';
 
@@ -169,6 +169,29 @@ function MapReady({ onMapReady }: { onMapReady?: (map: LeafletMap) => void }) {
       ro.disconnect();
     };
   }, [map, onMapReady]);
+  return null;
+}
+
+/**
+ * Report only whether the map crossed the house-number visibility threshold.
+ *
+ * Keeping a boolean instead of the raw zoom avoids rerendering thousands of
+ * lead markers on every zoom step when their visual treatment is unchanged.
+ */
+function LeadAddressDetailObserver({
+  onChange,
+}: {
+  onChange: (addressDetail: boolean) => void;
+}) {
+  const map = useMap();
+  useEffect(() => {
+    const report = () => onChange(isLeadAddressDetailZoom(map.getZoom()));
+    report();
+    map.on('zoomend', report);
+    return () => {
+      map.off('zoomend', report);
+    };
+  }, [map, onChange]);
   return null;
 }
 
@@ -480,6 +503,7 @@ export default function LeadMap({
   onEditTerritory,
   focus = null,
 }: LeadMapProps) {
+  const [addressDetail, setAddressDetail] = useState(false);
   // Zone construction uses quadratic clustering in the worst case. Keep it
   // tied to storm-data changes so selecting a lead or opening a popup cannot
   // rebuild thousands of report relationships.
@@ -518,6 +542,7 @@ export default function LeadMap({
       />
       <FocusView focus={focus} />
       <MapReady onMapReady={onMapReady} />
+      <LeadAddressDetailObserver onChange={setAddressDetail} />
       {/* All interactive vectors share one Canvas renderer. Separate
           preferCanvas panes each create a full-map canvas; a higher empty
           canvas still intercepts the pointer and makes every lower layer
@@ -723,25 +748,24 @@ export default function LeadMap({
 
       {leads.map((lead) => {
         const selected = selectedIds.has(lead.id);
+        const marker = leadMarkerAppearance({
+          addressDetail,
+          statusColor: STATUS_COLORS[lead.status] ?? STATUS_COLORS.new,
+          selected,
+          recentlyKnocked: knockRecency(lead.last_knock_at) === 'recent',
+          doNotKnock: lead.do_not_knock,
+          isDnc: lead.is_dnc,
+        });
         return (
           <CircleMarker
             key={lead.id}
             center={[lead.latitude, lead.longitude]}
-            radius={selected ? 11 : 8}
+            radius={marker.radius}
             pathOptions={{
-              fillColor: STATUS_COLORS[lead.status] ?? STATUS_COLORS.new,
-              // Recently knocked doors fade back so a rep's eye goes to the ones
-              // still worth walking to.
-              fillOpacity: knockRecency(lead.last_knock_at) === 'recent' ? 0.35 : 0.85,
-              // Ring precedence: selection, then do-not-knock, then Do Not Call.
-              color: selected
-                ? '#111111'
-                : lead.do_not_knock
-                  ? DO_NOT_KNOCK_RING_COLOR
-                  : lead.is_dnc
-                    ? DNC_RING_COLOR
-                    : '#ffffff',
-              weight: selected || lead.do_not_knock || lead.is_dnc ? 3 : 1.5,
+              fillColor: marker.fillColor,
+              fillOpacity: marker.fillOpacity,
+              color: marker.strokeColor,
+              weight: marker.strokeWeight,
             }}
           >
             <Popup pane="popupPane">

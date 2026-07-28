@@ -11,6 +11,10 @@ import {
   stormAgeBucket,
   stormAgeShort,
   stormZoneStyle,
+  isLeadAddressDetailZoom,
+  leadMarkerAppearance,
+  DNC_RING_COLOR,
+  DO_NOT_KNOCK_RING_COLOR,
   type StormReport,
   type StormType,
 } from './map-constants';
@@ -23,6 +27,91 @@ const report = (type: StormType, value: number | null): StormReport => ({
   location: 'Phoenix',
   state: 'AZ',
   type,
+});
+
+describe('lead marker appearance', () => {
+  const base = {
+    statusColor: '#2563eb',
+    selected: false,
+    recentlyKnocked: false,
+    doNotKnock: false,
+    isDnc: false,
+  };
+
+  it('switches to address-detail mode exactly when house numbers appear', () => {
+    expect(isLeadAddressDetailZoom(16)).toBe(false);
+    expect(isLeadAddressDetailZoom(17)).toBe(true);
+    expect(isLeadAddressDetailZoom(22)).toBe(true);
+  });
+
+  it('preserves the familiar solid dot below address-detail zoom', () => {
+    expect(leadMarkerAppearance({ ...base, addressDetail: false })).toEqual({
+      radius: 8,
+      fillColor: base.statusColor,
+      fillOpacity: 0.85,
+      strokeColor: '#ffffff',
+      strokeWeight: 1.5,
+    });
+  });
+
+  it('becomes a mostly hollow status ring at address-detail zoom', () => {
+    expect(leadMarkerAppearance({ ...base, addressDetail: true })).toEqual({
+      radius: 7,
+      fillColor: base.statusColor,
+      fillOpacity: 0.1,
+      strokeColor: base.statusColor,
+      strokeWeight: 2,
+    });
+  });
+
+  it('keeps recently knocked houses quieter at both scales', () => {
+    expect(
+      leadMarkerAppearance({ ...base, addressDetail: false, recentlyKnocked: true }).fillOpacity
+    ).toBe(0.35);
+    expect(
+      leadMarkerAppearance({ ...base, addressDetail: true, recentlyKnocked: true }).fillOpacity
+    ).toBe(0.04);
+  });
+
+  it('keeps selected leads prominent without restoring an opaque center', () => {
+    expect(
+      leadMarkerAppearance({
+        ...base,
+        addressDetail: true,
+        selected: true,
+        recentlyKnocked: true,
+      })
+    ).toEqual({
+      radius: 10,
+      fillColor: base.statusColor,
+      fillOpacity: 0.04,
+      strokeColor: '#111111',
+      strokeWeight: 3,
+    });
+  });
+
+  it('preserves selection and safety-ring precedence', () => {
+    expect(
+      leadMarkerAppearance({
+        ...base,
+        addressDetail: true,
+        selected: true,
+        doNotKnock: true,
+        isDnc: true,
+      }).strokeColor
+    ).toBe('#111111');
+    expect(
+      leadMarkerAppearance({
+        ...base,
+        addressDetail: true,
+        doNotKnock: true,
+        isDnc: true,
+      }).strokeColor
+    ).toBe(DO_NOT_KNOCK_RING_COLOR);
+    expect(
+      leadMarkerAppearance({ ...base, addressDetail: true, isDnc: true }).strokeColor
+    ).toBe(DNC_RING_COLOR);
+  });
 });
 
 describe('toggleStormType', () => {

@@ -1,5 +1,20 @@
 # Lessons
 
+## “Information behind a marker” can mean basemap occlusion, not z-index
+- **Correction:** interpreted the report that lead dots covered “the info” as
+  the popup card rendering behind the Canvas. The owner meant that an opaque
+  dot hides the house number printed on the basemap at close zoom.
+- **Rules:**
+  - Ask what the hidden information is: an application tooltip/popup, a
+    permanent label, or text baked into the map tile.
+  - Z-index can fix application overlays but cannot reveal text already painted
+    underneath an opaque Canvas mark.
+  - For house-level map work, make point marks zoom-responsive: preserve
+    prominence while zoomed out, then reduce size and opacity when the basemap
+    begins showing address-level detail.
+  - Verify the actual close-zoom render; a correctly layered popup does not
+    prove that the underlying parcel or house number is readable.
+
 ## Stacked Leaflet canvases do not share pointer hit-testing
 - **Correction:** hail and wind points still rendered after saved-territory
   panes were added, but they could no longer be clicked or hovered for their

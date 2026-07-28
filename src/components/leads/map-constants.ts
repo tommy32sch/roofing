@@ -45,6 +45,71 @@ export const DNC_RING_COLOR = 'oklch(0.55 0.22 25)';
 /** Ring for houses the homeowner asked us not to return to. */
 export const DO_NOT_KNOCK_RING_COLOR = 'oklch(0.45 0.02 45)';
 
+/** OSM starts showing individual house numbers around this zoom. */
+export const LEAD_ADDRESS_DETAIL_ZOOM = 17;
+
+export function isLeadAddressDetailZoom(zoom: number): boolean {
+  return zoom >= LEAD_ADDRESS_DETAIL_ZOOM;
+}
+
+export interface LeadMarkerAppearanceInput {
+  addressDetail: boolean;
+  statusColor: string;
+  selected: boolean;
+  recentlyKnocked: boolean;
+  doNotKnock: boolean;
+  isDnc: boolean;
+}
+
+export interface LeadMarkerAppearance {
+  radius: number;
+  fillColor: string;
+  fillOpacity: number;
+  strokeColor: string;
+  strokeWeight: number;
+}
+
+/**
+ * Lead marker treatment at overview and address-detail scales.
+ *
+ * At house-level zoom, a mostly hollow status-coloured ring keeps the lead
+ * visible and clickable without painting over the house number on the basemap.
+ * Selection and safety restrictions retain their stronger ring precedence.
+ */
+export function leadMarkerAppearance({
+  addressDetail,
+  statusColor,
+  selected,
+  recentlyKnocked,
+  doNotKnock,
+  isDnc,
+}: LeadMarkerAppearanceInput): LeadMarkerAppearance {
+  const emphasized = selected || doNotKnock || isDnc;
+  const strokeColor = selected
+    ? '#111111'
+    : doNotKnock
+      ? DO_NOT_KNOCK_RING_COLOR
+      : isDnc
+        ? DNC_RING_COLOR
+        : addressDetail
+          ? statusColor
+          : '#ffffff';
+
+  return {
+    radius: addressDetail ? (selected ? 10 : 7) : selected ? 11 : 8,
+    fillColor: statusColor,
+    fillOpacity: addressDetail
+      ? recentlyKnocked
+        ? 0.04
+        : 0.1
+      : recentlyKnocked
+        ? 0.35
+        : 0.85,
+    strokeColor,
+    strokeWeight: emphasized ? 3 : addressDetail ? 2 : 1.5,
+  };
+}
+
 export type StormType = 'hail' | 'wind';
 
 /**

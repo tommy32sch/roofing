@@ -40,6 +40,21 @@ describe('map canvas layer interactivity', () => {
     expect(pageSource).toContain('Overlay each storm swath beneath its individual report dots');
   });
 
+  it('switches lead dots to a house-number-safe treatment after zooming in', () => {
+    const leadBlock = source.slice(
+      source.indexOf('{leads.map'),
+      source.indexOf('{onDrawPoint && onDrawPath')
+    );
+
+    expect(source).toContain("map.on('zoomend', report)");
+    expect(source).toContain("map.off('zoomend', report)");
+    expect(leadBlock).toContain('leadMarkerAppearance({');
+    expect(leadBlock).toContain('addressDetail,');
+    expect(leadBlock).toContain('radius={marker.radius}');
+    expect(leadBlock).toContain('fillOpacity: marker.fillOpacity');
+    expect(leadBlock).toContain('color: marker.strokeColor');
+  });
+
   it('binds storm hover and click details to Leaflet information panes', () => {
     const stormBlock = source.slice(
       source.indexOf('{visibleStormReports.map'),
