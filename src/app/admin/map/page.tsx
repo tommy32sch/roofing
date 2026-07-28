@@ -42,6 +42,7 @@ import { LEAD_STATUS_OPTIONS, LEAD_PRIORITY_OPTIONS } from '@/types';
 import type { Territory, UserRole } from '@/types';
 import { LIMITS } from '@/lib/utils/validation';
 import { pointInPolygon } from '@/lib/leads/geo-polygon';
+import { mapDrawAvailability, type MapDrawPurpose } from '@/lib/leads/map-drawing';
 import { PageHeader } from '@/components/layout/page-header';
 import { MarketFilter } from '@/components/markets/market-filter';
 import { useMarkets, ALL_MARKETS } from '@/components/markets/use-markets';
@@ -114,6 +115,7 @@ export default function MapPage() {
   } | null>(null);
   const [mapInstance, setMapInstance] = useState<LeafletMap | null>(null);
   const [drawing, setDrawing] = useState(false);
+  const [drawPurpose, setDrawPurpose] = useState<MapDrawPurpose | null>(null);
   const [drawPoints, setDrawPoints] = useState<[number, number][]>([]);
   const [territories, setTerritories] = useState<Territory[]>([]);
   const [territoriesLoading, setTerritoriesLoading] = useState(false);
@@ -489,9 +491,18 @@ export default function MapPage() {
     }
   }
 
+  function startSelectionArea() {
+    setEditingTerritory(null);
+    setEditingBoundary(false);
+    setDrawPurpose('selection');
+    setDrawPoints([]);
+    setDrawing(true);
+  }
+
   function startNewTerritory() {
     setEditingTerritory(null);
     setEditingBoundary(false);
+    setDrawPurpose('territory');
     setDrawPoints([]);
     setDrawing(true);
   }
@@ -501,12 +512,36 @@ export default function MapPage() {
       toast.error('Add at least 3 points to make an area');
       return;
     }
+    if (drawPurpose === 'selection') {
+      const inside = leads.filter((lead) =>
+        pointInPolygon([lead.latitude, lead.longitude], drawPoints)
+      );
+      if (inside.length === 0) {
+        toast.info('No leads inside that area');
+      } else {
+        setSelection((prev) => {
+          const next = new Map(prev);
+          for (const lead of inside) {
+            next.set(lead.id, Number(lead.estimated_roof_value) || 0);
+          }
+          return next;
+        });
+        toast.success(
+          `${inside.length} lead${inside.length !== 1 ? 's' : ''} selected in the area`
+        );
+      }
+      setDrawing(false);
+      setDrawPurpose(null);
+      setDrawPoints([]);
+      return;
+    }
     setDrawing(false);
     setTerritoryDialogOpen(true);
   }
 
   function cancelDraw() {
     setDrawing(false);
+    setDrawPurpose(null);
     setDrawPoints([]);
     setEditingTerritory(null);
     setEditingBoundary(false);
@@ -523,6 +558,7 @@ export default function MapPage() {
   function editTerritoryBoundary(territory: Territory) {
     setEditingTerritory(territory);
     setEditingBoundary(true);
+    setDrawPurpose('territory');
     setDrawPoints(territory.boundary);
     setDrawing(true);
   }
@@ -532,6 +568,7 @@ export default function MapPage() {
     if (!open && (!editingTerritory || editingBoundary)) {
       // Closing the form is "back to drawing", not data loss. Clear/Cancel on
       // the toolbar remains the deliberate way to discard an outline.
+      setDrawPurpose('territory');
       setDrawing(true);
     }
   }
@@ -545,6 +582,7 @@ export default function MapPage() {
     if (!editingTerritory) addTerritoryLeadsToSelection(saved);
     setTerritoryDialogOpen(false);
     setDrawing(false);
+    setDrawPurpose(null);
     setDrawPoints([]);
     setEditingTerritory(null);
     setEditingBoundary(false);
@@ -588,6 +626,7 @@ export default function MapPage() {
 
   function handleMarketChange(nextMarket: string) {
     setDrawing(false);
+    setDrawPurpose(null);
     setDrawPoints([]);
     setEditingTerritory(null);
     setEditingBoundary(false);
@@ -600,6 +639,11 @@ export default function MapPage() {
   }
 
   const selectionTotal = [...selection.values()].reduce((sum, v) => sum + v, 0);
+  const drawAvailability = mapDrawAvailability({
+    loading,
+    shownLeadCount: leads.length,
+    selectedMarketId: selectedMarket?.id ?? null,
+  });
   const dialogBoundary = editingTerritory && !editingBoundary
     ? editingTerritory.boundary
     : drawPoints;
@@ -646,16 +690,32 @@ export default function MapPage() {
               </Button>
             )}
             {isAdmin && !drawing && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={startNewTerritory}
-                disabled={loading || !selectedMarket}
-                title={!selectedMarket ? 'Choose one market to draw a territory' : undefined}
-              >
-                <Pencil className="h-4 w-4 mr-1" />
-                New territory
-              </Button>
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={startSelectionArea}
+                  disabled={drawAvailability.selectionDisabled}
+                  title={
+                    leads.length === 0
+                      ? 'No mapped leads match the current filters'
+                      : 'Draw an area to select leads for assignment'
+                  }
+                >
+                  <Pencil className="h-4 w-4 mr-1" />
+                  Draw area
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={startNewTerritory}
+                  disabled={drawAvailability.territoryDisabled}
+                  title={!selectedMarket ? 'Choose one market to save a territory' : undefined}
+                >
+                  <MapPinned className="h-4 w-4 mr-1" />
+                  New territory
+                </Button>
+              </>
             )}
             {isAdmin && drawing && (
               <>
@@ -802,7 +862,19 @@ export default function MapPage() {
 
       {drawing && (
         <div className="rounded-md border border-blue-300 bg-blue-50 dark:bg-blue-950/30 px-3 py-2 text-xs text-blue-700 dark:text-blue-300">
-          <strong>Drag</strong> to draw around a neighborhood, or <strong>tap</strong> to drop corners one at a time. Then <strong>Finish</strong> to name and save the territory. Leads inside stay available for explicit bulk assignment.
+          {drawPurpose === 'selection' ? (
+            <>
+              <strong>Drag</strong> to draw around leads, or <strong>tap</strong> to drop
+              corners one at a time. Then <strong>Finish</strong> to select every lead inside
+              for assignment.
+            </>
+          ) : (
+            <>
+              <strong>Drag</strong> to draw around a neighborhood, or <strong>tap</strong> to
+              drop corners one at a time. Then <strong>Finish</strong> to name and save the
+              territory. Leads inside stay available for explicit bulk assignment.
+            </>
+          )}
         </div>
       )}
 
