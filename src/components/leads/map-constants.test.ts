@@ -223,6 +223,12 @@ describe('stormZoneStyle', () => {
     for (let i = 1; i < fills.length; i++) expect(fills[i]).toBeLessThan(fills[i - 1]);
   });
 
+  it('keeps every swath fill light enough for report dots to remain readable', () => {
+    for (const key of ['fresh', 'recent', 'aging', 'stale']) {
+      expect(stormZoneStyle(key).fillOpacity).toBeLessThanOrEqual(0.2);
+    }
+  });
+
   // Past the filing window a zone is context, not opportunity: outline only.
   it('gives stale zones no fill and a dashed outline', () => {
     expect(stormZoneStyle('stale').fillOpacity).toBe(0);

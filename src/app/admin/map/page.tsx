@@ -774,7 +774,7 @@ export default function MapPage() {
                   size="sm"
                   aria-pressed={stormZones}
                   onClick={() => setStormZones((v) => !v)}
-                  title="Outline the swath each storm cut, coloured by how recent it is"
+                  title="Overlay each storm swath beneath its individual report dots"
                 >
                   <Hexagon className="h-4 w-4 mr-1" />
                   Zones
@@ -926,27 +926,36 @@ export default function MapPage() {
         {stormOn && (
           <>
             <span className="text-muted-foreground/60">|</span>
-            {/* Severity swatches only in marker view — the zones view hides
-                the markers that carry severity, so showing its key would be
-                explaining colours that aren't on screen. */}
-            {!stormZones &&
-              stormLegendEntries(stormTypes).map((entry) => (
-                <span key={entry.key} className="flex items-center gap-1.5">
-                  <span
-                    className="inline-block h-2.5 w-2.5 rounded-full"
-                    style={{ backgroundColor: entry.color, opacity: 0.6 }}
-                  />
-                  {entry.label}
-                </span>
-              ))}
-            {/* The age ramp. Which encoding is live depends on the view: zones
-                carry age as colour (readable zoomed out), markers carry it as
-                opacity (colour there is already severity). Showing only the
-                active one keeps the legend honest. */}
+            {/* Dots remain visible when swaths are on, so their severity key
+                must remain visible too. */}
+            <span className="text-muted-foreground">Report severity</span>
+            {stormLegendEntries(stormTypes).map((entry) => (
+              <span key={entry.key} className="flex items-center gap-1.5">
+                <span
+                  className="inline-block h-2.5 w-2.5 rounded-full"
+                  style={{ backgroundColor: entry.color, opacity: 0.6 }}
+                />
+                {entry.label}
+              </span>
+            ))}
+            {/* Both layers use the same age buckets, but distinct encodings:
+                dots fade their severity colour; swaths use a red ramp. */}
             <span className="text-muted-foreground/60">|</span>
-            <span className="text-muted-foreground">Age</span>
-            {stormZones
-              ? stormZoneLegendEntries().map((entry) => (
+            <span className="text-muted-foreground">Report age</span>
+            {stormAgeLegendEntries().map((entry) => (
+              <span key={entry.key} className="flex items-center gap-1.5">
+                <span
+                  className="inline-block h-2.5 w-2.5 rounded-full bg-foreground"
+                  style={{ opacity: entry.fillOpacity }}
+                />
+                {entry.label}
+              </span>
+            ))}
+            {stormZones && (
+              <>
+                <span className="text-muted-foreground/60">|</span>
+                <span className="text-muted-foreground">Swath age</span>
+                {stormZoneLegendEntries().map((entry) => (
                   <span key={entry.key} className="flex items-center gap-1.5">
                     <span
                       className="inline-block h-2.5 w-2.5 rounded-sm"
@@ -954,16 +963,9 @@ export default function MapPage() {
                     />
                     {entry.label}
                   </span>
-                ))
-              : stormAgeLegendEntries().map((entry) => (
-                  <span key={entry.key} className="flex items-center gap-1.5">
-                    <span
-                      className="inline-block h-2.5 w-2.5 rounded-full bg-foreground"
-                      style={{ opacity: entry.fillOpacity }}
-                    />
-                    {entry.label}
-                  </span>
                 ))}
+              </>
+            )}
           </>
         )}
       </div>

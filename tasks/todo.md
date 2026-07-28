@@ -473,3 +473,31 @@ Rollout review:
 - Resend recorded “Roof Leads Resend connection test” as opened
 - In-app storm alerts remain active; production email remains blocked until the
   owned-domain steps above are completed
+
+## Combined storm swath and report view
+
+Goal: let roofers see the full storm swath and its individual NOAA touchdown
+reports together without losing report details or map interactivity.
+
+- [x] Make Zones additive so turning it on keeps every storm report dot visible
+- [x] Draw the swath beneath report dots with a lighter, readable fill
+- [x] Keep isolated reports visible outside any generated swath
+- [x] Keep swath labels, report hover details, and click popups above map marks
+- [x] Keep severity and age legends accurate in the combined view
+- [x] Preserve the shared-canvas hit order for territories, reports, and leads
+- [x] Add regression coverage for combined rendering and information layering
+- [x] Run focused/full tests, TypeScript, lint, build, and diff checks
+- [ ] Deploy and verify the combined Minnesota hail view in production
+
+Pre-deploy review:
+
+- Zones now draws only the generated swath polygons; the normal sorted report
+  loop always draws every dot above them, so isolated reports stay visible once
+  and overlapping dots retain pointer priority
+- React-Leaflet was placing nested information overlays in the custom
+  `map-data` pane, allowing its Canvas to paint above them. Tooltips and popups
+  now explicitly use Leaflet's higher `tooltipPane` and `popupPane`
+- Swath clustering and report sorting are memoized so unrelated lead-selection
+  renders do not repeat the potentially quadratic clustering work
+- 75 focused map tests and 467 full tests pass, along with TypeScript,
+  changed-file ESLint, the production Turbopack build, and `git diff --check`

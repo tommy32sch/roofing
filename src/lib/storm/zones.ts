@@ -207,9 +207,8 @@ export interface StormZonePartition {
   /**
    * Reports that didn't form a zone — isolated hits and rejected slivers.
    *
-   * Returned so the zones view can still show them (as quiet dots) instead of
-   * making data silently disappear: the Hail button may say (91) while only one
-   * zone is on screen, and the difference has to be visible somewhere.
+   * Returned so callers can keep real reports visible even when no meaningful
+   * swath hull can be formed.
    */
   strays: StormReport[];
 }

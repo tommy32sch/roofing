@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import Link from 'next/link';
 import { MapContainer, TileLayer, CircleMarker, Pane, Popup, Polygon, Polyline, Tooltip, useMap } from 'react-leaflet';
 import type { Map as LeafletMap } from 'leaflet';
@@ -13,7 +13,7 @@ import { LEAD_STATUS_OPTIONS } from '@/types';
 import { shouldRecenterMap } from '@/lib/leads/markets';
 import { classifyDrawGestureEnd, isDrag, shouldCapture, simplifyPath } from '@/lib/leads/draw';
 import { STATUS_COLORS, DNC_RING_COLOR, DO_NOT_KNOCK_RING_COLOR, stormColor, stormRadius, stormLabel, sortStormsForDrawing, stormAgeBucket, stormZoneStyle, stormAgeShort, type GeoLead, type StormReport } from './map-constants';
-import { partitionStormReports } from '@/lib/storm/zones';
+import { buildStormZones } from '@/lib/storm/zones';
 import type { Territory } from '@/types';
 
 // Phoenix metro — sensible default for an empty map until leads load
@@ -422,10 +422,10 @@ interface LeadMapProps {
    */
   stormNow?: number;
   /**
-   * Draw storm swaths instead of relying on individual markers.
+   * Overlay storm swaths beneath the individual report markers.
    *
-   * The "which neighbourhoods got hit recently" view: reports are clustered into
-   * the swath each storm cut, and the swath is coloured by age.
+   * Reports are clustered into the swath each storm cut and coloured by age,
+   * while every touchdown remains visible for severity and exact details.
    */
   stormZones?: boolean;
   /** Log a knock straight from the pin popup. */
@@ -480,6 +480,18 @@ export default function LeadMap({
   onEditTerritory,
   focus = null,
 }: LeadMapProps) {
+  // Zone construction uses quadratic clustering in the worst case. Keep it
+  // tied to storm-data changes so selecting a lead or opening a popup cannot
+  // rebuild thousands of report relationships.
+  const visibleStormZones = useMemo(
+    () => (stormZones ? buildStormZones(stormReports) : []),
+    [stormReports, stormZones]
+  );
+  const visibleStormReports = useMemo(
+    () => sortStormsForDrawing(stormReports, stormNow),
+    [stormNow, stormReports]
+  );
+
   return (
     <MapContainer
       center={DEFAULT_CENTER}
@@ -510,101 +522,70 @@ export default function LeadMap({
           preferCanvas panes each create a full-map canvas; a higher empty
           canvas still intercepts the pointer and makes every lower layer
           unclickable. Draw order inside this pane is also hit-test order:
-          zones, territories, storm points, lead pins, then the active draft. */}
+          zones, territories, storm points, lead pins, then the active draft.
+          Every Tooltip and Popup below names Leaflet's HTML overlay pane
+          explicitly; otherwise nesting under this Pane makes it inherit
+          map-data and lets the Canvas paint over the information. */}
       <Pane name="map-data" style={{ zIndex: 350 }}>
-      {/* Storm ZONES — the swath each storm cut, coloured by age.
-          The zoomed-out planning view. One red ramp, fading with age, and the
-          age written straight onto each zone in screen pixels — a label needs no
-          legend. The severity markers are hidden while this is on: age and
-          severity sharing one screen was unreadable mush ("everything just
-          looks orange and red"), and severity is the marker view's job. */}
-      {stormZones && (() => {
-        const { zones, strays } = partitionStormReports(stormReports);
+      {/* Storm swaths are an underlay, never a replacement for the report dots.
+          The restrained red ramp answers "where and when"; the severity-coloured
+          dots above answer "exactly where and how strong." */}
+      {visibleStormZones.map((zone) => {
+        const age = stormAgeBucket(zone.latestDate, stormNow);
+        const style = stormZoneStyle(age.key);
         return (
-          <>
-            {/* Strays: hits that formed no swath. Quiet grey dots so the data
-                is still on the map without shouting over the zones. */}
-            {strays.map((r, i) => (
-              <CircleMarker
-                key={`stray-${r.type}-${i}`}
-                center={[r.lat, r.lon]}
-                radius={3}
-                pathOptions={{ fillColor: '#94a3b8', fillOpacity: 0.5, weight: 0 }}
-              >
-                <Tooltip direction="top" offset={[0, -5]} opacity={1}>
-                  <div className="space-y-0.5 text-xs">
-                    <p className="font-medium">{stormLabel(r.type, r.value)}</p>
-                    <p>{r.date}</p>
-                  </div>
-                </Tooltip>
-                <Popup>
-                  <div className="text-sm">
-                    <p className="font-medium">{stormLabel(r.type, r.value)}</p>
-                    <p className="text-xs">
-                      {formatDistanceToNow(new Date(`${r.date}T12:00:00Z`), { addSuffix: true })}
-                      {' · '}
-                      {r.date}
-                    </p>
-                    <p className="text-[11px] text-muted-foreground">Isolated report — no zone</p>
-                  </div>
-                </Popup>
-              </CircleMarker>
-            ))}
-            {zones.map((zone) => {
-              const age = stormAgeBucket(zone.latestDate, stormNow);
-              const style = stormZoneStyle(age.key);
-              return (
-                <Polygon
-                  key={`zone-${zone.key}`}
-                  positions={zone.hull}
-                  pathOptions={{
-                    color: style.stroke,
-                    fillColor: style.fill,
-                    fillOpacity: style.fillOpacity,
-                    weight: style.weight,
-                    opacity: style.opacity,
-                    dashArray: style.dashArray,
-                  }}
-                >
-                  {/* The age, written on the zone. Screen-space text survives
-                      any zoom level, which no colour encoding does. */}
-                  <Tooltip permanent direction="center" className="storm-zone-label">
-                    {zone.type === 'hail' ? 'Hail' : 'Wind'} · {stormAgeShort(zone.latestDate, stormNow)}
-                  </Tooltip>
-                  <Popup>
-                    <div className="space-y-0.5 text-sm">
-                      <p className="font-medium capitalize">
-                        {zone.type} zone · {zone.reportCount} reports
-                      </p>
-                      <p className="text-xs font-medium" style={{ color: style.stroke }}>
-                        {formatDistanceToNow(new Date(`${zone.latestDate}T12:00:00Z`), { addSuffix: true })}
-                        {' · '}
-                        {age.label.toLowerCase()}
-                      </p>
-                      {zone.peakValue != null && (
-                        <p className="text-xs">
-                          Peak {zone.type === 'hail'
-                            ? `${zone.peakValue.toFixed(2)}" hail`
-                            : `${zone.peakValue} mph`}
-                        </p>
-                      )}
-                      <p className="text-[11px] text-muted-foreground">
-                        {zone.earliestDate === zone.latestDate
-                          ? zone.latestDate
-                          : `${zone.earliestDate} – ${zone.latestDate}`}
-                      </p>
-                    </div>
-                  </Popup>
-                </Polygon>
-              );
-            })}
-          </>
+          <Polygon
+            key={`zone-${zone.key}`}
+            positions={zone.hull}
+            pathOptions={{
+              color: style.stroke,
+              fillColor: style.fill,
+              fillOpacity: style.fillOpacity,
+              weight: style.weight,
+              opacity: style.opacity,
+              dashArray: style.dashArray,
+            }}
+          >
+            {/* The age, written on the zone. Screen-space text survives
+                any zoom level, which no colour encoding does. */}
+            <Tooltip
+              permanent
+              direction="center"
+              className="storm-zone-label"
+              pane="tooltipPane"
+            >
+              {zone.type === 'hail' ? 'Hail' : 'Wind'} · {stormAgeShort(zone.latestDate, stormNow)}
+            </Tooltip>
+            <Popup pane="popupPane">
+              <div className="space-y-0.5 text-sm">
+                <p className="font-medium capitalize">
+                  {zone.type} zone · {zone.reportCount} reports
+                </p>
+                <p className="text-xs font-medium" style={{ color: style.stroke }}>
+                  {formatDistanceToNow(new Date(`${zone.latestDate}T12:00:00Z`), { addSuffix: true })}
+                  {' · '}
+                  {age.label.toLowerCase()}
+                </p>
+                {zone.peakValue != null && (
+                  <p className="text-xs">
+                    Peak {zone.type === 'hail'
+                      ? `${zone.peakValue.toFixed(2)}" hail`
+                      : `${zone.peakValue} mph`}
+                  </p>
+                )}
+                <p className="text-[11px] text-muted-foreground">
+                  {zone.earliestDate === zone.latestDate
+                    ? zone.latestDate
+                    : `${zone.earliestDate} – ${zone.latestDate}`}
+                </p>
+              </div>
+            </Popup>
+          </Polygon>
         );
-      })()}
+      })}
 
       {/* Saved territories draw before storm points, so an area fill cannot
-          steal a report's hover/click target. In zone view only the territory
-          outline remains interactive, leaving each storm swath selectable. */}
+          steal a report's hover/click target. */}
       {/* Saved territory ownership lives between weather and lead pins.
           When storm zones are visible, outlines stay but fills drop away so
           the two area encodings never turn into an unreadable colour blend. */}
@@ -626,10 +607,15 @@ export default function LeadMap({
                 opacity: 0.95,
               }}
             >
-              <Tooltip permanent direction="center" className="territory-label">
+              <Tooltip
+                permanent
+                direction="center"
+                className="territory-label"
+                pane="tooltipPane"
+              >
                 {territory.name}
               </Tooltip>
-              <Popup>
+              <Popup pane="popupPane">
                 <div className="min-w-[180px] space-y-1 text-sm">
                   <p className="font-medium">{territory.name}</p>
                   <p className="text-xs text-muted-foreground">
@@ -663,14 +649,14 @@ export default function LeadMap({
           );
         })}
 
-      {/* NOAA storm reports — after territory fills but beneath lead pins.
-          Hidden while zones are on: that view answers "when/where", and
-          layering severity colours under the age ramp was unreadable.
+      {/* NOAA storm reports — after swaths and territory fills but beneath lead pins.
+          They stay visible when Zones is on, so the combined view shows both
+          the total footprint and every measured touchdown.
           Colour and radius carry SEVERITY; opacity carries AGE. With two years
           of history on the map, a fresh 1" hailstorm is worth more than a 2" one
           from last spring, so recent reports read solid and old ones fade back.
           Sorted oldest-first so the fresh ones land on top and stay clickable. */}
-      {!stormZones && sortStormsForDrawing(stormReports, stormNow).map((r, i) => {
+      {visibleStormReports.map((r, i) => {
         const color = stormColor(r.type, r.value);
         const age = stormAgeBucket(r.date, stormNow);
         const radius = stormRadius(r.type, r.value);
@@ -689,7 +675,12 @@ export default function LeadMap({
               opacity: age.key === 'fresh' ? 1 : 0.5,
             }}
           >
-            <Tooltip direction="top" offset={[0, -(radius + 2)]} opacity={1}>
+            <Tooltip
+              direction="top"
+              offset={[0, -(radius + 2)]}
+              opacity={1}
+              pane="tooltipPane"
+            >
               <div className="space-y-0.5 text-xs">
                 <p className="font-medium">{stormLabel(r.type, r.value)}</p>
                 <p>{r.date}</p>
@@ -702,7 +693,7 @@ export default function LeadMap({
                 )}
               </div>
             </Tooltip>
-            <Popup>
+            <Popup pane="popupPane">
               <div className="text-sm">
                 <p className="font-medium">{stormLabel(r.type, r.value)}</p>
                 <p className="text-xs">
@@ -753,7 +744,7 @@ export default function LeadMap({
               weight: selected || lead.do_not_knock || lead.is_dnc ? 3 : 1.5,
             }}
           >
-            <Popup>
+            <Popup pane="popupPane">
               <div className="space-y-1 text-sm min-w-[180px]">
                 <p className="font-medium">
                   {lead.first_name} {lead.last_name}

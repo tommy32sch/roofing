@@ -306,8 +306,8 @@ describe('buildStormZones width filter', () => {
 });
 
 describe('partitionStormReports', () => {
-  // Every report must land somewhere: hiding the severity markers in zones
-  // view is only honest if nothing silently disappears.
+  // Every report must land somewhere so combined views can show the swath and
+  // retain isolated touchdown dots outside it.
   it('accounts for every report as either zone member or stray', () => {
     const reports = [
       // a real swath

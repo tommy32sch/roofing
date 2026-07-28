@@ -80,20 +80,21 @@ export type StormAgeBucket = (typeof STORM_AGE_BUCKETS)[number];
  * amber -> orange -> red, so the same hues meant two different things on the
  * same screen. Sequential data gets a sequential ramp: one hue, fading with
  * age. "How red is it" IS "how fresh is it" — nothing to decode, and no
- * collision with any severity colour because the zones view hides the severity
- * markers entirely.
+ * collision with the severity colours because the translucent swath reads as
+ * an area underlay while those colours remain discrete report dots.
  *
- * Past a year — the usual claim-filing window — a zone drops its fill and
- * becomes a dashed grey outline: still there for door-knock context, visually
- * finished as an opportunity.
+ * The fill is intentionally restrained because the zone now overlays with
+ * severity-coloured report dots. Past a year — the usual claim-filing window —
+ * a zone drops its fill and becomes a dashed grey outline: still there for
+ * door-knock context, visually finished as an opportunity.
  */
 export const STORM_ZONE_STYLES: Record<
   string,
   { stroke: string; fill: string; fillOpacity: number; weight: number; opacity: number; dashArray?: string }
 > = {
-  fresh: { stroke: '#b91c1c', fill: '#dc2626', fillOpacity: 0.45, weight: 3, opacity: 1 },
-  recent: { stroke: '#dc2626', fill: '#ef4444', fillOpacity: 0.26, weight: 2, opacity: 0.85 },
-  aging: { stroke: '#f87171', fill: '#f87171', fillOpacity: 0.12, weight: 1.5, opacity: 0.6 },
+  fresh: { stroke: '#b91c1c', fill: '#dc2626', fillOpacity: 0.18, weight: 3, opacity: 1 },
+  recent: { stroke: '#dc2626', fill: '#ef4444', fillOpacity: 0.11, weight: 2, opacity: 0.85 },
+  aging: { stroke: '#f87171', fill: '#f87171', fillOpacity: 0.06, weight: 1.5, opacity: 0.6 },
   stale: { stroke: '#94a3b8', fill: '#94a3b8', fillOpacity: 0, weight: 1.5, opacity: 0.6, dashArray: '6 5' },
 };
 
