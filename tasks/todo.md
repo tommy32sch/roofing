@@ -487,7 +487,7 @@ reports together without losing report details or map interactivity.
 - [x] Preserve the shared-canvas hit order for territories, reports, and leads
 - [x] Add regression coverage for combined rendering and information layering
 - [x] Run focused/full tests, TypeScript, lint, build, and diff checks
-- [ ] Deploy and verify the combined Minnesota hail view in production
+- [x] Deploy and verify the combined Minnesota hail view in production
 
 Pre-deploy review:
 
@@ -501,3 +501,15 @@ Pre-deploy review:
   renders do not repeat the potentially quadratic clustering work
 - 75 focused map tests and 467 full tests pass, along with TypeScript,
   changed-file ESLint, the production Turbopack build, and `git diff --check`
+
+Production review:
+
+- Commit `3df99ae` deployed successfully and Vercel reported Ready
+- Minnesota hail with the two-year window and Zones enabled visibly shows the
+  translucent swath, its dark age labels, all loaded severity dots, and
+  isolated dots outside the generated swath at the same time
+- The live legend keeps report severity and report age visible and adds the
+  separate swath-age ramp only while Zones is enabled
+- The live Leaflet DOM contains exactly one Canvas. `map-data` is z-index 350,
+  its zone labels are in `tooltipPane` at 650, and click cards target
+  `popupPane` at 700, so information renders above every vector mark
