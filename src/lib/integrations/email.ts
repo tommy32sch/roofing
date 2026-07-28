@@ -25,6 +25,8 @@ export interface SendEmailInput {
   text?: string;
   replyTo?: string;
   attachments?: EmailAttachment[];
+  /** Provider-level dedupe for retryable outbox deliveries. */
+  idempotencyKey?: string;
 }
 
 export type SendEmailResult =
@@ -62,9 +64,15 @@ export async function sendEmail(input: SendEmailInput): Promise<SendEmailResult>
   }
 
   try {
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    };
+    if (input.idempotencyKey) headers['Idempotency-Key'] = input.idempotencyKey;
+
     const res = await fetch(RESEND_ENDPOINT, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify(payload),
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });

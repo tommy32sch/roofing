@@ -190,3 +190,24 @@
 .leaflet-tooltip.storm-zone-label::before {
   display: none;
 }
+
+/* Saved territory names use a light neutral label so they never read as the
+   dark storm-age pill. The colored outline already identifies ownership. */
+.leaflet-tooltip.territory-label {
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  pointer-events: none;
+  background: rgba(255, 255, 255, 0.9);
+  color: #18181b;
+  border: 1px solid rgba(24, 24, 27, 0.16);
+  border-radius: 9999px;
+  padding: 1px 7px;
+  font-size: 10px;
+  font-weight: 650;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+.leaflet-tooltip.territory-label::before {
+  display: none;
+}

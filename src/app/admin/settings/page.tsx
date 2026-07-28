@@ -15,12 +15,11 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { LEAD_STATUS_OPTIONS, LEAD_PRIORITY_OPTIONS } from '@/types';
-import type { AppSettings } from '@/types';
 import { PageHeader } from '@/components/layout/page-header';
 import { MarketsCard } from '@/components/markets/markets-card';
+import { StormAlertsCard } from '@/components/storms/StormAlertsCard';
 
 export default function SettingsPage() {
-  const [settings, setSettings] = useState<AppSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [companyName, setCompanyName] = useState('');
@@ -47,7 +46,6 @@ export default function SettingsPage() {
       .then((res) => res.json())
       .then((data) => {
         if (data.success && data.settings) {
-          setSettings(data.settings);
           setCompanyName(data.settings.company_name || '');
           setDefaultStatus(data.settings.default_lead_status || 'new');
           setDefaultPriority(data.settings.default_lead_priority || 'medium');
@@ -89,7 +87,6 @@ export default function SettingsPage() {
       const data = await res.json();
       if (data.success) {
         toast.success('Settings saved');
-        setSettings(data.settings);
       } else {
         toast.error(data.error || 'Failed to save');
       }
@@ -206,7 +203,6 @@ export default function SettingsPage() {
                 const data = await res.json();
                 if (data.success) {
                   toast.success('Roof pricing saved');
-                  setSettings(data.settings);
                 } else {
                   toast.error(data.error || 'Failed to save');
                 }
@@ -224,6 +220,8 @@ export default function SettingsPage() {
       </Card>
 
       <MarketsCard />
+
+      <StormAlertsCard />
 
       {/* Default geocoding region */}
       <Card>
@@ -259,7 +257,6 @@ export default function SettingsPage() {
                 const data = await res.json();
                 if (data.success) {
                   toast.success('Geocoding region saved');
-                  setSettings(data.settings);
                 } else {
                   toast.error(data.error || 'Failed to save');
                 }
@@ -322,7 +319,6 @@ export default function SettingsPage() {
                   const data = await res.json();
                   if (data.success) {
                     toast.success('Regrid settings saved');
-                    setSettings(data.settings);
                   } else {
                     toast.error(data.error || 'Failed to save');
                   }
@@ -419,7 +415,6 @@ export default function SettingsPage() {
                 const data = await res.json();
                 if (data.success) {
                   toast.success('Email import settings saved');
-                  setSettings(data.settings);
                 } else {
                   toast.error(data.error || 'Failed to save');
                 }

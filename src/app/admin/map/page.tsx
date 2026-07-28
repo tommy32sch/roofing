@@ -1,12 +1,20 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
-import { BoxSelect, UserCheck, LocateFixed, CloudHail, Wind, Pencil, ChevronDown, Check, Hexagon } from 'lucide-react';
+import { BoxSelect, UserCheck, LocateFixed, CloudHail, Wind, Pencil, ChevronDown, Check, Hexagon, MapPinned } from 'lucide-react';
 import { toast } from 'sonner';
 import { knockLabel, type KnockDisposition } from '@/lib/leads/knocks';
 import type { Map as LeafletMap } from 'leaflet';
 import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -31,12 +39,14 @@ import {
   type GeoLead, type StormReport, type StormType,
 } from '@/components/leads/map-constants';
 import { LEAD_STATUS_OPTIONS, LEAD_PRIORITY_OPTIONS } from '@/types';
-import type { UserRole } from '@/types';
+import type { Territory, UserRole } from '@/types';
 import { LIMITS } from '@/lib/utils/validation';
 import { pointInPolygon } from '@/lib/leads/geo-polygon';
 import { PageHeader } from '@/components/layout/page-header';
 import { MarketFilter } from '@/components/markets/market-filter';
 import { useMarkets, ALL_MARKETS } from '@/components/markets/use-markets';
+import { TerritoryDialog } from '@/components/territories/TerritoryDialog';
+import { TerritorySheet } from '@/components/territories/TerritorySheet';
 
 // Leaflet touches `window` at import time — client-only
 const LeadMap = dynamic(() => import('@/components/leads/LeadMap'), {
@@ -68,6 +78,8 @@ export default function MapPage() {
     ? { lat: selectedMarket.center_lat, lng: selectedMarket.center_lng, zoom: selectedMarket.center_zoom }
     : null;
   const [userRole, setUserRole] = useState<UserRole>('setter');
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [identityLoaded, setIdentityLoaded] = useState(false);
   const [selection, setSelection] = useState<Map<string, number>>(new Map());
   const [visibleIds, setVisibleIds] = useState<Set<string>>(new Set());
   const [assignOpen, setAssignOpen] = useState(false);
@@ -94,10 +106,30 @@ export default function MapPage() {
   const [stormZones, setStormZones] = useState(false);
   const stormCounts = countStormsByType(stormReports);
   const [stormLoading, setStormLoading] = useState(false);
+  const [alertFocus, setAlertFocus] = useState<{
+    key: string;
+    lat: number;
+    lng: number;
+    zoom?: number;
+  } | null>(null);
   const [mapInstance, setMapInstance] = useState<LeafletMap | null>(null);
   const [drawing, setDrawing] = useState(false);
   const [drawPoints, setDrawPoints] = useState<[number, number][]>([]);
+  const [territories, setTerritories] = useState<Territory[]>([]);
+  const [territoriesLoading, setTerritoriesLoading] = useState(false);
+  const [territorySheetOpen, setTerritorySheetOpen] = useState(false);
+  const [territoryDialogOpen, setTerritoryDialogOpen] = useState(false);
+  const [editingTerritory, setEditingTerritory] = useState<Territory | null>(null);
+  const [editingBoundary, setEditingBoundary] = useState(false);
+  const [showArchivedTerritories, setShowArchivedTerritories] = useState(false);
+  const [territoryArchivePendingId, setTerritoryArchivePendingId] = useState<string | null>(null);
+  const [restoreConflict, setRestoreConflict] = useState<{
+    territory: Territory;
+    conflicts: { id: string; name: string; owner_name: string | null }[];
+  } | null>(null);
   const mapRef = useRef<LeafletMap | null>(null);
+  const territoryFetchIdRef = useRef(0);
+  const territoryArchivePendingRef = useRef(false);
   const isAdmin = userRole === 'admin';
 
   const fetchLeads = useCallback(async () => {
@@ -128,9 +160,85 @@ export default function MapPage() {
   useEffect(() => {
     fetch('/api/admin/auth/me')
       .then((r) => r.json())
-      .then((d) => { if (d.success) setUserRole(d.admin.role); })
-      .catch(() => {});
+      .then((d) => {
+        if (d.success) {
+          setUserRole(d.admin.role);
+          setCurrentUserId(d.admin.id);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setIdentityLoaded(true));
   }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const alertMarket = params.get('market_id');
+    const alertStorm = params.get('storm');
+    const alertDays = Number(params.get('days'));
+    const alertLatParam = params.get('lat');
+    const alertLngParam = params.get('lng');
+    const alertLat = Number(alertLatParam);
+    const alertLng = Number(alertLngParam);
+    if (alertMarket && (alertMarket === ALL_MARKETS || /^\d+$/.test(alertMarket))) {
+      setMarket(alertMarket);
+    }
+    if (alertStorm === 'hail' || alertStorm === 'wind') {
+      setStormTypes([alertStorm]);
+    }
+    if (Number.isInteger(alertDays) && alertDays > 0 && alertDays <= 730) {
+      setStormDays(alertDays);
+    }
+    if (
+      alertLatParam !== null &&
+      alertLngParam !== null &&
+      Number.isFinite(alertLat) &&
+      alertLat >= -90 &&
+      alertLat <= 90 &&
+      Number.isFinite(alertLng) &&
+      alertLng >= -180 &&
+      alertLng <= 180
+    ) {
+      setAlertFocus({
+        key: params.get('alert_id') ?? `${alertLat}:${alertLng}`,
+        lat: alertLat,
+        lng: alertLng,
+        zoom: 12,
+      });
+    }
+  }, []);
+
+  const fetchTerritories = useCallback(async () => {
+    if (marketsLoading || !identityLoaded) return;
+    const requestId = ++territoryFetchIdRef.current;
+    setTerritoriesLoading(true);
+    setTerritories([]);
+    const params = new URLSearchParams({
+      market_id: marketValue,
+      ...(isAdmin ? { include_archived: 'true' } : {}),
+    });
+    try {
+      const res = await fetch(`/api/admin/territories?${params}`);
+      const data = await res.json();
+      if (requestId !== territoryFetchIdRef.current) return;
+      if (data.success) {
+        setTerritories(data.territories ?? []);
+      } else {
+        toast.error(data.error || 'Failed to load territories');
+      }
+    } catch {
+      if (requestId === territoryFetchIdRef.current) {
+        toast.error('Failed to load territories');
+      }
+    } finally {
+      if (requestId === territoryFetchIdRef.current) {
+        setTerritoriesLoading(false);
+      }
+    }
+  }, [identityLoaded, isAdmin, marketValue, marketsLoading]);
+
+  useEffect(() => {
+    fetchTerritories();
+  }, [fetchTerritories]);
 
   const toggleSelect = useCallback((lead: GeoLead) => {
     setSelection((prev) => {
@@ -338,32 +446,171 @@ export default function MapPage() {
     return () => { clearTimeout(t); mapInstance.off(events, onMove); };
   }, [mapInstance, stormOn, fetchStorm]);
 
+  const activeTerritories = territories.filter((territory) => !territory.archived_at);
+  const mapTerritories = activeTerritories.filter(
+    (territory) => !(editingBoundary && editingTerritory?.id === territory.id)
+  );
+
+  const territoryLeadCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const territory of territories) {
+      counts[territory.id] = leads.filter(
+        (lead) =>
+          lead.market_id === territory.market_id &&
+          pointInPolygon([lead.latitude, lead.longitude], territory.boundary)
+      ).length;
+    }
+    return counts;
+  }, [leads, territories]);
+
+  function leadsInsideTerritory(territory: Pick<Territory, 'market_id' | 'boundary'>) {
+    return leads.filter(
+      (lead) =>
+        lead.market_id === territory.market_id &&
+        pointInPolygon([lead.latitude, lead.longitude], territory.boundary)
+    );
+  }
+
+  function addTerritoryLeadsToSelection(territory: Territory) {
+    const inside = leadsInsideTerritory(territory);
+    setSelection((prev) => {
+      const next = new Map(prev);
+      for (const lead of inside) {
+        next.set(lead.id, Number(lead.estimated_roof_value) || 0);
+      }
+      return next;
+    });
+    if (inside.length === 0) {
+      toast.info('No currently shown leads are inside this territory');
+    } else {
+      toast.success(
+        `${inside.length} lead${inside.length !== 1 ? 's' : ''} selected from ${territory.name}`
+      );
+    }
+  }
+
+  function startNewTerritory() {
+    setEditingTerritory(null);
+    setEditingBoundary(false);
+    setDrawPoints([]);
+    setDrawing(true);
+  }
+
   function finishDraw() {
     if (drawPoints.length < 3) {
       toast.error('Add at least 3 points to make an area');
       return;
     }
-    const inside = leads.filter((l) => pointInPolygon([l.latitude, l.longitude], drawPoints));
-    if (inside.length === 0) {
-      toast.info('No leads inside that area');
-    } else {
-      setSelection((prev) => {
-        const next = new Map(prev);
-        for (const l of inside) next.set(l.id, Number(l.estimated_roof_value) || 0);
-        return next;
-      });
-      toast.success(`${inside.length} lead${inside.length !== 1 ? 's' : ''} selected in the area`);
-    }
     setDrawing(false);
-    setDrawPoints([]);
+    setTerritoryDialogOpen(true);
   }
 
   function cancelDraw() {
     setDrawing(false);
     setDrawPoints([]);
+    setEditingTerritory(null);
+    setEditingBoundary(false);
+    setTerritoryDialogOpen(false);
+  }
+
+  function editTerritoryDetails(territory: Territory) {
+    setEditingTerritory(territory);
+    setEditingBoundary(false);
+    setDrawPoints(territory.boundary);
+    setTerritoryDialogOpen(true);
+  }
+
+  function editTerritoryBoundary(territory: Territory) {
+    setEditingTerritory(territory);
+    setEditingBoundary(true);
+    setDrawPoints(territory.boundary);
+    setDrawing(true);
+  }
+
+  function handleTerritoryDialogOpenChange(open: boolean) {
+    setTerritoryDialogOpen(open);
+    if (!open && (!editingTerritory || editingBoundary)) {
+      // Closing the form is "back to drawing", not data loss. Clear/Cancel on
+      // the toolbar remains the deliberate way to discard an outline.
+      setDrawing(true);
+    }
+  }
+
+  function handleTerritorySaved(saved: Territory) {
+    setTerritories((prev) => {
+      const index = prev.findIndex((territory) => territory.id === saved.id);
+      if (index === -1) return [...prev, saved];
+      return prev.map((territory) => (territory.id === saved.id ? saved : territory));
+    });
+    if (!editingTerritory) addTerritoryLeadsToSelection(saved);
+    setTerritoryDialogOpen(false);
+    setDrawing(false);
+    setDrawPoints([]);
+    setEditingTerritory(null);
+    setEditingBoundary(false);
+  }
+
+  async function changeTerritoryArchived(
+    territory: Territory,
+    archived: boolean,
+    allowOverlap = false
+  ) {
+    if (territoryArchivePendingRef.current) return;
+    territoryArchivePendingRef.current = true;
+    setTerritoryArchivePendingId(territory.id);
+    try {
+      const res = await fetch(`/api/admin/territories/${territory.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ archived, allow_overlap: allowOverlap }),
+      });
+      const data = await res.json();
+      if (!data.success) {
+        if (res.status === 409 && Array.isArray(data.conflicts)) {
+          setRestoreConflict({ territory, conflicts: data.conflicts });
+        } else {
+          toast.error(data.error || `Failed to ${archived ? 'archive' : 'restore'} territory`);
+        }
+        return;
+      }
+      setTerritories((prev) =>
+        prev.map((item) => (item.id === territory.id ? data.territory : item))
+      );
+      setRestoreConflict(null);
+      toast.success(archived ? 'Territory archived' : 'Territory restored');
+    } catch {
+      toast.error(`Failed to ${archived ? 'archive' : 'restore'} territory`);
+    } finally {
+      territoryArchivePendingRef.current = false;
+      setTerritoryArchivePendingId(null);
+    }
+  }
+
+  function handleMarketChange(nextMarket: string) {
+    setDrawing(false);
+    setDrawPoints([]);
+    setEditingTerritory(null);
+    setEditingBoundary(false);
+    setTerritoryDialogOpen(false);
+    setTerritorySheetOpen(false);
+    setRestoreConflict(null);
+    setAlertFocus(null);
+    setSelection(new Map());
+    setMarket(nextMarket);
   }
 
   const selectionTotal = [...selection.values()].reduce((sum, v) => sum + v, 0);
+  const dialogBoundary = editingTerritory && !editingBoundary
+    ? editingTerritory.boundary
+    : drawPoints;
+  const dialogMarketId = editingTerritory?.market_id ?? selectedMarket?.id ?? null;
+  const dialogShownLeadCount = dialogMarketId == null
+    ? 0
+    : leads.filter(
+        (lead) =>
+          lead.market_id === dialogMarketId &&
+          pointInPolygon([lead.latitude, lead.longitude], dialogBoundary)
+      ).length;
 
   // Map height budget, measured rather than guessed. Desktop: viewport minus the
   // app header (3.5rem) and main's vertical padding (4rem). Mobile reserves more
@@ -372,10 +619,20 @@ export default function MapPage() {
     <div className="flex min-h-[420px] flex-col gap-3 h-[calc(100dvh-13rem)] md:h-[calc(100dvh-7.5rem)]">
       <PageHeader
         title="Map"
-        description="Lead locations, storm overlays and territory selection"
+        description="Lead locations, saved territories and storm overlays"
         actions={
           <>
-  
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setTerritorySheetOpen(true)}
+              disabled={territoriesLoading || drawing}
+              title={drawing ? 'Finish or cancel the current boundary first' : undefined}
+            >
+              <MapPinned className="h-4 w-4 mr-1" />
+              Territories ({activeTerritories.length})
+            </Button>
+
             {isAdmin && (
               <Button
                 variant={allVisibleSelected ? 'default' : 'outline'}
@@ -389,9 +646,15 @@ export default function MapPage() {
               </Button>
             )}
             {isAdmin && !drawing && (
-              <Button variant="outline" size="sm" onClick={() => setDrawing(true)} disabled={loading || leads.length === 0}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={startNewTerritory}
+                disabled={loading || !selectedMarket}
+                title={!selectedMarket ? 'Choose one market to draw a territory' : undefined}
+              >
                 <Pencil className="h-4 w-4 mr-1" />
-                Draw area
+                New territory
               </Button>
             )}
             {isAdmin && drawing && (
@@ -504,7 +767,12 @@ export default function MapPage() {
               </>
             )}
             {!marketsLoading && (
-              <MarketFilter markets={markets} value={marketValue} onChange={setMarket} className="w-[150px]" />
+              <MarketFilter
+                markets={markets}
+                value={marketValue}
+                onChange={handleMarketChange}
+                className="w-[150px]"
+              />
             )}
             <Select value={status} onValueChange={(v) => setStatus(v === 'all' ? '' : v ?? '')}>
               <SelectTrigger className="w-[150px]">
@@ -534,7 +802,7 @@ export default function MapPage() {
 
       {drawing && (
         <div className="rounded-md border border-blue-300 bg-blue-50 dark:bg-blue-950/30 px-3 py-2 text-xs text-blue-700 dark:text-blue-300">
-          <strong>Drag</strong> to draw around a neighborhood, or <strong>tap</strong> to drop corners one at a time. Then <strong>Finish</strong> to select every lead inside — the assign bar appears so you can hand the territory to a rep.
+          <strong>Drag</strong> to draw around a neighborhood, or <strong>tap</strong> to drop corners one at a time. Then <strong>Finish</strong> to name and save the territory. Leads inside stay available for explicit bulk assignment.
         </div>
       )}
 
@@ -639,6 +907,11 @@ export default function MapPage() {
             stormReports={stormReports}
             stormNow={stormFetchedAt}
             stormZones={stormZones}
+            territories={mapTerritories}
+            territoryLeadCounts={territoryLeadCounts}
+            currentUserId={currentUserId}
+            onSelectTerritoryLeads={isAdmin ? addTerritoryLeadsToSelection : undefined}
+            onEditTerritory={isAdmin ? editTerritoryDetails : undefined}
             drawing={drawing}
             drawPoints={drawPoints}
             onDrawPoint={isAdmin ? (lat, lng) => setDrawPoints((p) => [...p, [lat, lng]]) : undefined}
@@ -651,9 +924,72 @@ export default function MapPage() {
             marketId={selectedMarket?.id ?? null}
             marketCenter={marketCenter}
             marketLoading={loading}
+            focus={alertFocus}
           />
         )}
       </div>
+
+      <TerritorySheet
+        open={territorySheetOpen}
+        onOpenChange={setTerritorySheetOpen}
+        territories={territories}
+        leadCounts={territoryLeadCounts}
+        loading={territoriesLoading}
+        isAdmin={isAdmin}
+        currentUserId={currentUserId}
+        showArchived={showArchivedTerritories}
+        onShowArchivedChange={setShowArchivedTerritories}
+        onSelectLeads={isAdmin ? addTerritoryLeadsToSelection : undefined}
+        onEdit={editTerritoryDetails}
+        onEditBoundary={editTerritoryBoundary}
+        onArchiveChange={changeTerritoryArchived}
+        pendingTerritoryId={territoryArchivePendingId}
+      />
+
+      {dialogMarketId != null && dialogBoundary.length >= 3 && (
+        <TerritoryDialog
+          open={territoryDialogOpen}
+          onOpenChange={handleTerritoryDialogOpenChange}
+          marketId={dialogMarketId}
+          boundary={dialogBoundary}
+          shownLeadCount={dialogShownLeadCount}
+          territory={editingTerritory}
+          onSaved={handleTerritorySaved}
+        />
+      )}
+
+      <Dialog
+        open={!!restoreConflict}
+        onOpenChange={(open) => {
+          if (!open) setRestoreConflict(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Restore overlapping territory?</DialogTitle>
+            <DialogDescription>
+              {restoreConflict?.territory.name} overlaps{' '}
+              {restoreConflict?.conflicts.map((conflict) => conflict.name).join(', ')}.
+              Restore it only if that shared coverage is intentional.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRestoreConflict(null)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                if (restoreConflict) {
+                  changeTerritoryArchived(restoreConflict.territory, false, true);
+                }
+              }}
+              disabled={territoryArchivePendingId != null}
+            >
+              {territoryArchivePendingId ? 'Restoring...' : 'Restore with overlap'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Bulk selection action bar */}
       {isAdmin && selection.size > 0 && (

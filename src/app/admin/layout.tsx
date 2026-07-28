@@ -17,6 +17,7 @@ import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import type { UserRole } from '@/types';
 import { SidebarNav } from '@/components/layout/app-sidebar';
 import { getBottomTabs, isNavActive } from '@/components/layout/nav-config';
+import { StormAlertBell } from '@/components/storms/StormAlertBell';
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -134,6 +135,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             </Link>
 
             <div className="ml-auto flex items-center gap-1">
+              <StormAlertBell />
+
               <DropdownMenu>
                 <DropdownMenuTrigger className="inline-flex items-center justify-center rounded-md p-2 text-muted-foreground hover:bg-muted hover:text-foreground">
                   {theme === 'dark' ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}

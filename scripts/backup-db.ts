@@ -22,16 +22,29 @@ import { join } from 'path';
 // Ordered parent-first, so a manual restore can insert without breaking FKs.
 const TABLES = [
   'app_settings',
+  'markets',
   'admin_users',
   'lead_sources',
   'tags',
   'integration_api_keys',
+  'lead_import_batches',
+  'territories',
   'leads',
   'lead_activities',
   'lead_appointments',
+  'lead_knocks',
+  'lead_photos',
   'lead_tags',
   'email_import_logs',
   'webhook_logs',
+  'storm_reports',
+  'storm_ingestion_state',
+  'storm_alert_rules',
+  'storm_alert_subscriptions',
+  'storm_alert_events',
+  'storm_alert_hits',
+  'storm_alert_deliveries',
+  'storm_alert_reads',
 ];
 
 const PAGE = 1000;

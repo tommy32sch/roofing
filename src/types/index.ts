@@ -143,6 +143,42 @@ export interface Market {
   created_at: string;
 }
 
+/** A saved canvassing area drawn on the lead map. */
+export interface Territory {
+  id: string;
+  market_id: number;
+  name: string;
+  /** Polygon vertices in the same [latitude, longitude] order Leaflet uses. */
+  boundary: [number, number][];
+  color: string;
+  /** Geographic ownership is separate from a lead's sales attribution. */
+  owner_user_id: string | null;
+  owner_name: string | null;
+  owner_role: UserRole | null;
+  archived_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type StormAlertType = 'hail' | 'wind';
+
+/** A grouped, market-scoped alert built from preliminary NOAA point reports. */
+export interface StormAlert {
+  id: string;
+  market_id: number;
+  market_name: string;
+  type: StormAlertType;
+  occurred_on: string;
+  peak_value: number | null;
+  report_count: number;
+  closest_distance_miles: number;
+  centroid_lat: number;
+  centroid_lon: number;
+  severity_band: number;
+  updated_at: string;
+  read_at: string | null;
+}
+
 /** A single uploaded list — who, what file, and what landed. */
 export interface LeadImportBatch {
   id: string;

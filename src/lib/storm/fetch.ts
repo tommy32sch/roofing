@@ -98,9 +98,26 @@ export async function fetchArchiveYear(year: number, type: StormType): Promise<P
 
 /** Reports for a single date from the daily preliminary feed. */
 export async function fetchDailyDate(date: string, type: StormType): Promise<ParsedReport[]> {
+  return (await fetchDailyDateResult(date, type)).reports;
+}
+
+/**
+ * Reports plus transport health for one preliminary daily file.
+ *
+ * The map only needs a list and deliberately treats a NOAA outage like an empty
+ * day. Scheduled ingestion cannot: an empty file is a valid success, while a
+ * timeout/404 must make the stored freshness health go stale. Keep the richer
+ * result here so both callers share the exact same URL, parser, and timeout.
+ */
+export async function fetchDailyDateResult(
+  date: string,
+  type: StormType
+): Promise<{ ok: boolean; reports: ParsedReport[] }> {
   const [y, m, d] = date.split('-');
   const text = await get(`${DAILY_BASE}/${y.slice(2)}${m}${d}_rpts_${type}.csv`, 15000);
-  return text ? parseDailyCsv(text, date, type) : [];
+  return text === null
+    ? { ok: false, reports: [] }
+    : { ok: true, reports: parseDailyCsv(text, date, type) };
 }
 
 /** Run `worker` over `items` with a bounded number in flight. */

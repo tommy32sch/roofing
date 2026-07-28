@@ -456,3 +456,564 @@ ALTER TABLE app_settings ADD COLUMN default_geo_state TEXT;
 -- and existing tokens (which predate the tv claim) match the default of 0.
 ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS token_version INTEGER NOT NULL DEFAULT 0;
 
+-- ------------------------------------------------------------
+-- 013_knock_dispositions.sql
+-- ------------------------------------------------------------
+-- Door-knock dispositions.
+--
+-- The daily canvassing loop: a rep stands at a door and records what happened.
+-- Without this, reps keep the outcome in their head or on paper, the same door
+-- gets knocked twice, and nothing is learned from the ones that didn't answer.
+--
+-- Append-only by design — a knock is an event that happened, not a record to
+-- edit. That also keeps the denormalised columns on `leads` from drifting.
+
+CREATE TYPE knock_disposition AS ENUM (
+  'not_home',        -- most common outcome; worth revisiting
+  'callback',        -- interested, come back later
+  'not_interested',
+  'appointment_set', -- also moves the lead's status
+  'no_damage',       -- roof looked fine from the ground; stop spending time here
+  'do_not_knock'     -- homeowner asked us not to return
+);
+
+CREATE TABLE lead_knocks (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  lead_id UUID REFERENCES leads(id) ON DELETE CASCADE NOT NULL,
+  disposition knock_disposition NOT NULL,
+  notes TEXT,
+  knocked_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES admin_users(id),
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_lead_knocks_lead ON lead_knocks(lead_id);
+CREATE INDEX idx_lead_knocks_knocked_at ON lead_knocks(knocked_at DESC);
+
+-- Denormalised onto leads so the map can colour 600+ pins without running an
+-- aggregate per pin, and so the list can sort/filter by knock recency.
+ALTER TABLE leads
+  ADD COLUMN IF NOT EXISTS last_knock_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS last_disposition knock_disposition,
+  ADD COLUMN IF NOT EXISTS knock_count INTEGER NOT NULL DEFAULT 0,
+  -- Persistent, like is_dnc but for the door: survives later knocks so a rep
+  -- can never be told to knock a house the owner asked us to leave alone.
+  ADD COLUMN IF NOT EXISTS do_not_knock BOOLEAN NOT NULL DEFAULT FALSE;
+
+CREATE INDEX IF NOT EXISTS idx_leads_last_knock_at ON leads(last_knock_at DESC);
+
+ALTER TABLE lead_knocks ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Service role full access" ON lead_knocks FOR ALL USING (auth.role() = 'service_role');
+
+-- ------------------------------------------------------------
+-- 014_lead_photos.sql
+-- ------------------------------------------------------------
+-- Photos attached to a lead.
+--
+-- Damage photos are what get insurance claims approved, and right now they live
+-- in reps' camera rolls and text threads. This puts them on the lead.
+--
+-- Only metadata lives here; the file itself sits in the private `lead-photos`
+-- storage bucket, addressed by storage_path. Nothing is publicly readable —
+-- these are photographs of customers' homes, so the API hands out short-lived
+-- signed URLs rather than permanent links.
+
+CREATE TABLE lead_photos (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  lead_id UUID REFERENCES leads(id) ON DELETE CASCADE NOT NULL,
+  -- Path within the bucket, e.g. "<lead_id>/<uuid>.jpg"
+  storage_path TEXT NOT NULL UNIQUE,
+  caption TEXT,
+  content_type TEXT,
+  size_bytes INTEGER,
+  width INTEGER,
+  height INTEGER,
+  created_by UUID REFERENCES admin_users(id),
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_lead_photos_lead ON lead_photos(lead_id, created_at DESC);
+
+ALTER TABLE lead_photos ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Service role full access" ON lead_photos FOR ALL USING (auth.role() = 'service_role');
+
+-- ------------------------------------------------------------
+-- 015_markets.sql
+-- ------------------------------------------------------------
+-- Markets (offices). The company runs more than one branch — Arizona and
+-- Minnesota — and a rep should work their own book rather than scrolling past
+-- another office's leads.
+--
+-- Why market is stored, not derived: 615 of the 616 leads at the time of this
+-- migration have NO city and NO state (the Phoenix storm list was imported
+-- street-only), so there is nothing on the address to derive an office from.
+-- A market can also legitimately span states, or one state can hold two
+-- markets, so an explicit assignment is the durable model either way.
+
+CREATE TABLE markets (
+  id SERIAL PRIMARY KEY,
+  name TEXT UNIQUE NOT NULL,
+  -- Per-market geocoding fallback. app_settings.default_geo_city/state is a
+  -- single app-wide value, which silently resolves a street-only Minnesota
+  -- address into Arizona once a second office exists. Geocoding now prefers
+  -- the lead's own market.
+  default_geo_city TEXT,
+  default_geo_state TEXT,
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+INSERT INTO markets (name, default_geo_city, default_geo_state, sort_order) VALUES
+  ('Arizona',   'Phoenix',     'AZ', 1),
+  ('Minnesota', 'Minneapolis', 'MN', 2);
+
+-- Leads belong to a market. ON DELETE SET NULL so retiring an office never
+-- deletes its lead history.
+ALTER TABLE leads ADD COLUMN market_id INTEGER REFERENCES markets(id) ON DELETE SET NULL;
+CREATE INDEX idx_leads_market ON leads(market_id);
+-- The list and map filter by market together with status, the two most common
+-- filters applied at once.
+CREATE INDEX idx_leads_market_status ON leads(market_id, status);
+
+-- A user's home office. Their Leads/Map/reporting default here; they can still
+-- switch markets — this is a default, not an access restriction.
+ALTER TABLE admin_users ADD COLUMN market_id INTEGER REFERENCES markets(id) ON DELETE SET NULL;
+
+-- Backfill: every existing lead came from the Phoenix storm list.
+UPDATE leads SET market_id = (SELECT id FROM markets WHERE name = 'Arizona')
+WHERE market_id IS NULL;
+
+ALTER TABLE markets ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Service role full access" ON markets FOR ALL USING (auth.role() = 'service_role');
+
+-- ------------------------------------------------------------
+-- 016_market_center.sql
+-- ------------------------------------------------------------
+-- Where each office actually is on the map.
+--
+-- The map fits its view to the leads it is showing, which works right up until
+-- a market has no leads yet: switching to Minnesota left the map sitting over
+-- Phoenix, because there was nothing to fit to. A market needs a home position
+-- of its own, independent of whether any leads have been imported for it.
+--
+-- Stored rather than geocoded on demand so switching markets is instant and
+-- can't fail: a Nominatim lookup at click time would add a second of latency
+-- and silently leave the map put whenever it errored or rate-limited.
+
+ALTER TABLE markets ADD COLUMN center_lat DOUBLE PRECISION;
+ALTER TABLE markets ADD COLUMN center_lng DOUBLE PRECISION;
+-- Roughly metro-wide. Null falls back to the map's own default.
+ALTER TABLE markets ADD COLUMN center_zoom INTEGER;
+
+UPDATE markets SET center_lat = 33.4484, center_lng = -112.0740, center_zoom = 10
+WHERE name = 'Arizona';
+
+UPDATE markets SET center_lat = 44.9778, center_lng = -93.2650, center_zoom = 10
+WHERE name = 'Minnesota';
+
+-- ------------------------------------------------------------
+-- 017_storm_reports.sql
+-- ------------------------------------------------------------
+-- Stored NOAA severe-weather history, so the map can show two years instead of 90 days.
+--
+-- Why store it rather than keep fetching:
+--
+-- The map used to pull one CSV per day from NOAA on demand, which put a hard
+-- ceiling on the window. Measured at 66 ms/file, two years is ~730 files per
+-- type — roughly 48s each, 96s for both, over the function's 60s limit. Worse,
+-- the cache lived in process memory, so every cold start paid the whole cost
+-- again, and 1,460 requests to NOAA per cold start is not a reasonable thing to
+-- do to a public service.
+--
+-- Storm history is immutable: a hailstorm from 2024 is never going to change.
+-- Fetching it once and querying it locally is both faster and kinder. Volume is
+-- modest — roughly 32,000 US reports a year across both types, so two years is
+-- ~63,000 rows, and a metro-sized view holds only a couple of hundred.
+--
+-- Units are NORMALISED on the way in: hail in inches, wind in MPH. The two NOAA
+-- feeds disagree (the yearly archive publishes wind in KNOTS, the daily files in
+-- mph), and storing them mixed would make every historical wind report read 15%
+-- low — a genuinely severe 58 mph gust would fall below the severe threshold.
+-- See src/lib/storm/parse.ts.
+
+CREATE TABLE storm_reports (
+  id BIGSERIAL PRIMARY KEY,
+  type TEXT NOT NULL CHECK (type IN ('hail', 'wind')),
+  occurred_on DATE NOT NULL,
+  -- Local time of day, "HH:MM". Informational, and part of report identity.
+  occurred_at TEXT,
+  lat DOUBLE PRECISION NOT NULL,
+  lon DOUBLE PRECISION NOT NULL,
+  -- Hail inches or wind mph. Null is a real value: a damage report with no
+  -- measurement, which still marks a hit roof.
+  value DOUBLE PRECISION,
+  -- Place name. Empty for archive rows, which carry FIPS codes instead.
+  location TEXT,
+  state TEXT,
+  -- 'archive' is NOAA's quality-controlled yearly file and supersedes 'daily'.
+  source TEXT NOT NULL CHECK (source IN ('daily', 'archive')),
+  -- Identity across both feeds: type + date + time + coordinates rounded to 2dp.
+  -- Rounded because the daily feed publishes 2dp and the archive 4dp for the
+  -- same report, so full precision would never dedupe. Unique so the loader can
+  -- upsert and re-runs are idempotent.
+  dedupe_key TEXT NOT NULL UNIQUE,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- The map's query is: one type, a date window, a bounding box, ordered by
+-- severity. Leading with (type, occurred_on) narrows hardest; at this row count
+-- the bbox is a cheap filter on the remainder.
+CREATE INDEX idx_storm_reports_type_date ON storm_reports(type, occurred_on DESC);
+CREATE INDEX idx_storm_reports_bbox ON storm_reports(lat, lon);
+-- Supports "worst first" when a wide view has to be capped.
+CREATE INDEX idx_storm_reports_severity ON storm_reports(type, value DESC NULLS LAST);
+
+ALTER TABLE storm_reports ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Service role full access" ON storm_reports FOR ALL USING (auth.role() = 'service_role');
+
+-- ------------------------------------------------------------
+-- 018_lead_attribution.sql
+-- ------------------------------------------------------------
+-- Who added each lead, and which upload it came from.
+--
+-- Setters and closers can now import lists too, so "where did these 600 leads
+-- come from" needs an answer that isn't "ask around". Every lead records the
+-- account that created it, and imported leads additionally point at the batch —
+-- the file, the office, the counts — so a whole upload can be reviewed as a unit.
+--
+-- Deliberately NOT reusing leads.source_id: that column is the vendor/channel a
+-- lead came from (HailTrace, PropStream, Referral). Provenance-by-account is a
+-- different question, and overloading one column with two meanings would make
+-- both unreadable.
+
+CREATE TABLE lead_import_batches (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  filename TEXT NOT NULL,
+  uploaded_by UUID REFERENCES admin_users(id) ON DELETE SET NULL,
+  -- Name snapshot. ON DELETE SET NULL keeps the batch when an account is
+  -- removed, but the point of the record is WHO uploaded it — so the name is
+  -- stored rather than joined, and survives the account going away or being
+  -- renamed later. For an audit trail, the name at the time is the correct one.
+  uploaded_by_name TEXT NOT NULL,
+  market_id INTEGER REFERENCES markets(id) ON DELETE SET NULL,
+  -- Counts as reported to the uploader, so the batch row and what they saw agree.
+  row_count INTEGER NOT NULL DEFAULT 0,
+  imported_count INTEGER NOT NULL DEFAULT 0,
+  duplicate_count INTEGER NOT NULL DEFAULT 0,
+  dnc_count INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_lead_import_batches_uploader ON lead_import_batches(uploaded_by);
+CREATE INDEX idx_lead_import_batches_created ON lead_import_batches(created_at DESC);
+
+-- Attribution on the lead itself, so one column answers "added by" no matter
+-- which path created it: an upload, the Add Lead form, a webhook, or email.
+ALTER TABLE leads ADD COLUMN created_by UUID REFERENCES admin_users(id) ON DELETE SET NULL;
+-- Display name, snapshotted for the same reason as above, and because webhook
+-- and email leads have no admin_users row to join to at all.
+ALTER TABLE leads ADD COLUMN created_by_name TEXT;
+ALTER TABLE leads ADD COLUMN import_batch_id UUID REFERENCES lead_import_batches(id) ON DELETE SET NULL;
+
+CREATE INDEX idx_leads_created_by ON leads(created_by);
+CREATE INDEX idx_leads_import_batch ON leads(import_batch_id);
+
+-- Leads that predate this migration keep a NULL attribution rather than being
+-- credited to whoever happens to run it. The UI shows them as unattributed,
+-- which is the truth.
+
+ALTER TABLE lead_import_batches ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Service role full access" ON lead_import_batches FOR ALL USING (auth.role() = 'service_role');
+
+-- ------------------------------------------------------------
+-- 019_saved_territories.sql
+-- ------------------------------------------------------------
+-- Saved map territories.
+--
+-- The polygon is stored as JSONB in Leaflet's [latitude, longitude] order.
+-- PostGIS would be unnecessary weight for the first release: the application
+-- already has tested point/polygon helpers and the expected territory count is
+-- small. Bounding columns let the API cheaply narrow overlap candidates.
+
+CREATE TABLE territories (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  market_id INTEGER NOT NULL,
+  name TEXT NOT NULL,
+  boundary JSONB NOT NULL,
+  min_lat DOUBLE PRECISION NOT NULL,
+  max_lat DOUBLE PRECISION NOT NULL,
+  min_lng DOUBLE PRECISION NOT NULL,
+  max_lng DOUBLE PRECISION NOT NULL,
+  color TEXT NOT NULL DEFAULT '#2563eb',
+  owner_user_id UUID,
+  created_by UUID,
+  archived_at TIMESTAMPTZ,
+  archived_by UUID,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+  CONSTRAINT territories_market_id_fkey
+    FOREIGN KEY (market_id) REFERENCES markets(id) ON DELETE RESTRICT,
+  CONSTRAINT territories_owner_user_id_fkey
+    FOREIGN KEY (owner_user_id) REFERENCES admin_users(id) ON DELETE SET NULL,
+  CONSTRAINT territories_created_by_fkey
+    FOREIGN KEY (created_by) REFERENCES admin_users(id) ON DELETE SET NULL,
+  CONSTRAINT territories_archived_by_fkey
+    FOREIGN KEY (archived_by) REFERENCES admin_users(id) ON DELETE SET NULL,
+  CONSTRAINT territories_name_length
+    CHECK (char_length(btrim(name)) BETWEEN 1 AND 80),
+  CONSTRAINT territories_boundary_shape
+    CHECK (
+      jsonb_typeof(boundary) = 'array'
+      AND jsonb_array_length(boundary) BETWEEN 3 AND 500
+    ),
+  CONSTRAINT territories_bounds_valid
+    CHECK (
+      min_lat BETWEEN -90 AND 90
+      AND max_lat BETWEEN -90 AND 90
+      AND min_lng BETWEEN -180 AND 180
+      AND max_lng BETWEEN -180 AND 180
+      AND min_lat <= max_lat
+      AND min_lng <= max_lng
+    )
+);
+
+-- A live map should never contain two active territories with the same label in
+-- one office. Archived history may reuse a name later.
+CREATE UNIQUE INDEX idx_territories_active_name
+  ON territories (market_id, lower(name))
+  WHERE archived_at IS NULL;
+
+CREATE INDEX idx_territories_active_market
+  ON territories (market_id, created_at DESC)
+  WHERE archived_at IS NULL;
+
+CREATE INDEX idx_territories_owner
+  ON territories (owner_user_id)
+  WHERE owner_user_id IS NOT NULL AND archived_at IS NULL;
+
+CREATE TRIGGER update_territories_updated_at
+  BEFORE UPDATE ON territories
+  FOR EACH ROW
+  EXECUTE FUNCTION update_updated_at_column();
+
+ALTER TABLE territories ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Service role full access" ON territories
+  FOR ALL USING (auth.role() = 'service_role');
+
+-- ------------------------------------------------------------
+-- 020_storm_alerts.sql
+-- ------------------------------------------------------------
+-- Storm alerts.
+--
+-- NOAA's daily storm reports are preliminary point reports, not forecasts or
+-- radar polygons. This schema keeps ingestion health, market matching,
+-- in-app events, and email delivery separate so a NOAA or Resend failure can
+-- never erase an alert that was already discovered.
+
+CREATE TABLE storm_ingestion_state (
+  type TEXT PRIMARY KEY CHECK (type IN ('hail', 'wind')),
+  last_attempt_at TIMESTAMPTZ,
+  last_success_at TIMESTAMPTZ,
+  last_new_report_at TIMESTAMPTZ,
+  consecutive_failures INTEGER NOT NULL DEFAULT 0 CHECK (consecutive_failures >= 0),
+  last_error TEXT,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+INSERT INTO storm_ingestion_state (type) VALUES ('hail'), ('wind')
+ON CONFLICT (type) DO NOTHING;
+
+CREATE TABLE storm_alert_rules (
+  market_id INTEGER PRIMARY KEY REFERENCES markets(id) ON DELETE CASCADE,
+  -- Deliberately false: applying the migration or deploying the cron sends
+  -- nothing until an admin configures recipients and opts a market in.
+  enabled BOOLEAN NOT NULL DEFAULT FALSE,
+  radius_miles DOUBLE PRECISION NOT NULL DEFAULT 50
+    CHECK (radius_miles BETWEEN 5 AND 150),
+  hail_min_inches DOUBLE PRECISION NOT NULL DEFAULT 1
+    CHECK (hail_min_inches BETWEEN 0 AND 10),
+  wind_min_mph DOUBLE PRECISION NOT NULL DEFAULT 58
+    CHECK (wind_min_mph BETWEEN 0 AND 250),
+  include_unmeasured_wind BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE storm_alert_subscriptions (
+  market_id INTEGER NOT NULL REFERENCES markets(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES admin_users(id) ON DELETE CASCADE,
+  email_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (market_id, user_id)
+);
+
+CREATE INDEX idx_storm_alert_subscriptions_user
+  ON storm_alert_subscriptions(user_id, market_id);
+
+CREATE TABLE storm_alert_events (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  market_id INTEGER NOT NULL REFERENCES markets(id) ON DELETE CASCADE,
+  type TEXT NOT NULL CHECK (type IN ('hail', 'wind')),
+  occurred_on DATE NOT NULL,
+  first_reported_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  last_reported_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  centroid_lat DOUBLE PRECISION NOT NULL CHECK (centroid_lat BETWEEN -90 AND 90),
+  centroid_lon DOUBLE PRECISION NOT NULL CHECK (centroid_lon BETWEEN -180 AND 180),
+  peak_value DOUBLE PRECISION,
+  report_count INTEGER NOT NULL DEFAULT 0 CHECK (report_count >= 0),
+  closest_distance_miles DOUBLE PRECISION NOT NULL CHECK (closest_distance_miles >= 0),
+  -- 0=below standard/unmeasured, 1=1in or 58mph, 2=1.5in or 74mph,
+  -- 3=2in or 90mph. Email escalates only when this number increases.
+  severity_band INTEGER NOT NULL DEFAULT 0 CHECK (severity_band BETWEEN 0 AND 3),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (market_id, type, occurred_on)
+);
+
+CREATE INDEX idx_storm_alert_events_market_updated
+  ON storm_alert_events(market_id, updated_at DESC);
+
+CREATE TABLE storm_alert_hits (
+  id BIGSERIAL PRIMARY KEY,
+  event_id UUID NOT NULL REFERENCES storm_alert_events(id) ON DELETE CASCADE,
+  market_id INTEGER NOT NULL REFERENCES markets(id) ON DELETE CASCADE,
+  storm_report_id BIGINT NOT NULL REFERENCES storm_reports(id) ON DELETE CASCADE,
+  distance_miles DOUBLE PRECISION NOT NULL CHECK (distance_miles >= 0),
+  observed_value DOUBLE PRECISION,
+  severity_band INTEGER NOT NULL CHECK (severity_band BETWEEN 0 AND 3),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (market_id, storm_report_id)
+);
+
+CREATE INDEX idx_storm_alert_hits_event ON storm_alert_hits(event_id);
+
+CREATE TABLE storm_alert_deliveries (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  event_id UUID NOT NULL REFERENCES storm_alert_events(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES admin_users(id) ON DELETE CASCADE,
+  channel TEXT NOT NULL DEFAULT 'email' CHECK (channel IN ('email')),
+  kind TEXT NOT NULL CHECK (kind IN ('initial', 'escalation')),
+  severity_band INTEGER NOT NULL CHECK (severity_band BETWEEN 0 AND 3),
+  -- Stable key is the outbox idempotency boundary. Initial delivery omits the
+  -- band; escalation includes it, so each higher band can notify exactly once.
+  dedupe_key TEXT NOT NULL UNIQUE,
+  status TEXT NOT NULL DEFAULT 'pending'
+    CHECK (status IN ('pending', 'processing', 'sent', 'failed', 'cancelled')),
+  attempt_count INTEGER NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),
+  next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  locked_at TIMESTAMPTZ,
+  provider_message_id TEXT,
+  last_error TEXT,
+  sent_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_storm_alert_deliveries_ready
+  ON storm_alert_deliveries(status, next_attempt_at)
+  WHERE status IN ('pending', 'failed', 'processing') AND attempt_count < 3;
+
+CREATE TABLE storm_alert_reads (
+  event_id UUID NOT NULL REFERENCES storm_alert_events(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES admin_users(id) ON DELETE CASCADE,
+  market_id INTEGER NOT NULL REFERENCES markets(id) ON DELETE CASCADE,
+  read_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (event_id, user_id)
+);
+
+CREATE INDEX idx_storm_alert_reads_user_market
+  ON storm_alert_reads(user_id, market_id);
+
+-- Atomically claim retryable outbox rows. Vercel can overlap or duplicate cron
+-- invocations; SKIP LOCKED plus the delivery dedupe key prevents double sends.
+CREATE OR REPLACE FUNCTION claim_storm_alert_deliveries(p_limit INTEGER DEFAULT 25)
+RETURNS SETOF storm_alert_deliveries
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  RETURN QUERY
+  WITH candidates AS (
+    SELECT id
+    FROM storm_alert_deliveries
+    WHERE attempt_count < 3
+      AND next_attempt_at <= NOW()
+      AND (
+        status IN ('pending', 'failed')
+        OR (status = 'processing' AND locked_at < NOW() - INTERVAL '10 minutes')
+      )
+    ORDER BY created_at
+    FOR UPDATE SKIP LOCKED
+    LIMIT LEAST(GREATEST(p_limit, 1), 100)
+  )
+  UPDATE storm_alert_deliveries d
+  SET status = 'processing',
+      attempt_count = d.attempt_count + 1,
+      locked_at = NOW(),
+      updated_at = NOW()
+  FROM candidates c
+  WHERE d.id = c.id
+  RETURNING d.*;
+END;
+$$;
+
+-- SECURITY DEFINER bypasses RLS, so the function must not retain PostgreSQL's
+-- default PUBLIC execute privilege. Only the server-side service client may
+-- claim delivery work.
+REVOKE EXECUTE ON FUNCTION claim_storm_alert_deliveries(INTEGER)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION claim_storm_alert_deliveries(INTEGER)
+  TO service_role;
+
+CREATE TRIGGER update_storm_ingestion_state_updated_at
+  BEFORE UPDATE ON storm_ingestion_state
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_storm_alert_rules_updated_at
+  BEFORE UPDATE ON storm_alert_rules
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_storm_alert_subscriptions_updated_at
+  BEFORE UPDATE ON storm_alert_subscriptions
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_storm_alert_events_updated_at
+  BEFORE UPDATE ON storm_alert_events
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_storm_alert_hits_updated_at
+  BEFORE UPDATE ON storm_alert_hits
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_storm_alert_deliveries_updated_at
+  BEFORE UPDATE ON storm_alert_deliveries
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+ALTER TABLE storm_ingestion_state ENABLE ROW LEVEL SECURITY;
+ALTER TABLE storm_alert_rules ENABLE ROW LEVEL SECURITY;
+ALTER TABLE storm_alert_subscriptions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE storm_alert_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE storm_alert_hits ENABLE ROW LEVEL SECURITY;
+ALTER TABLE storm_alert_deliveries ENABLE ROW LEVEL SECURITY;
+ALTER TABLE storm_alert_reads ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Service role full access" ON storm_ingestion_state
+  FOR ALL USING (auth.role() = 'service_role');
+CREATE POLICY "Service role full access" ON storm_alert_rules
+  FOR ALL USING (auth.role() = 'service_role');
+CREATE POLICY "Service role full access" ON storm_alert_subscriptions
+  FOR ALL USING (auth.role() = 'service_role');
+CREATE POLICY "Service role full access" ON storm_alert_events
+  FOR ALL USING (auth.role() = 'service_role');
+CREATE POLICY "Service role full access" ON storm_alert_hits
+  FOR ALL USING (auth.role() = 'service_role');
+CREATE POLICY "Service role full access" ON storm_alert_deliveries
+  FOR ALL USING (auth.role() = 'service_role');
+CREATE POLICY "Service role full access" ON storm_alert_reads
+  FOR ALL USING (auth.role() = 'service_role');
+
