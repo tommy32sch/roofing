@@ -1,5 +1,19 @@
 # Lessons
 
+## Own the deployment when the user asks for deployment
+- **Correction:** after the owner configured Resend, I told them to redeploy
+  Vercel themselves even though deployment was already within the requested
+  workflow.
+- **Rules:**
+  - When the owner asks to deploy or validate newly added production
+    configuration, trigger the deployment directly if repository access and
+    deployment credentials are available.
+  - Treat a Vercel environment-variable change as incomplete until a new
+    production build has finished; the existing deployment will not receive it.
+  - Separate deployment verification from authenticated feature verification:
+    confirm the new production commit first, then use a signed-in session for
+    admin-only configuration checks.
+
 ## New persistent workflows must preserve the transient workflow they extend
 - **Correction:** saved territories replaced the map's existing “Draw area”
   lead-selection action. Territory creation requires one concrete market, so

@@ -366,3 +366,17 @@ Review:
 - Verification before deploy: 53 focused drawing/territory tests, 447 full
   tests, TypeScript, changed-file ESLint, `git diff --check`, and a production
   Turbopack build pass.
+
+## Activate Resend in production
+
+Goal: rebuild production after the owner added the Resend environment
+variables, then verify that the deployed app recognizes email delivery as
+configured.
+
+- [x] Confirm the repository is clean and `main` matches `origin/main`
+- [ ] Trigger a fresh Vercel production deployment
+- [ ] Confirm the production deployment completed successfully
+- [ ] Verify the authenticated Settings page reports email as configured
+
+Review:
+- Pending deployment and authenticated production verification.
