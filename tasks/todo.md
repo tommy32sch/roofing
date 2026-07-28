@@ -374,9 +374,52 @@ variables, then verify that the deployed app recognizes email delivery as
 configured.
 
 - [x] Confirm the repository is clean and `main` matches `origin/main`
-- [ ] Trigger a fresh Vercel production deployment
-- [ ] Confirm the production deployment completed successfully
-- [ ] Verify the authenticated Settings page reports email as configured
+- [x] Trigger a fresh Vercel production deployment
+- [x] Confirm the production deployment completed successfully
+- [x] Verify the authenticated Settings page reports email as configured
 
 Review:
-- Pending deployment and authenticated production verification.
+- Commit `b38e3d8` was pushed to `main`; Vercel reported a successful production
+  deployment and the production login route returned HTTP 200 from Vercel.
+- The authenticated production Settings page now reports "Email delivery is
+  configured," confirming both required Resend variables are visible to the
+  deployed application.
+- Arizona alerts are enabled with `poopsybelle@gmail.com` subscribed. No
+  scheduled NOAA check has succeeded yet, so end-to-end delivery remains
+  separate from configuration verification.
+
+## Resend test email and storm marker interaction
+
+Goal: provide a safe admin-only end-to-end Resend check and restore hail/wind
+marker details on hover and click.
+
+### Test email
+- [x] Add an authenticated, admin-only, rate-limited test-email endpoint
+- [x] Send only to the signed-in admin and return provider errors safely
+- [x] Add a Settings button with pending, success, and failure feedback
+- [x] Cover authentication, authorization, rate limiting, and provider results
+
+### Storm map
+- [x] Reproduce the production failure and identify the blocking canvas layer
+- [x] Put interactive vector layers on one shared canvas in explicit hit order
+- [x] Add hover details with size/speed and report date
+- [ ] Verify marker hover/click while leads and territories remain interactive
+
+### Verification and deployment
+- [x] Run focused tests, full tests, TypeScript, lint, build, and diff checks
+- [ ] Deploy production and send one controlled test email
+- [ ] Verify the live map and Settings test control
+
+Review:
+- Root cause confirmed in production: `preferCanvas` created separate full-map
+  canvases for storms, territories, and lead pins. The higher lead canvas
+  received every pointer before the storm canvas, even where no lead was drawn.
+- The map now keeps interactive vectors on one performant canvas and uses
+  deliberate draw/hit order: zones, territory fills, storm points, lead pins,
+  then the active draft. Storm points have both hover Tooltips and click
+  Popups containing size/speed and date.
+- The new test endpoint is admin-only, sends solely to the signed-in admin, and
+  permits three attempts per user per hour. It creates no storm event and
+  contacts no configured subscribers.
+- Pre-deploy verification: 455 tests, TypeScript, changed-file ESLint,
+  production Turbopack build, and `git diff --check` pass.

@@ -506,7 +506,12 @@ export default function LeadMap({
       />
       <FocusView focus={focus} />
       <MapReady onMapReady={onMapReady} />
-      <Pane name="storm-data" style={{ zIndex: 350 }}>
+      {/* All interactive vectors share one Canvas renderer. Separate
+          preferCanvas panes each create a full-map canvas; a higher empty
+          canvas still intercepts the pointer and makes every lower layer
+          unclickable. Draw order inside this pane is also hit-test order:
+          zones, territories, storm points, lead pins, then the active draft. */}
+      <Pane name="map-data" style={{ zIndex: 350 }}>
       {/* Storm ZONES — the swath each storm cut, coloured by age.
           The zoomed-out planning view. One red ramp, fading with age, and the
           age written straight onto each zone in screen pixels — a label needs no
@@ -526,6 +531,12 @@ export default function LeadMap({
                 radius={3}
                 pathOptions={{ fillColor: '#94a3b8', fillOpacity: 0.5, weight: 0 }}
               >
+                <Tooltip direction="top" offset={[0, -5]} opacity={1}>
+                  <div className="space-y-0.5 text-xs">
+                    <p className="font-medium">{stormLabel(r.type, r.value)}</p>
+                    <p>{r.date}</p>
+                  </div>
+                </Tooltip>
                 <Popup>
                   <div className="text-sm">
                     <p className="font-medium">{stormLabel(r.type, r.value)}</p>
@@ -591,64 +602,12 @@ export default function LeadMap({
         );
       })()}
 
-      {/* NOAA storm reports — drawn beneath the lead pins. Hidden while the
-          zones view is on: that view answers "when/where", and layering
-          severity colours under the age ramp was unreadable.
-          Colour and radius carry SEVERITY; opacity carries AGE. With two years
-          of history on the map, a fresh 1" hailstorm is worth more than a 2" one
-          from last spring, so recent reports read solid and old ones fade back.
-          Sorted oldest-first so the fresh ones land on top and stay clickable. */}
-      {!stormZones && sortStormsForDrawing(stormReports, stormNow).map((r, i) => {
-        const color = stormColor(r.type, r.value);
-        const age = stormAgeBucket(r.date, stormNow);
-        return (
-          <CircleMarker
-            key={`storm-${r.type}-${i}`}
-            center={[r.lat, r.lon]}
-            radius={stormRadius(r.type, r.value)}
-            pathOptions={{
-              fillColor: color,
-              fillOpacity: age.fillOpacity,
-              color,
-              weight: age.weight,
-              // A crisp outline on the freshest reports so they pop out of a
-              // field of faded old ones even at a glance.
-              opacity: age.key === 'fresh' ? 1 : 0.5,
-            }}
-          >
-            <Popup>
-              <div className="text-sm">
-                <p className="font-medium">{stormLabel(r.type, r.value)}</p>
-                <p className="text-xs">
-                  {/* Relative age first — "3 weeks ago" is the number a rep
-                      acts on; the calendar date is the supporting detail. */}
-                  <span className="font-medium">
-                    {formatDistanceToNow(new Date(`${r.date}T12:00:00Z`), { addSuffix: true })}
-                  </span>
-                  {' · '}
-                  {r.date}
-                </p>
-                {(r.location || r.state) && (
-                  <p className="text-xs">
-                    {r.location}
-                    {r.location && r.state ? ', ' : ''}
-                    {r.state}
-                  </p>
-                )}
-                <p className="text-[11px] text-muted-foreground">
-                  NOAA storm report · {age.label.toLowerCase()}
-                </p>
-              </div>
-            </Popup>
-          </CircleMarker>
-        );
-      })}
-      </Pane>
-
+      {/* Saved territories draw before storm points, so an area fill cannot
+          steal a report's hover/click target. In zone view only the territory
+          outline remains interactive, leaving each storm swath selectable. */}
       {/* Saved territory ownership lives between weather and lead pins.
           When storm zones are visible, outlines stay but fills drop away so
           the two area encodings never turn into an unreadable colour blend. */}
-      <Pane name="saved-territories" style={{ zIndex: 380 }}>
         {territories.map((territory) => {
           const ownedByCurrentUser =
             !!currentUserId && territory.owner_user_id === currentUserId;
@@ -661,6 +620,7 @@ export default function LeadMap({
               pathOptions={{
                 color: territory.color,
                 fillColor: territory.color,
+                fill: !stormZones,
                 fillOpacity: stormZones ? 0 : ownedByCurrentUser ? 0.14 : 0.08,
                 weight: ownedByCurrentUser ? 4 : 2,
                 opacity: 0.95,
@@ -702,9 +662,74 @@ export default function LeadMap({
             </Polygon>
           );
         })}
-      </Pane>
 
-      <Pane name="lead-pins" style={{ zIndex: 420 }}>
+      {/* NOAA storm reports — after territory fills but beneath lead pins.
+          Hidden while zones are on: that view answers "when/where", and
+          layering severity colours under the age ramp was unreadable.
+          Colour and radius carry SEVERITY; opacity carries AGE. With two years
+          of history on the map, a fresh 1" hailstorm is worth more than a 2" one
+          from last spring, so recent reports read solid and old ones fade back.
+          Sorted oldest-first so the fresh ones land on top and stay clickable. */}
+      {!stormZones && sortStormsForDrawing(stormReports, stormNow).map((r, i) => {
+        const color = stormColor(r.type, r.value);
+        const age = stormAgeBucket(r.date, stormNow);
+        const radius = stormRadius(r.type, r.value);
+        return (
+          <CircleMarker
+            key={`storm-${r.type}-${i}`}
+            center={[r.lat, r.lon]}
+            radius={radius}
+            pathOptions={{
+              fillColor: color,
+              fillOpacity: age.fillOpacity,
+              color,
+              weight: age.weight,
+              // A crisp outline on the freshest reports so they pop out of a
+              // field of faded old ones even at a glance.
+              opacity: age.key === 'fresh' ? 1 : 0.5,
+            }}
+          >
+            <Tooltip direction="top" offset={[0, -(radius + 2)]} opacity={1}>
+              <div className="space-y-0.5 text-xs">
+                <p className="font-medium">{stormLabel(r.type, r.value)}</p>
+                <p>{r.date}</p>
+                {(r.location || r.state) && (
+                  <p>
+                    {r.location}
+                    {r.location && r.state ? ', ' : ''}
+                    {r.state}
+                  </p>
+                )}
+              </div>
+            </Tooltip>
+            <Popup>
+              <div className="text-sm">
+                <p className="font-medium">{stormLabel(r.type, r.value)}</p>
+                <p className="text-xs">
+                  {/* Relative age first — "3 weeks ago" is the number a rep
+                      acts on; the calendar date is the supporting detail. */}
+                  <span className="font-medium">
+                    {formatDistanceToNow(new Date(`${r.date}T12:00:00Z`), { addSuffix: true })}
+                  </span>
+                  {' · '}
+                  {r.date}
+                </p>
+                {(r.location || r.state) && (
+                  <p className="text-xs">
+                    {r.location}
+                    {r.location && r.state ? ', ' : ''}
+                    {r.state}
+                  </p>
+                )}
+                <p className="text-[11px] text-muted-foreground">
+                  NOAA storm report · {age.label.toLowerCase()}
+                </p>
+              </div>
+            </Popup>
+          </CircleMarker>
+        );
+      })}
+
       {leads.map((lead) => {
         const selected = selectedIds.has(lead.id);
         return (
@@ -826,15 +851,12 @@ export default function LeadMap({
           </CircleMarker>
         );
       })}
-      </Pane>
 
-      {/* The active draft is always the top vector layer. Keep DrawLayer's
-          carefully-tested pointer lifecycle untouched; the Pane only controls
-          visual stacking. */}
-      <Pane name="territory-draft" style={{ zIndex: 440 }}>
-        {onDrawPoint && onDrawPath && (
-          <DrawLayer drawing={drawing} points={drawPoints} onPoint={onDrawPoint} onPath={onDrawPath} />
-        )}
+      {/* The active draft is last so its handles stay visible. DrawLayer's
+          carefully-tested pointer lifecycle remains untouched. */}
+      {onDrawPoint && onDrawPath && (
+        <DrawLayer drawing={drawing} points={drawPoints} onPoint={onDrawPoint} onPath={onDrawPath} />
+      )}
       </Pane>
     </MapContainer>
   );

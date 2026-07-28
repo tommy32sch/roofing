@@ -1,5 +1,22 @@
 # Lessons
 
+## Stacked Leaflet canvases do not share pointer hit-testing
+- **Correction:** hail and wind points still rendered after saved-territory
+  panes were added, but they could no longer be clicked or hovered for their
+  size, speed, and date.
+- **Root cause:** `preferCanvas` gives each custom Leaflet pane a full-map
+  canvas. A higher canvas receives the pointer even where it drew no feature,
+  so the lower storm canvas never sees the event.
+- **Rules:**
+  - With `preferCanvas`, interactive vector layers that overlap must share one
+    renderer/pane unless event forwarding is implemented explicitly.
+  - Use render order inside that shared canvas as the hit-test order: area
+    fills first, then storm points, then lead pins, then active drawing.
+  - A popup covers click/tap only. If the product promises hover details, bind a
+    Tooltip too and verify both hover and click against the rendered map.
+  - Inspect the actual Leaflet DOM when interaction disappears; a visible mark
+    is not proof that its renderer can receive pointer events.
+
 ## Own the deployment when the user asks for deployment
 - **Correction:** after the owner configured Resend, I told them to redeploy
   Vercel themselves even though deployment was already within the requested

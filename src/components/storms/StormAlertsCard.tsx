@@ -45,6 +45,11 @@ export function StormAlertsCard() {
   const [emailConfigured, setEmailConfigured] = useState(false);
   const [loading, setLoading] = useState(true);
   const [savingMarketId, setSavingMarketId] = useState<number | null>(null);
+  const [testingEmail, setTestingEmail] = useState(false);
+  const [testEmailResult, setTestEmailResult] = useState<{
+    success: boolean;
+    message: string;
+  } | null>(null);
   const [unavailable, setUnavailable] = useState(false);
 
   useEffect(() => {
@@ -129,6 +134,30 @@ export function StormAlertsCard() {
     }
   }
 
+  async function sendTestEmail() {
+    setTestingEmail(true);
+    setTestEmailResult(null);
+    try {
+      const res = await fetch('/api/admin/storm-alerts/test-email', { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        const message = data.error || 'Failed to send test email';
+        setTestEmailResult({ success: false, message });
+        toast.error(message);
+        return;
+      }
+      const message = `Test email sent to ${data.to}`;
+      setTestEmailResult({ success: true, message });
+      toast.success(message);
+    } catch {
+      const message = 'Failed to send test email';
+      setTestEmailResult({ success: false, message });
+      toast.error(message);
+    } finally {
+      setTestingEmail(false);
+    }
+  }
+
   return (
     <Card>
       <CardHeader>
@@ -159,9 +188,34 @@ export function StormAlertsCard() {
               <AlertTitle>
                 {emailConfigured ? 'Email delivery is configured' : 'Email delivery is not configured'}
               </AlertTitle>
-              <AlertDescription>
-                In-app alerts are persisted either way. Email requires both RESEND_API_KEY and
-                RESEND_FROM_EMAIL.
+              <AlertDescription className="flex flex-col items-start gap-2">
+                <span>
+                  In-app alerts are persisted either way. Email requires both RESEND_API_KEY and
+                  RESEND_FROM_EMAIL.
+                </span>
+                {emailConfigured && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={sendTestEmail}
+                    disabled={testingEmail}
+                  >
+                    {testingEmail ? 'Sending test...' : 'Send test email to me'}
+                  </Button>
+                )}
+                {testEmailResult && (
+                  <span
+                    className={
+                      testEmailResult.success
+                        ? 'text-xs text-emerald-700 dark:text-emerald-400'
+                        : 'text-xs text-destructive'
+                    }
+                    role="status"
+                  >
+                    {testEmailResult.message}
+                  </span>
+                )}
               </AlertDescription>
             </Alert>
 
