@@ -26,6 +26,23 @@ export const CAPTURE_SPACING_PX = 5;
  */
 export const MAX_CAPTURE_POINTS = 2000;
 
+export type DrawGestureEndAction = 'cancel' | 'point' | 'path';
+
+/**
+ * Decide what, if anything, the end of a drawing gesture commits.
+ *
+ * Cancellation is distinct from pointerup: the browser or OS can cancel a
+ * pointer for reasons unrelated to user intent, so it must never be promoted
+ * to either a tap or a completed freehand path.
+ */
+export function classifyDrawGestureEnd(
+  freehand: boolean,
+  cancelled: boolean
+): DrawGestureEndAction {
+  if (cancelled) return 'cancel';
+  return freehand ? 'path' : 'point';
+}
+
 /** Perpendicular distance from p to the line through a and b, in the same units. */
 export function perpendicularDistance(
   p: [number, number],

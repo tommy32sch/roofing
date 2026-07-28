@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button';
 import { FollowUpMenu } from '@/components/leads/FollowUpMenu';
 import { LEAD_STATUS_OPTIONS } from '@/types';
 import { shouldRecenterMap } from '@/lib/leads/markets';
-import { isDrag, shouldCapture, simplifyPath } from '@/lib/leads/draw';
+import { classifyDrawGestureEnd, isDrag, shouldCapture, simplifyPath } from '@/lib/leads/draw';
 import { STATUS_COLORS, DNC_RING_COLOR, DO_NOT_KNOCK_RING_COLOR, stormColor, stormRadius, stormLabel, sortStormsForDrawing, stormAgeBucket, stormZoneStyle, stormAgeShort, type GeoLead, type StormReport } from './map-constants';
 import { partitionStormReports } from '@/lib/storm/zones';
 
@@ -191,15 +191,40 @@ function DrawLayer({
   const lastRef = useRef<{ x: number; y: number } | null>(null);
   const pathRef = useRef<[number, number][]>([]);
   const freehandRef = useRef(false);
+  const activePointerRef = useRef<number | null>(null);
+  const originalPathRef = useRef<[number, number][]>([]);
+  const latestRef = useRef({ points, onPoint, onPath });
+
+  // The parent updates points on every captured move and currently supplies
+  // inline callbacks. Keep the pointer listeners mounted for the whole gesture
+  // while still calling the latest props after those rerenders.
+  useEffect(() => {
+    latestRef.current = { points, onPoint, onPath };
+  }, [points, onPoint, onPath]);
 
   useEffect(() => {
     if (!drawing) return;
     const container = map.getContainer();
 
-    // Leaflet owns drag-to-pan; it has to yield while the lasso is active.
-    map.dragging.disable();
+    // Leaflet owns drag-to-pan and pinch-to-zoom; both have to yield while the
+    // lasso is active. Record their prior state so cleanup does not enable an
+    // interaction that the map's caller had already disabled.
+    const draggingWasEnabled = map.dragging.enabled();
+    const touchZoomWasEnabled = map.touchZoom.enabled();
+    const tapHoldWasEnabled = map.tapHold?.enabled() ?? false;
+    if (draggingWasEnabled) map.dragging.disable();
+    if (touchZoomWasEnabled) map.touchZoom.disable();
+    if (tapHoldWasEnabled) map.tapHold?.disable();
+
     const previousCursor = container.style.cursor;
+    const previousTouchAction = container.style.touchAction;
     container.style.cursor = 'crosshair';
+    // Pointer Events decide whether a gesture belongs to page scrolling at
+    // pointerdown time. preventDefault() in pointermove is too late once the
+    // browser has claimed it and sent pointercancel. Leaflet normally supplies
+    // this through leaflet-touch-drag, but dragging.disable() removes that
+    // class, so drawing mode needs an explicit inline override.
+    container.style.touchAction = 'none';
 
     const toPoint = (e: PointerEvent) => {
       const rect = container.getBoundingClientRect();
@@ -227,14 +252,18 @@ function DrawLayer({
 
     const onDown = (e: PointerEvent) => {
       if (e.button !== 0 && e.pointerType === 'mouse') return;
+      if (!e.isPrimary || activePointerRef.current !== null) return;
+      activePointerRef.current = e.pointerId;
       startRef.current = toPoint(e);
       lastRef.current = null;
       pathRef.current = [];
       freehandRef.current = false;
+      originalPathRef.current = [...latestRef.current.points];
       capture(e.pointerId);
     };
 
     const onMove = (e: PointerEvent) => {
+      if (e.pointerId !== activePointerRef.current) return;
       const start = startRef.current;
       if (!start) return;
       const at = toPoint(e);
@@ -250,19 +279,37 @@ function DrawLayer({
       lastRef.current = at;
       const ll = map.containerPointToLatLng([at.x, at.y]);
       pathRef.current = [...pathRef.current, [ll.lat, ll.lng]];
-      onPath(pathRef.current);
+      latestRef.current.onPath(pathRef.current);
     };
 
-    const onUp = (e: PointerEvent) => {
+    const finishGesture = (e: PointerEvent, cancelled: boolean) => {
+      if (e.pointerId !== activePointerRef.current) return;
       const start = startRef.current;
+      const wasFreehand = freehandRef.current;
+      const raw = pathRef.current;
+      const originalPath = originalPathRef.current;
+
+      activePointerRef.current = null;
       startRef.current = null;
+      lastRef.current = null;
+      pathRef.current = [];
+      originalPathRef.current = [];
+      freehandRef.current = false;
       release(e.pointerId);
       if (!start) return;
 
-      if (!freehandRef.current) {
+      const action = classifyDrawGestureEnd(wasFreehand, cancelled);
+      if (action === 'cancel') {
+        // onMove publishes a live preview. Roll it back so cancellation has no
+        // net drawing effect; an existing hand-placed outline is preserved.
+        if (wasFreehand) latestRef.current.onPath(originalPath);
+        return;
+      }
+
+      if (action === 'point') {
         // Never really moved — treat it as placing one corner.
         const ll = map.containerPointToLatLng([start.x, start.y]);
-        onPoint(ll.lat, ll.lng);
+        latestRef.current.onPoint(ll.lat, ll.lng);
         return;
       }
 
@@ -270,29 +317,40 @@ function DrawLayer({
       // tolerance is derived from the current scale so it means the same number
       // of SCREEN pixels at every zoom — a fixed value in degrees would erase a
       // whole neighbourhood when zoomed out.
-      const raw = pathRef.current;
       if (raw.length < 3) return;
       const origin = map.containerPointToLatLng([0, 0]);
       const offset = map.containerPointToLatLng([SIMPLIFY_TOLERANCE_PX, 0]);
       const tolerance = Math.abs(offset.lng - origin.lng);
-      onPath(simplifyPath(raw, tolerance));
-      freehandRef.current = false;
+      latestRef.current.onPath(simplifyPath(raw, tolerance));
     };
+
+    const onUp = (e: PointerEvent) => finishGesture(e, false);
+    const onCancel = (e: PointerEvent) => finishGesture(e, true);
 
     container.addEventListener('pointerdown', onDown);
     container.addEventListener('pointermove', onMove, { passive: false });
     container.addEventListener('pointerup', onUp);
-    container.addEventListener('pointercancel', onUp);
+    container.addEventListener('pointercancel', onCancel);
 
     return () => {
       container.removeEventListener('pointerdown', onDown);
       container.removeEventListener('pointermove', onMove);
       container.removeEventListener('pointerup', onUp);
-      container.removeEventListener('pointercancel', onUp);
-      map.dragging.enable();
+      container.removeEventListener('pointercancel', onCancel);
+      if (activePointerRef.current !== null) release(activePointerRef.current);
+      activePointerRef.current = null;
+      startRef.current = null;
+      lastRef.current = null;
+      pathRef.current = [];
+      originalPathRef.current = [];
+      freehandRef.current = false;
+      if (draggingWasEnabled) map.dragging.enable();
+      if (touchZoomWasEnabled) map.touchZoom.enable();
+      if (tapHoldWasEnabled) map.tapHold?.enable();
       container.style.cursor = previousCursor;
+      container.style.touchAction = previousTouchAction;
     };
-  }, [drawing, map, onPoint, onPath]);
+  }, [drawing, map]);
 
   if (!drawing || points.length === 0) return null;
   return (

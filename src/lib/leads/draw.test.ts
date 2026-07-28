@@ -7,7 +7,73 @@ import {
   DRAG_THRESHOLD_PX,
   CAPTURE_SPACING_PX,
   MAX_CAPTURE_POINTS,
+  classifyDrawGestureEnd,
+  type DrawGestureEndAction,
 } from './draw';
+
+type SimulatedPointerEvent =
+  | { type: 'pointerdown'; x: number; y: number }
+  | { type: 'pointermove'; x: number; y: number }
+  | { type: 'pointerup' }
+  | { type: 'pointercancel' };
+
+/**
+ * Exercise the same threshold/end-state decisions as DrawLayer without a DOM.
+ * Pointer type is intentionally absent: once touch-action keeps touch pointers
+ * alive, touch and mouse use the exact same PointerEvent state machine.
+ */
+function simulateGesture(events: SimulatedPointerEvent[]): DrawGestureEndAction | null {
+  let start: { x: number; y: number } | null = null;
+  let freehand = false;
+
+  for (const event of events) {
+    if (event.type === 'pointerdown') {
+      start = { x: event.x, y: event.y };
+    } else if (event.type === 'pointermove' && start) {
+      freehand ||= isDrag(start, event);
+    } else if ((event.type === 'pointerup' || event.type === 'pointercancel') && start) {
+      return classifyDrawGestureEnd(freehand, event.type === 'pointercancel');
+    }
+  }
+
+  return null;
+}
+
+describe('drawing pointer gesture lifecycle', () => {
+  it('commits a touch-style drag as a freehand path', () => {
+    expect(simulateGesture([
+      { type: 'pointerdown', x: 100, y: 100 },
+      { type: 'pointermove', x: 103, y: 101 }, // still below the drag threshold
+      { type: 'pointermove', x: 112, y: 104 },
+      { type: 'pointermove', x: 130, y: 115 },
+      { type: 'pointerup' },
+    ])).toBe('path');
+  });
+
+  it('preserves a genuine tap as one corner point', () => {
+    expect(simulateGesture([
+      { type: 'pointerdown', x: 100, y: 100 },
+      { type: 'pointermove', x: 102, y: 101 },
+      { type: 'pointerup' },
+    ])).toBe('point');
+  });
+
+  it('commits nothing when cancelled before the drag threshold', () => {
+    expect(simulateGesture([
+      { type: 'pointerdown', x: 100, y: 100 },
+      { type: 'pointermove', x: 102, y: 101 },
+      { type: 'pointercancel' },
+    ])).toBe('cancel');
+  });
+
+  it('commits nothing when a freehand drag is cancelled', () => {
+    expect(simulateGesture([
+      { type: 'pointerdown', x: 100, y: 100 },
+      { type: 'pointermove', x: 120, y: 110 },
+      { type: 'pointercancel' },
+    ])).toBe('cancel');
+  });
+});
 
 describe('perpendicularDistance', () => {
   it('measures the offset from a horizontal line', () => {
