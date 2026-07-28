@@ -162,3 +162,178 @@ jsdom has no touch.
 Housekeeping: Codex wrote an `AGENTS.md` (its own conventions file) that was a
 byte-identical copy of `CLAUDE.md`. Replaced with a symlink so the two cannot
 drift.
+
+## Project README
+
+Replace the default Next.js README with documentation that explains what Roof
+Leads is, who uses it, how the roofing workflow fits together, and how to run
+the application safely.
+
+- [x] Document the product purpose, users, workflow, and major capabilities
+- [x] Document the stack, integrations, repository structure, and commands
+- [x] Add local setup, Supabase schema/admin setup, and environment variables
+- [x] Call out the shared-production-database risk and Vercel deployment order
+- [x] Verify every documented path and command against the current repository
+
+Review:
+- Replaced the stock create-next-app copy with a product and operator guide.
+- Kept optional services and role/market boundaries explicit rather than
+  presenting them as hard requirements or access isolation.
+- Documented that the local JSON backup is incomplete: it omits five newer
+  tables and Supabase Storage, so production work still needs a real database
+  backup.
+- Verified both relative links, all ten documented npm scripts, the local `tsx`
+  binary, `git diff --check`, 394 tests, and TypeScript.
+
+## Saved territories
+
+Goal: turn the map's temporary freehand selection into persistent,
+market-scoped canvassing territories without changing historical lead
+assignment or the existing explicit bulk-assignment workflow.
+
+Decisions:
+- Territory ownership describes who canvasses the geography; it does not
+  silently rewrite `leads.assigned_setter_id`.
+- Lead membership is calculated from coordinates, so newly imported or
+  geocoded leads appear automatically and no territory/lead join can become
+  stale.
+- All authenticated roles can see active territories in their selected market;
+  only admins can create, edit, assign, archive, or restore them.
+- Active same-market overlaps require an explicit admin override. Shared edges
+  or vertices are allowed.
+- Territories are archived rather than hard-deleted.
+
+### Data and geometry
+- [x] Add migration `019_saved_territories.sql` with polygon, market, owner,
+      color, bounding box, audit fields, indexes, checks, and RLS
+- [x] Add reusable polygon validation, bounding-box, containment, and overlap
+      helpers with unit coverage for concave and invalid shapes
+- [x] Regenerate `supabase/schema.sql` and include territories in the backup
+
+### API
+- [x] Add authenticated territory list/create endpoint with market scoping
+- [x] Add admin-only update/archive/restore endpoint
+- [x] Validate owners, markets, geometry, colors, duplicate names, and overlap
+      conflicts server-side
+- [x] Add route tests for permissions, validation, collision override, and
+      archive/restore behavior
+
+### Map
+- [x] Render saved territory outlines beneath lead pins
+- [x] Save a completed freehand/tap polygon with name, owner, and color
+- [x] Preserve selection of the currently shown leads inside the saved polygon
+      so the existing bulk-assignment flow remains available
+- [x] Add a responsive territory list with ownership, select, edit, archive,
+      and restore controls
+- [x] Keep territory outlines readable alongside storm reports/zones
+- [ ] Verify desktop and mobile drawing, persistence, selection, editing,
+      role behavior, collisions, and archive/restore
+
+### Verification and review
+- [x] Run focused tests, full test suite, typecheck, lint, build, schema build,
+      and `git diff --check`
+- [x] Confirm the production schema state before any deployment
+- [x] Record shipped behavior, deliberate deferrals, and verification evidence
+
+Review:
+- Saved market-scoped polygons now survive reloads, carry an optional
+  setter/admin owner, use a storm-safe cool palette, and render between weather
+  data and lead pins. A rep's own outline is emphasized.
+- Admins can create with drag or taps even when no leads exist; edit details or
+  the boundary; archive/restore; explicitly override intentional overlaps; and
+  select the currently filtered leads inside for the existing bulk-assignment
+  flow. Territory ownership never rewrites sales attribution.
+- Geometry is normalized and validated once on the server. Membership includes
+  boundary points; overlap checks detect crossings and containment while
+  allowing shared borders.
+- Verification: 28 focused territory tests, 418 full tests, TypeScript,
+  territory-scoped ESLint, regenerated 19-migration schema, diff check, and a
+  production build all pass. Full repository lint remains noisy because it
+  traverses generated `.next` files in old `.claude/worktrees`, plus the known
+  pre-existing email-webhook `any`.
+- Migration 019 is now present in live Supabase and a direct `territories` read
+  succeeds. Authenticated browser acceptance remains pending until the code is
+  deployed and a signed-in session is available.
+
+## Storm alerts
+
+Goal: notify explicitly subscribed team members when new qualifying NOAA hail
+or wind reports land near one of their markets, without generating one message
+per point report or claiming preliminary reports are real-time warnings.
+
+Decisions:
+- Refresh NOAA's current report day plus the previous two days. The current
+  daily file grows and late/corrected reports can appear after the first read.
+- Group reports into one event per market, storm type, and NOAA report date.
+  Additional reports update the event; email again only when a standard
+  severity band increases.
+- Persist in-app notifications and delivery attempts before sending email.
+  Ingestion and event creation must survive Resend being unavailable.
+- Recipients opt in per market. Merely deploying the migration sends nothing,
+  and every market rule starts disabled.
+- Match reports to a configurable radius around the market center. Defaults:
+  50 miles, hail at least 1 inch, wind at least 58 mph.
+- Alerts are labelled "preliminary NOAA storm reports." Forecast warnings,
+  radar, SMS, and web push are deferred.
+
+### Ingestion and data
+- [x] Add migration `020_storm_alerts.sql` for ingestion state, market rules,
+      subscriptions, events, report hits, delivery outbox, and read state
+- [x] Extract recent NOAA refresh into a reusable idempotent service
+- [x] Add a `CRON_SECRET`-protected route, an overlap lock, lookback processing,
+      and persisted failure/success health
+- [x] Add Vercel cron configuration appropriate for the production plan
+
+### Matching and delivery
+- [x] Match reports to enabled markets with Haversine distance and inclusive
+      thresholds
+- [x] Group/dedupe by market, type, and report date; escalate only at higher
+      severity bands
+- [x] Queue explicit recipients and retry failed email deliveries without
+      duplicating successful sends
+- [x] Add a preliminary-data-safe email with a map deep link
+
+### Product UI
+- [x] Add admin settings for enablement, radius, hail/wind thresholds, and
+      recipient subscriptions
+- [x] Add a header bell with unread count and recent subscribed storm events
+- [x] Mark alerts read and deep-link into the correct market, storm layer,
+      date window, and event center
+- [x] Show NOAA refresh health/configuration errors in Settings
+
+### Verification and review
+- [x] Test date lookback, ingestion precedence, thresholds, distance boundary,
+      grouping, severity escalation, dedupe, retries, permissions, and reads
+- [x] Run full tests, typecheck, scoped lint, build, schema build, and diff check
+- [x] Confirm live migrations and required environment variables before deploy
+- [x] Record shipped behavior, deliberate deferrals, and verification evidence
+
+Review:
+- A protected free-plan cron now refreshes NOAA/SPC once daily at 14:00 UTC
+  (morning in Arizona). It refreshes the current report day plus the previous
+  two, persists ingestion health, matches enabled market radii, and stores one
+  preliminary event per market/type/report date before attempting email.
+- Notifications are explicit-subscription only. Rules default disabled, and
+  enabling requires a market center plus at least one recipient. The in-app
+  event survives missing Resend credentials or delivery failures; the email
+  outbox claims work atomically, retries with stable provider idempotency keys,
+  and cancels unsent work after a rule is disabled or a recipient unsubscribes.
+- A whole refresh queues at most one notification per event. If several new
+  points arrive together, recipients get one initial message at the final
+  aggregate severity rather than an initial message followed immediately by an
+  escalation. Later report-day updates notify again only when the standard
+  severity band rises.
+- Admin Settings exposes market radius/threshold/recipient controls and NOAA
+  health. Subscribed users get an unread bell; opening an alert records a read
+  and focuses the correct market, storm type, seven-day layer, and event center
+  on the map. All copy identifies the source as preliminary NOAA reports, not a
+  warning, forecast, or real-time radar.
+- Verification: 444 tests, TypeScript, changed-file ESLint, regenerated
+  20-migration schema, `git diff --check`, valid `vercel.json`, and a production
+  Turbopack build with all three storm-alert APIs plus the cron route pass.
+- Migrations 019 and 020 are now present in live Supabase. Direct reads of all
+  eight territory/storm-alert tables succeed; ingestion state has both seeded
+  rows, and there are zero enabled alert rules. The owner added
+  `CRON_SECRET` to production Vercel and confirmed the free plan, so the schedule
+  was changed to once daily. Resend configuration is still unconfirmed; no
+  external email was performed.

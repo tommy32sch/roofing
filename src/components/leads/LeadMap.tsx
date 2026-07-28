@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 import Link from 'next/link';
-import { MapContainer, TileLayer, CircleMarker, Popup, Polygon, Polyline, Tooltip, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, CircleMarker, Pane, Popup, Polygon, Polyline, Tooltip, useMap } from 'react-leaflet';
 import type { Map as LeafletMap } from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { formatDistanceToNow } from 'date-fns';
@@ -14,6 +14,7 @@ import { shouldRecenterMap } from '@/lib/leads/markets';
 import { classifyDrawGestureEnd, isDrag, shouldCapture, simplifyPath } from '@/lib/leads/draw';
 import { STATUS_COLORS, DNC_RING_COLOR, DO_NOT_KNOCK_RING_COLOR, stormColor, stormRadius, stormLabel, sortStormsForDrawing, stormAgeBucket, stormZoneStyle, stormAgeShort, type GeoLead, type StormReport } from './map-constants';
 import { partitionStormReports } from '@/lib/storm/zones';
+import type { Territory } from '@/types';
 
 // Phoenix metro — sensible default for an empty map until leads load
 const DEFAULT_CENTER: [number, number] = [33.4, -111.9];
@@ -69,19 +70,28 @@ function whenSized(map: LeafletMap, run: () => void): () => void {
   };
 }
 
-function FitBounds({ leads }: { leads: GeoLead[] }) {
+function FitBounds({ leads, territories }: { leads: GeoLead[]; territories: Territory[] }) {
   const map = useMap();
-  // Refit when the result set changes identity (filter change / first load)
-  const key = leads.length > 0 ? `${leads.length}:${leads[0].id}` : '';
+  // Leads are the preferred fit. When filters or role visibility leave none,
+  // saved territories still need to be discoverable—especially in All Markets,
+  // which has no single office center to fall back to.
+  const points = leads.length > 0
+    ? leads.map((lead) => [lead.latitude, lead.longitude] as [number, number])
+    : territories.flatMap((territory) => territory.boundary);
+  const key = leads.length > 0
+    ? `leads:${leads.length}:${leads[0].id}`
+    : territories.length > 0
+      ? `territories:${territories.length}:${territories[0].id}`
+      : '';
   useEffect(() => {
-    if (leads.length === 0) return;
+    if (points.length === 0) return;
     // Defer to the next frame so the container has its final size, then
     // re-measure before fitting — otherwise it over-zooms to fit the bounds
     // into a stale (small) viewport.
     return whenSized(map, () => {
       map.invalidateSize();
       map.fitBounds(
-        leads.map((l) => [l.latitude, l.longitude] as [number, number]),
+        points,
         { padding: [40, 40], maxZoom: 16 }
       );
       // Re-measure once more after the view settles so the tile layer requests
@@ -159,6 +169,22 @@ function MapReady({ onMapReady }: { onMapReady?: (map: LeafletMap) => void }) {
       ro.disconnect();
     };
   }, [map, onMapReady]);
+  return null;
+}
+
+function FocusView({
+  focus,
+}: {
+  focus: { key: string; lat: number; lng: number; zoom?: number } | null;
+}) {
+  const map = useMap();
+  useEffect(() => {
+    if (!focus) return;
+    return whenSized(map, () => {
+      map.invalidateSize();
+      map.setView([focus.lat, focus.lng], focus.zoom ?? 12, { animate: false });
+    });
+  }, [focus, map]);
   return null;
 }
 
@@ -419,6 +445,14 @@ interface LeadMapProps {
   onDrawPoint?: (lat: number, lng: number) => void;
   /** Replaces the whole outline — a freehand trace, not a single vertex. */
   onDrawPath?: (path: [number, number][]) => void;
+  /** Persisted canvassing boundaries for the selected market. */
+  territories?: Territory[];
+  territoryLeadCounts?: Record<string, number>;
+  currentUserId?: string | null;
+  onSelectTerritoryLeads?: (territory: Territory) => void;
+  onEditTerritory?: (territory: Territory) => void;
+  /** One-time focus supplied by a storm-alert deep link. */
+  focus?: { key: string; lat: number; lng: number; zoom?: number } | null;
 }
 
 export default function LeadMap({
@@ -439,6 +473,12 @@ export default function LeadMap({
   drawPoints = [],
   onDrawPoint,
   onDrawPath,
+  territories = [],
+  territoryLeadCounts = {},
+  currentUserId = null,
+  onSelectTerritoryLeads,
+  onEditTerritory,
+  focus = null,
 }: LeadMapProps) {
   return (
     <MapContainer
@@ -457,12 +497,16 @@ export default function LeadMap({
         url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
       />
-      <FitBounds leads={leads} />
-      <MarketView marketId={marketId} center={marketCenter} hasLeads={leads.length > 0} loading={marketLoading} />
+      <FitBounds leads={focus ? [] : leads} territories={focus ? [] : territories} />
+      <MarketView
+        marketId={marketId}
+        center={focus ? null : marketCenter}
+        hasLeads={leads.length > 0}
+        loading={marketLoading}
+      />
+      <FocusView focus={focus} />
       <MapReady onMapReady={onMapReady} />
-      {onDrawPoint && onDrawPath && (
-        <DrawLayer drawing={drawing} points={drawPoints} onPoint={onDrawPoint} onPath={onDrawPath} />
-      )}
+      <Pane name="storm-data" style={{ zIndex: 350 }}>
       {/* Storm ZONES — the swath each storm cut, coloured by age.
           The zoomed-out planning view. One red ramp, fading with age, and the
           age written straight onto each zone in screen pixels — a label needs no
@@ -599,6 +643,68 @@ export default function LeadMap({
           </CircleMarker>
         );
       })}
+      </Pane>
+
+      {/* Saved territory ownership lives between weather and lead pins.
+          When storm zones are visible, outlines stay but fills drop away so
+          the two area encodings never turn into an unreadable colour blend. */}
+      <Pane name="saved-territories" style={{ zIndex: 380 }}>
+        {territories.map((territory) => {
+          const ownedByCurrentUser =
+            !!currentUserId && territory.owner_user_id === currentUserId;
+          const shownLeadCount = territoryLeadCounts[territory.id] ?? 0;
+          return (
+            <Polygon
+              key={territory.id}
+              positions={territory.boundary}
+              interactive={!drawing}
+              pathOptions={{
+                color: territory.color,
+                fillColor: territory.color,
+                fillOpacity: stormZones ? 0 : ownedByCurrentUser ? 0.14 : 0.08,
+                weight: ownedByCurrentUser ? 4 : 2,
+                opacity: 0.95,
+              }}
+            >
+              <Tooltip permanent direction="center" className="territory-label">
+                {territory.name}
+              </Tooltip>
+              <Popup>
+                <div className="min-w-[180px] space-y-1 text-sm">
+                  <p className="font-medium">{territory.name}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {territory.owner_name ?? 'Unassigned'} · {shownLeadCount} shown lead
+                    {shownLeadCount !== 1 ? 's' : ''}
+                  </p>
+                  <div className="flex flex-wrap gap-1 pt-1">
+                    {onSelectTerritoryLeads && (
+                      <Button
+                        size="sm"
+                        className="h-7 px-2 text-xs"
+                        onClick={() => onSelectTerritoryLeads(territory)}
+                      >
+                        Select leads
+                      </Button>
+                    )}
+                    {onEditTerritory && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 px-2 text-xs"
+                        onClick={() => onEditTerritory(territory)}
+                      >
+                        Edit
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </Popup>
+            </Polygon>
+          );
+        })}
+      </Pane>
+
+      <Pane name="lead-pins" style={{ zIndex: 420 }}>
       {leads.map((lead) => {
         const selected = selectedIds.has(lead.id);
         return (
@@ -720,6 +826,16 @@ export default function LeadMap({
           </CircleMarker>
         );
       })}
+      </Pane>
+
+      {/* The active draft is always the top vector layer. Keep DrawLayer's
+          carefully-tested pointer lifecycle untouched; the Pane only controls
+          visual stacking. */}
+      <Pane name="territory-draft" style={{ zIndex: 440 }}>
+        {onDrawPoint && onDrawPath && (
+          <DrawLayer drawing={drawing} points={drawPoints} onPoint={onDrawPoint} onPath={onDrawPath} />
+        )}
+      </Pane>
     </MapContainer>
   );
 }

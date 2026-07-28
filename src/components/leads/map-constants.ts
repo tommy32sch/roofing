@@ -19,6 +19,7 @@ export const STATUS_COLORS: Record<LeadStatus, string> = {
 
 export interface GeoLead {
   id: string;
+  market_id: number | null;
   first_name: string;
   last_name: string;
   latitude: number;
