@@ -526,7 +526,7 @@ at close, door-level zoom.
 - [x] Keep popup, territory, and storm interaction behavior unchanged
 - [x] Add pure regression coverage for zoom, selection, and knock-recency cases
 - [x] Run focused/full tests, TypeScript, lint, build, and diff checks
-- [ ] Deploy and visually verify a real lead over address-level basemap detail
+- [x] Deploy and visually verify a real lead over address-level basemap detail
 
 Pre-deployment review:
 - OSM address labels begin appearing at zoom 17 in the live Phoenix lead area.
@@ -536,3 +536,10 @@ Pre-deployment review:
 - Selected, do-not-knock, and DNC leads retain the existing 3px ring precedence.
 - Verification passed: 42 focused tests, 474 full tests, TypeScript, changed-file
   ESLint, production build, and `git diff --check`.
+
+Production review:
+- Vercel marked commit `f7c45c8` Ready in Production.
+- At zoom 17 in the live Phoenix lead area, 167 visible leads render as mostly
+  hollow status rings and the OSM house numbers remain readable through them.
+- Clicking the deployed Canvas still opened Terry Russell's lead card, including
+  the address, knock actions, selection control, and lead-detail link.
