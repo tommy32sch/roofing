@@ -407,7 +407,7 @@ marker details on hover and click.
 
 ### Verification and deployment
 - [x] Run focused tests, full tests, TypeScript, lint, build, and diff checks
-- [ ] Deploy production and send one controlled test email
+- [x] Deploy production and send one controlled test email
 - [x] Verify the live map and Settings test control
 
 Review:
@@ -427,8 +427,8 @@ Review:
   still opens normally.
 - The deployed Settings control made one test attempt to the signed-in admin.
   Resend rejected it before delivery because `RESEND_FROM_EMAIL` is not in a
-  valid `email@example.com` or `Name <email@example.com>` format. Correcting
-  that Vercel value and redeploying remain before end-to-end delivery can pass.
+  valid `email@example.com` or `Name <email@example.com>` format. The temporary
+  test-only mode below supersedes that production-sender attempt.
 
 ## Temporary Resend test-only mode
 
@@ -444,8 +444,8 @@ without implying that production team delivery works.
 - [x] Show a test-only Settings banner with an explicit recipient
 - [x] Update test-email copy so it confirms only the Resend connection
 - [x] Run focused and full verification
-- [ ] Deploy and confirm the test-only Settings banner
-- [ ] Send one controlled test and verify it in the Resend log
+- [x] Deploy and confirm the test-only Settings banner
+- [x] Send one controlled test and verify it in the Resend log
 
 Production email remains intentionally outstanding:
 
@@ -462,3 +462,14 @@ Verification before deployment:
 - Test mode coverage proves normal storm and appointment calls never reach
   Resend, while the connection test uses only the configured owner recipient
   and `Roof Leads <onboarding@resend.dev>`
+
+Rollout review:
+
+- Production commit `f271b8f` deployed successfully with
+  `RESEND_EMAIL_MODE=test` and `RESEND_TEST_EMAIL=tommy32sch@gmail.com`
+- The live Settings page shows “Email delivery is in test-only mode,” the fixed
+  recipient, and the warning that real storm and appointment email is disabled
+- One controlled Settings test returned success for `tommy32sch@gmail.com`
+- Resend recorded “Roof Leads Resend connection test” as opened
+- In-app storm alerts remain active; production email remains blocked until the
+  owned-domain steps above are completed
