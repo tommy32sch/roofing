@@ -118,3 +118,47 @@ shape rather than appending to it (17, not 21), Finish selected 615 leads and
 opened the assign bar, and panning works again after leaving draw mode.
 
 363 tests, typecheck and build pass. Lint unchanged at 1 pre-existing error.
+
+## Mobile freehand drawing (map) — fixed
+
+Freehand territory drawing worked with a mouse but not on touch: every finger
+drag committed a single corner vertex instead of tracing a lasso. Root-caused
+and implemented by Codex (gpt-5.6-sol, xhigh effort); reviewed and verified here.
+
+Three causes, not one:
+- `pointercancel` shared the `pointerup` handler, which treats a gesture that
+  never travelled 6px as a deliberate tap. On touch the browser claims the
+  gesture before that threshold and cancels the pointer — so every drag placed a
+  corner.
+- The container had no `touch-action: none`, which is what let the browser claim
+  it. Leaflet normally supplies this via `leaflet-touch-drag`, but
+  `map.dragging.disable()` removes that class — and draw mode disables dragging,
+  so the guard vanished exactly when it was needed.
+- The parent passes inline arrow callbacks, so every captured move re-rendered,
+  changed the effect's identities, and tore down + rebound the pointer listeners
+  MID-GESTURE, dropping pointer capture. This affected the mouse path too and had
+  gone unnoticed.
+
+Changes:
+- `draw.ts` — pure `classifyDrawGestureEnd(freehand, cancelled)`.
+- `LeadMap.tsx` — inline `touch-action: none` for the duration (restored after);
+  `pointercancel` split from `pointerup`, with a cancelled freehand preview
+  rolled back to the pre-gesture outline; `touchZoom` and Safari `tapHold`
+  disabled alongside dragging and each restored only if it had been enabled;
+  primary `pointerId` tracked so a second finger can't hijack a trace; listeners
+  held across rerenders behind a latest-props ref.
+- `draw.test.ts` — four simulated pointer sequences: drag commits a path, tap
+  commits one point, cancel before threshold commits nothing, cancel mid-drag
+  commits nothing.
+
+Verified: 394 tests, typecheck, eslint (unchanged at 1 pre-existing error), and a
+real Turbopack `npm run build` — Codex's sandbox had blocked the Google font
+fetch and could only compile via `--webpack`, so that was re-run here. Deployment
+confirmed by reading the served chunk on the live site: the map bundle now
+contains `touchAction` and `tapHold`, neither of which existed in the old code.
+**Confirmed working on the owner's phone** — that was the only real proof, since
+jsdom has no touch.
+
+Housekeeping: Codex wrote an `AGENTS.md` (its own conventions file) that was a
+byte-identical copy of `CLAUDE.md`. Replaced with a symlink so the two cannot
+drift.

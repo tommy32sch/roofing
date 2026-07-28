@@ -115,3 +115,33 @@
   - Never leave the user's browser signed in as a test account.
   - If a credential has to be minted for a test, revoke it in the same turn
     (here: bump `token_version`) and tell the user.
+
+## Touch: disabling Leaflet's drag removes the touch-action guard you depend on
+- **Correction:** owner reported freehand map drawing worked with a mouse but not
+  on mobile — "it still has the 4 corner points". Every finger drag committed a
+  single vertex instead of tracing. Diagnosed by Codex; I had two of the three
+  causes.
+- **Rules:**
+  - `pointercancel` is NOT `pointerup`. Never bind them to one handler. A cancel
+    is the browser taking the gesture away, not the user finishing it — it must
+    commit nothing, and any live preview already emitted has to be rolled back.
+  - The browser decides at **pointerdown** whether a gesture is a page scroll.
+    `e.preventDefault()` inside `pointermove` is too late; by then it has already
+    sent `pointercancel`. Set `touch-action: none` BEFORE the gesture starts.
+  - Leaflet supplies that guard through its `leaflet-touch-drag` class — and
+    `map.dragging.disable()` REMOVES the class. So any mode that disables
+    dragging (a lasso, a measure tool) deletes the touch-action guard exactly
+    when it needs it, and must set `touch-action: none` itself.
+  - Restore handlers conditionally. `map.dragging.enable()` in cleanup switches
+    on panning even if the caller had deliberately disabled it. Record
+    `.enabled()` first and re-enable only what you turned off. Same for
+    `touchZoom` and `tapHold`.
+  - Track the primary `pointerId` and ignore the rest, or a second finger
+    hijacks the trace mid-gesture.
+  - Inline arrow callbacks in a parent + those callbacks in a `useEffect` dep
+    array = listeners torn down and rebound **mid-gesture** (pointer capture goes
+    with them). Hold them in a latest-props ref and keep the effect keyed only on
+    what genuinely re-binds. This bug was live on desktop too and nobody saw it.
+  - jsdom has no touch. Unit-test the gesture DECISION as a pure function
+    (`classifyDrawGestureEnd`) and confirm on a real device — the owner's phone
+    was the only thing that actually proved this fixed.
