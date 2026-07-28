@@ -10,7 +10,15 @@
  */
 
 const RESEND_ENDPOINT = 'https://api.resend.com/emails';
+const RESEND_TEST_SENDER = 'Roof Leads <onboarding@resend.dev>';
 const TIMEOUT_MS = 10_000;
+
+export type EmailMode = 'disabled' | 'test' | 'production';
+
+export interface EmailCapability {
+  mode: EmailMode;
+  testRecipient: string | null;
+}
 
 export interface EmailAttachment {
   filename: string;
@@ -33,18 +41,88 @@ export type SendEmailResult =
   | { sent: true; id: string }
   | { sent: false; reason: 'not_configured' | 'no_recipient' | 'error'; detail?: string };
 
-/** True when both an API key and a verified From address are present. */
+/**
+ * Resolve email behavior explicitly so Resend's onboarding sender can never
+ * masquerade as production delivery.
+ *
+ * Missing, incomplete, and unknown modes fail closed. Production delivery must
+ * be opted into explicitly after its sender domain is verified.
+ */
+export function resolveEmailCapability(
+  env: Record<string, string | undefined>
+): EmailCapability {
+  const requestedMode = env.RESEND_EMAIL_MODE?.trim().toLowerCase();
+  const hasApiKey = Boolean(env.RESEND_API_KEY?.trim());
+
+  if (requestedMode === 'test') {
+    const testRecipient = env.RESEND_TEST_EMAIL?.trim() || null;
+    return hasApiKey && testRecipient
+      ? { mode: 'test', testRecipient }
+      : { mode: 'disabled', testRecipient: null };
+  }
+
+  if (requestedMode === 'disabled') {
+    return { mode: 'disabled', testRecipient: null };
+  }
+
+  if (requestedMode !== 'production') {
+    return { mode: 'disabled', testRecipient: null };
+  }
+
+  return hasApiKey && Boolean(env.RESEND_FROM_EMAIL?.trim())
+    ? { mode: 'production', testRecipient: null }
+    : { mode: 'disabled', testRecipient: null };
+}
+
+export function getEmailCapability(): EmailCapability {
+  return resolveEmailCapability(process.env);
+}
+
+/** True only when real recipients may be contacted. */
 export function isEmailConfigured(): boolean {
-  return Boolean(process.env.RESEND_API_KEY && process.env.RESEND_FROM_EMAIL);
+  return getEmailCapability().mode === 'production';
 }
 
 export async function sendEmail(input: SendEmailInput): Promise<SendEmailResult> {
+  if (!isEmailConfigured()) {
+    return { sent: false, reason: 'not_configured' };
+  }
+
   const apiKey = process.env.RESEND_API_KEY;
   const from = process.env.RESEND_FROM_EMAIL;
   if (!apiKey || !from) {
     return { sent: false, reason: 'not_configured' };
   }
 
+  return deliverEmail(input, apiKey, from);
+}
+
+/**
+ * Test-only delivery is intentionally separate from sendEmail: the recipient
+ * and Resend onboarding sender both come from trusted server configuration.
+ * Callers cannot turn this into an arbitrary email relay.
+ */
+export async function sendTestEmail(
+  input: Omit<SendEmailInput, 'to'>
+): Promise<SendEmailResult> {
+  const capability = getEmailCapability();
+  const apiKey = process.env.RESEND_API_KEY;
+  if (capability.mode !== 'test' || !capability.testRecipient || !apiKey) {
+    return { sent: false, reason: 'not_configured' };
+  }
+
+  return deliverEmail(
+    { ...input, to: capability.testRecipient },
+    apiKey,
+    RESEND_TEST_SENDER
+  );
+}
+
+async function deliverEmail(
+  input: SendEmailInput,
+  apiKey: string,
+  from: string
+): Promise<SendEmailResult> {
   const to = (Array.isArray(input.to) ? input.to : [input.to]).map((a) => a.trim()).filter(Boolean);
   if (to.length === 0) return { sent: false, reason: 'no_recipient' };
 

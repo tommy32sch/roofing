@@ -20,6 +20,8 @@ describe('storm alert route contracts and access control', () => {
       'last_error',
       'subscriptions',
       'email_configured',
+      'email_mode',
+      'test_email_recipient',
     ]) expect(source).toContain(field);
   });
 

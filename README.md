@@ -128,6 +128,8 @@ Optional integrations:
 | `UPSTASH_REDIS_REST_URL` | Durable, shared rate limiting |
 | `UPSTASH_REDIS_REST_TOKEN` | Upstash authentication |
 | `RESEND_API_KEY` | Appointment and subscribed storm-alert email |
+| `RESEND_EMAIL_MODE` | `disabled`, `test`, or `production` email capability |
+| `RESEND_TEST_EMAIL` | Fixed Resend account-owner recipient used only in test mode |
 | `RESEND_FROM_EMAIL` | Verified sender identity |
 | `RESEND_REPLY_TO` | Homeowner reply destination |
 | `APP_TIME_ZONE` | Human-readable appointment timezone |
@@ -246,5 +248,11 @@ The job refreshes NOAA's current preliminary daily hail and wind reports plus
 the previous two days, then groups qualifying points into one event per market,
 storm type, and report date. Applying the migration alone cannot send anything:
 every market rule starts disabled and recipients must be explicitly selected in
-Admin Settings. `RESEND_API_KEY` and `RESEND_FROM_EMAIL` are needed only for
-email delivery; persisted in-app alerts continue to work without them.
+Admin Settings. Persisted in-app alerts continue to work in every email mode.
+
+This deployment can use `RESEND_EMAIL_MODE=test` with `RESEND_TEST_EMAIL` set to
+the Resend account owner. Test mode sends only the Settings connection check,
+using `Roof Leads <onboarding@resend.dev>`; normal storm and appointment emails
+remain blocked. To enable production delivery, verify a domain the company
+owns, replace `RESEND_FROM_EMAIL` with an address on that verified domain, and
+switch `RESEND_EMAIL_MODE` to `production`.

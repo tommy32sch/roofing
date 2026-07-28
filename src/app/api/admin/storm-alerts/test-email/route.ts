@@ -1,6 +1,10 @@
 import { NextResponse } from 'next/server';
 import { getAuthenticatedAdmin } from '@/lib/auth/jwt';
-import { sendEmail } from '@/lib/integrations/email';
+import {
+  getEmailCapability,
+  sendEmail,
+  sendTestEmail,
+} from '@/lib/integrations/email';
 import { checkConfiguredRateLimit } from '@/lib/utils/rate-limit';
 
 const TEST_EMAIL_LIMIT = {
@@ -18,6 +22,14 @@ export async function POST() {
     return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
   }
 
+  const capability = getEmailCapability();
+  if (capability.mode === 'disabled') {
+    return NextResponse.json(
+      { success: false, error: 'Email delivery is not configured' },
+      { status: 503 }
+    );
+  }
+
   const rateLimit = await checkConfiguredRateLimit(
     admin.sub,
     TEST_EMAIL_LIMIT.prefix,
@@ -31,26 +43,46 @@ export async function POST() {
     );
   }
 
-  const result = await sendEmail({
-    to: admin.email,
-    subject: 'Roof Leads storm alerts are ready',
+  const message = {
+    subject: capability.mode === 'test'
+      ? 'Roof Leads Resend connection test'
+      : 'Roof Leads email delivery test',
     text: [
       'This is a test from Roof Leads.',
       '',
-      'Resend accepted this message, so production storm-alert email delivery is configured correctly.',
-      'No storm event was created and no other team member was notified.',
-    ].join('\n'),
+      capability.mode === 'test'
+        ? 'This confirms only that Roof Leads can connect to Resend in test-only mode.'
+        : 'This confirms that Roof Leads can connect to Resend using its production sender.',
+      capability.mode === 'test'
+        ? 'Storm and appointment emails to team members and homeowners remain disabled until an owned domain is verified.'
+        : 'No storm event was created and no other team member was notified.',
+    ].filter(Boolean).join('\n'),
     html: `
       <div style="font-family:Arial,sans-serif;line-height:1.5;color:#111827">
-        <h2 style="margin:0 0 12px">Roof Leads storm alerts are ready</h2>
+        <h2 style="margin:0 0 12px">Roof Leads Resend connection test</h2>
         <p>This is a test from Roof Leads.</p>
-        <p>Resend accepted this message, so production storm-alert email delivery is configured correctly.</p>
+        <p>
+          ${capability.mode === 'test'
+            ? 'This confirms only that Roof Leads can connect to Resend in test-only mode.'
+            : 'This confirms that Roof Leads can connect to Resend using its production sender.'}
+        </p>
         <p style="color:#6b7280;font-size:13px">
-          No storm event was created and no other team member was notified.
+          ${capability.mode === 'test'
+            ? 'Storm and appointment emails to team members and homeowners remain disabled until an owned domain is verified.'
+            : 'No storm event was created and no other team member was notified.'}
         </p>
       </div>
     `,
-  });
+  };
+  const result = capability.mode === 'test'
+    ? await sendTestEmail(message)
+    : await sendEmail({
+      ...message,
+      to: admin.email,
+    });
+  const recipient = capability.mode === 'test'
+    ? capability.testRecipient
+    : admin.email;
 
   if (!result.sent) {
     const error = result.reason === 'not_configured'
@@ -64,6 +96,6 @@ export async function POST() {
 
   return NextResponse.json({
     success: true,
-    to: admin.email,
+    to: recipient,
   });
 }

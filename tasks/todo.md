@@ -395,7 +395,7 @@ marker details on hover and click.
 
 ### Test email
 - [x] Add an authenticated, admin-only, rate-limited test-email endpoint
-- [x] Send only to the signed-in admin and return provider errors safely
+- [x] Send only to the configured safe recipient and return provider errors safely
 - [x] Add a Settings button with pending, success, and failure feedback
 - [x] Cover authentication, authorization, rate limiting, and provider results
 
@@ -403,12 +403,12 @@ marker details on hover and click.
 - [x] Reproduce the production failure and identify the blocking canvas layer
 - [x] Put interactive vector layers on one shared canvas in explicit hit order
 - [x] Add hover details with size/speed and report date
-- [ ] Verify marker hover/click while leads and territories remain interactive
+- [x] Verify marker hover/click while leads and territories remain interactive
 
 ### Verification and deployment
 - [x] Run focused tests, full tests, TypeScript, lint, build, and diff checks
 - [ ] Deploy production and send one controlled test email
-- [ ] Verify the live map and Settings test control
+- [x] Verify the live map and Settings test control
 
 Review:
 - Root cause confirmed in production: `preferCanvas` created separate full-map
@@ -418,8 +418,47 @@ Review:
   deliberate draw/hit order: zones, territory fills, storm points, lead pins,
   then the active draft. Storm points have both hover Tooltips and click
   Popups containing size/speed and date.
-- The new test endpoint is admin-only, sends solely to the signed-in admin, and
-  permits three attempts per user per hour. It creates no storm event and
-  contacts no configured subscribers.
+- The new test endpoint is admin-only, permits three attempts per user per hour,
+  creates no storm event, and contacts no configured storm subscriber.
 - Pre-deploy verification: 455 tests, TypeScript, changed-file ESLint,
   production Turbopack build, and `git diff --check` pass.
+- Production commit `a41ce62` deployed successfully. The live map has one shared
+  canvas; the wind marker's hover and click details both work, and a lead pin
+  still opens normally.
+- The deployed Settings control made one test attempt to the signed-in admin.
+  Resend rejected it before delivery because `RESEND_FROM_EMAIL` is not in a
+  valid `email@example.com` or `Name <email@example.com>` format. Correcting
+  that Vercel value and redeploying remain before end-to-end delivery can pass.
+
+## Temporary Resend test-only mode
+
+Goal: use Resend's free onboarding sender for a controlled connection test
+without implying that production team delivery works.
+
+- [x] Add `RESEND_EMAIL_MODE=test` and the account-owner test recipient to
+  Vercel Production
+- [x] Add explicit disabled, test, and production capability resolution
+- [x] Enforce the configured test recipient and Resend onboarding sender
+- [x] Block normal storm and appointment delivery in test mode
+- [x] Expose the mode and test recipient through the Settings API
+- [x] Show a test-only Settings banner with an explicit recipient
+- [x] Update test-email copy so it confirms only the Resend connection
+- [x] Run focused and full verification
+- [ ] Deploy and confirm the test-only Settings banner
+- [ ] Send one controlled test and verify it in the Resend log
+
+Production email remains intentionally outstanding:
+
+- Verify a sending domain owned by the company in Resend
+- Replace `RESEND_FROM_EMAIL` with an address on that verified domain
+- Change `RESEND_EMAIL_MODE` from `test` to `production`
+- Re-test storm and appointment delivery to real recipients
+
+Verification before deployment:
+
+- 15 focused email/settings contract tests and 463 full tests pass
+- TypeScript and changed-file ESLint pass
+- The production Turbopack build and `git diff --check` pass
+- Test mode coverage proves normal storm and appointment calls never reach
+  Resend, while the connection test uses only the configured owner recipient
+  and `Roof Leads <onboarding@resend.dev>`

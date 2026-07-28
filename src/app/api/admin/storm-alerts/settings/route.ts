@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthenticatedAdmin } from '@/lib/auth/jwt';
-import { isEmailConfigured } from '@/lib/integrations/email';
+import { getEmailCapability } from '@/lib/integrations/email';
 import { db } from '@/lib/supabase/server';
 import { isValidUUID } from '@/lib/utils/validation';
 import {
@@ -51,10 +51,15 @@ export async function GET() {
       users ?? [],
       health
     );
+    const emailCapability = getEmailCapability();
     return NextResponse.json({
       success: true,
       rules: responseRules,
-      email_configured: isEmailConfigured(),
+      email_configured: emailCapability.mode === 'production',
+      email_mode: emailCapability.mode,
+      test_email_recipient: emailCapability.mode === 'test'
+        ? emailCapability.testRecipient
+        : null,
     });
   } catch {
     return NextResponse.json({ success: false, error: 'Internal server error' }, { status: 500 });

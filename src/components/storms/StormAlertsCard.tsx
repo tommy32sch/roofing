@@ -39,10 +39,14 @@ interface AlertUser {
   market_id: number | null;
 }
 
+type EmailMode = 'disabled' | 'test' | 'production';
+
 export function StormAlertsCard() {
   const [rules, setRules] = useState<StormAlertRule[]>([]);
   const [users, setUsers] = useState<AlertUser[]>([]);
   const [emailConfigured, setEmailConfigured] = useState(false);
+  const [emailMode, setEmailMode] = useState<EmailMode>('disabled');
+  const [testEmailRecipient, setTestEmailRecipient] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [savingMarketId, setSavingMarketId] = useState<number | null>(null);
   const [testingEmail, setTestingEmail] = useState(false);
@@ -73,6 +77,16 @@ export function StormAlertsCard() {
           }))
         );
         setEmailConfigured(settingsData.email_configured === true);
+        setEmailMode(
+          settingsData.email_mode === 'test' || settingsData.email_mode === 'production'
+            ? settingsData.email_mode
+            : 'disabled'
+        );
+        setTestEmailRecipient(
+          typeof settingsData.test_email_recipient === 'string'
+            ? settingsData.test_email_recipient
+            : null
+        );
         if (usersData.success) setUsers(usersData.users ?? []);
       })
       .catch(() => setUnavailable(true))
@@ -184,16 +198,23 @@ export function StormAlertsCard() {
         {!loading && !unavailable && (
           <>
             <Alert>
-              {emailConfigured ? <CheckCircle2 /> : <Mail />}
+              {emailConfigured ? <CheckCircle2 /> : emailMode === 'test' ? <Mail /> : <AlertTriangle />}
               <AlertTitle>
-                {emailConfigured ? 'Email delivery is configured' : 'Email delivery is not configured'}
+                {emailConfigured
+                  ? 'Email delivery is configured'
+                  : emailMode === 'test'
+                    ? 'Email delivery is in test-only mode'
+                    : 'Email delivery is not configured'}
               </AlertTitle>
               <AlertDescription className="flex flex-col items-start gap-2">
                 <span>
-                  In-app alerts are persisted either way. Email requires both RESEND_API_KEY and
-                  RESEND_FROM_EMAIL.
+                  {emailMode === 'test'
+                    ? `Only Resend connection tests can be sent to ${testEmailRecipient}. Real storm and appointment emails remain disabled until an owned sending domain is verified.`
+                    : emailConfigured
+                      ? 'In-app alerts and production email delivery are enabled.'
+                      : 'In-app alerts are persisted either way. Email requires Resend configuration and a verified sending domain.'}
                 </span>
-                {emailConfigured && (
+                {emailMode !== 'disabled' && (
                   <Button
                     type="button"
                     size="sm"
@@ -201,7 +222,11 @@ export function StormAlertsCard() {
                     onClick={sendTestEmail}
                     disabled={testingEmail}
                   >
-                    {testingEmail ? 'Sending test...' : 'Send test email to me'}
+                    {testingEmail
+                      ? 'Sending test...'
+                      : emailMode === 'test'
+                        ? `Send test to ${testEmailRecipient}`
+                        : 'Send test email to me'}
                   </Button>
                 )}
                 {testEmailResult && (
