@@ -60,3 +60,22 @@
 - **Rate Limiting**: Upstash Redis
 - **CSV Parsing**: PapaParse
 - **Phone Normalization**: libphonenumber-js
+
+## Working Style
+
+- Keep responses focused and concise.
+- Understand the larger goal and why the task matters before acting.
+- Complete the task at the requested scope.
+- Make routine decisions without asking me.
+- Ask only when:
+  - an action is destructive or irreversible,
+  - the scope would materially change,
+  - or information only I can provide is required.
+- Mention a better approach briefly, but continue with the requested task.
+- Do not add unnecessary verification or double-checking steps.
+- Use subagents only for large, genuinely independent tasks that can run in parallel.
+- Do not use subagents for simple work or only to verify your own work.
+- Before using tools, briefly state what you are doing.
+- Give progress updates only when something important is found or the approach changes.
+- When finished, lead with the result.
+- Only announce corrections when they would change my code, conclusions, or decisions.
