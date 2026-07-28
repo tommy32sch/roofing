@@ -337,3 +337,32 @@ Review:
   `CRON_SECRET` to production Vercel and confirmed the free plan, so the schedule
   was changed to once daily. Resend configuration is still unconfirmed; no
   external email was performed.
+
+## Restore map boundary assignment
+
+Regression: adding persistent saved territories replaced the original temporary
+boundary-selection workflow. In “All Markets,” New Territory is correctly
+disabled because saved territories are market-scoped, but that left no way to
+draw around leads and send them into the existing bulk-assignment bar.
+
+- [x] Separate drawing intent into temporary lead selection vs saved territory
+- [x] Restore Draw Area wherever mapped leads match the current filters
+- [x] Keep New Territory constrained to one selected market
+- [x] Restore the original Finish → select leads → Assign workflow
+- [x] Add regression coverage for All Markets and empty-market behavior
+- [x] Run focused/full tests, TypeScript, lint, build, and diff checks
+- [ ] Deploy and verify the production control state
+
+Review:
+- Root cause: the persistent territory action inherited the original drawing
+  button's position but not its purpose. Because saved territories require one
+  market, “All Markets” disabled the only remaining drawing entry point.
+- The map now exposes two explicit actions. Draw Area selects filtered leads
+  inside a temporary polygon and opens the existing assignment workflow; New
+  Territory saves a reusable market-scoped boundary.
+- Their prerequisites deliberately differ: Draw Area needs mapped leads but can
+  work across All Markets; New Territory needs one market but can be drawn
+  before that office has any leads.
+- Verification before deploy: 53 focused drawing/territory tests, 447 full
+  tests, TypeScript, changed-file ESLint, `git diff --check`, and a production
+  Turbopack build pass.

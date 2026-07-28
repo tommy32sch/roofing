@@ -1,5 +1,22 @@
 # Lessons
 
+## New persistent workflows must preserve the transient workflow they extend
+- **Correction:** saved territories replaced the map's existing “Draw area”
+  lead-selection action. Territory creation requires one concrete market, so
+  the replacement button was grey in “All Markets” and admins could no longer
+  draw a temporary boundary just to assign leads.
+- **Rules:**
+  - When adding persistence to an existing gesture, keep the original transient
+    action unless the owner explicitly agrees to replace it.
+  - Different outcomes need explicit intent state. A shared drawing surface can
+    support `selection` and `territory`, but `Finish` must branch on the chosen
+    intent rather than silently changing what the gesture means.
+  - Encode each action's prerequisites separately: temporary selection needs
+    shown leads; a saved territory needs one market and may be created before
+    that market has leads.
+  - Add a regression test for the exact cross-product that broke: in “All
+    Markets” with leads, Draw Area is enabled while New Territory is disabled.
+
 ## Deploy verification: middleware makes 401 probes meaningless
 - **Mistake:** verified Vercel deploys by probing a new-only API route and treating
   401 as "route exists in new build". But `src/middleware.ts` matches
