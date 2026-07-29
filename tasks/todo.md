@@ -543,3 +543,48 @@ Production review:
   hollow status rings and the OSM house numbers remain readable through them.
 - Clicking the deployed Canvas still opened Terry Russell's lead card, including
   the address, knock actions, selection control, and lead-detail link.
+
+## Appointment reminders
+
+Goal: cut no-shows. A booked appointment nobody turns up to costs a closer a
+round trip and cools the lead. Reps first; homeowner reminders ship in the same
+release but stay switched off until the owner enables them.
+
+Design decisions:
+- ONE daily cron. Vercel Hobby only permits daily schedules, so the job runs at
+  14:00 UTC — 07:00 in Phoenix, 09:00 in Minneapolis — and sends BOTH the
+  day-before notice (appointments tomorrow, market-local) and the morning-of
+  notice (appointments later today). No sub-hourly precision is attempted.
+- Timezone comes from a new `markets.timezone` column, not inferred from the
+  state code — Arizona has no DST and Minnesota does, and a state code stops
+  working the moment a market opens in a split-timezone state.
+- Dedupe key includes the appointment's scheduled_at, so rescheduling an
+  appointment correctly re-arms its reminders instead of being suppressed as
+  already-sent.
+- Delivery uses the existing `sendEmail`, which fails closed unless
+  RESEND_EMAIL_MODE=production. Reminders therefore send nothing until email is
+  taken out of test mode — same posture as storm alerts.
+
+- [x] Migration 021: markets.timezone, reminder settings, delivery ledger
+- [x] Pure scheduling logic + tests (which reminders are due, market-local)
+- [x] Reminder email builder + tests
+- [x] Cron route with auth + lock, mirroring the storm-alert job
+- [x] vercel.json schedule
+- [x] Verify end to end against the live DB
+
+Verified end to end against the live database (two temporary appointments,
+created and removed afterwards):
+- Unauthenticated 401; authorized run 200.
+- The appointment ~4h out queued `morning_of`; the one ~28h out queued
+  `day_before`. Both correct in Phoenix local time.
+- Recipient was the rep (`csimmons@mytacheny.com`). NO homeowner row was created
+  even though that lead has an email on file — `notify_homeowners` defaults
+  false, which is the consent gate working.
+- Re-running queued 0 and skipped 2: idempotent, as the unique dedupe_key
+  intends.
+- Rescheduling one appointment retired its stale reminder as
+  `skipped — appointment changed` and armed a fresh one at the new time. Nobody
+  is told the wrong hour.
+- Delivery reported `not_configured` rather than failing: `sendEmail` fails
+  closed, so reminders queue but send nothing until Resend leaves test mode.
+- 519 tests, typecheck, lint (unchanged at the 1 pre-existing error), build.
