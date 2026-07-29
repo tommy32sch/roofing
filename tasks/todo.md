@@ -765,3 +765,67 @@ Production review:
   uncommitted, so none of it had reached the live site.
 - `/api/admin/contact-activity` returns 401 unauthenticated on
   roofing-ebon.vercel.app, confirming the new route deployed and is auth-gated.
+
+## Per-rep performance analytics
+
+Goal: measure setters and closers on the work each of them actually does, ahead
+of rollout. Deepens Performance rather than adding rep numbers to Analytics —
+Analytics stays customer demographics, and a third surface showing rep figures
+would eventually disagree with the other two.
+
+Blocking finding, recorded before building: `assigned_setter_id` and
+`assigned_closer_id` were NULL on all 616 leads, there were 0 sold deals, and
+`lead_appointments` had no outcome column — so three of the four requested metric
+families had nothing to compute and no-show rate was impossible. The assignment
+wiring itself is sound (bulk-assign and the lead detail dropdowns both write the
+columns Performance reads), so the numbers populate as soon as leads are
+assigned at rollout.
+
+- [x] Migration 024: appointment outcome, outcome_at, outcome_by
+- [x] Outcome recording on the appointment PATCH route, with authorization
+- [x] Pure metrics module covering activity, funnel, revenue, follow-through
+- [x] Leaderboard with per-rep trend on expand
+- [x] Period selector using device-local boundaries
+- [x] Verify against seeded data, then restore the database
+
+Deliberate choices:
+- Every rate returns null, rendered as an em dash, when its denominator is
+  empty. "No data yet" and "zero percent" are different facts, and rendering
+  them identically makes a brand-new rep look like the worst on the board.
+- Close rate divides by appointments actually RUN, not by assigned leads —
+  dividing by assignments punishes a closer for leads that never reached an
+  appointment, which is the setter's half of the job.
+- No-show rate excludes cancellations from the denominator. A homeowner who
+  calls ahead is a different event from one who leaves a closer on a doorstep,
+  and including them would let a rep improve the rate by cancelling anything
+  they expected to lose.
+- Activity is attributed to whoever DID it, not to the lead's assignee, so a rep
+  covering someone else's territory is credited rather than invisible.
+- Time-to-first-knock searches all time, not the window. Windowing it would
+  report the first knock inside the window as if it were the first ever.
+- Trend weeks with no activity are emitted as zeros. A closed-up gap in a chart
+  implies continuous work that did not happen.
+- Only an admin may overwrite an outcome someone else recorded; a rep can set
+  and correct their own. An outcome is a judgement about their own work.
+
+Verification, against seeded data then reverted:
+- API returned knocks 5, calls 3, setter leads 4, appts set 3, set rate 75%,
+  close rate 50%, revenue $18,500, avg deal $18,500, rev/appt $9,250,
+  appts booked 4, completed 2, no-shows 1, no-show rate 33%, lead→1st knock 8d.
+  Every figure matched hand calculation.
+- No-show rate came out 33% (1 of 3 decided) rather than 25% (1 of 4), proving
+  cancellations are excluded.
+- A window in the far past zeroed activity and returned a null no-show rate
+  rather than 0%.
+- Trend returned 12 weeks with 11 emitted as explicit zeros.
+- Signed in as a setter, only that rep's row was returned — role scoping is
+  server-side.
+- UI: leaderboard row, expanded detail grid and three sparklines all rendered.
+- Database restored to its exact prior state afterwards: 0 assignments, 0 sold,
+  4 knocks, 3 appointments.
+- 686 tests, typecheck, lint unchanged at the 1 pre-existing error, build.
+
+Also fixed: migration 023 was used twice — Codex added `023_contact_results.sql`
+while this session was away and mine collided. Renamed to
+`024_appointment_outcomes.sql` and regenerated `schema.sql`. The live database
+was unaffected; only the file ordering was wrong.
