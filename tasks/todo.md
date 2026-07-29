@@ -699,7 +699,11 @@ Review:
   Turbopack build.
 - Migration 023 is live in Supabase. Read-only table/field checks succeeded,
   and both result RPCs accepted their new types against a nonexistent lead
-  without creating test rows. These application changes have not been deployed.
+  without creating test rows.
+- Vercel deployed application commit `de958ee` to Production and reported
+  Ready. The production app responded normally and enforced its signed-in map
+  redirect; the authenticated map controls were not exercised against real
+  leads during this rollout.
 
 ## Future: complete offline operation
 
