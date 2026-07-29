@@ -27,6 +27,7 @@ import {
   CalendarClock,
   PhoneOff,
   Navigation,
+  DoorOpen,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatDistanceToNow, format } from 'date-fns';
@@ -66,6 +67,8 @@ import { FollowUpMenu } from '@/components/leads/FollowUpMenu';
 import { AppointmentConflictWarning } from '@/components/leads/AppointmentConflictWarning';
 import type { AppointmentConflict } from '@/lib/leads/appointment-conflicts';
 import { isMachineAttribution } from '@/lib/leads/attribution';
+import { knockLabel } from '@/lib/leads/knocks';
+import { callLabel } from '@/lib/leads/calls';
 
 const SETTER_ALLOWED_STATUSES = new Set(['new', 'contacted', 'appointment_set', 'lost']);
 const CLOSER_ALLOWED_STATUSES = new Set(['sold', 'lost']);
@@ -399,6 +402,25 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
     .filter(Boolean)
     .join(', ');
 
+  const contactHistory = [
+    ...(lead.lead_knocks ?? []).map((knock) => ({
+      key: `knock-${knock.id}`,
+      channel: 'knock' as const,
+      label: knockLabel(knock.disposition),
+      occurredAt: knock.knocked_at,
+      notes: knock.notes,
+      accountName: knock.admin_users?.name ?? null,
+    })),
+    ...(lead.lead_calls ?? []).map((call) => ({
+      key: `call-${call.id}`,
+      channel: 'cold_call' as const,
+      label: callLabel(call.disposition),
+      occurredAt: call.called_at,
+      notes: call.notes,
+      accountName: call.admin_users?.name ?? null,
+    })),
+  ].sort((a, b) => Date.parse(b.occurredAt) - Date.parse(a.occurredAt));
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -673,6 +695,106 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
                   {lead.last_sale_date && <div><span className="text-muted-foreground">Last sold:</span> {lead.last_sale_date}</div>}
                   {lead.last_sale_price && <div><span className="text-muted-foreground">Sale price:</span> ${Number(lead.last_sale_price).toLocaleString()}</div>}
                 </div>
+              </CardContent>
+            </Card>
+
+            {/* Structured contact results. Kept in Overview so a manager does
+                not have to infer real knocks/calls from generic activity rows. */}
+            <Card className="md:col-span-2">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-medium text-muted-foreground">
+                  Contact Activity
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="rounded-lg border p-3">
+                    <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      <DoorOpen className="h-3.5 w-3.5" />
+                      Door Knocks
+                    </div>
+                    <p className="mt-1 text-2xl font-semibold tabular-nums">
+                      {lead.knock_count.toLocaleString()}
+                    </p>
+                    {lead.lead_knocks?.[0] ? (
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Last: {knockLabel(lead.lead_knocks[0].disposition)} ·{' '}
+                        {formatDistanceToNow(new Date(lead.lead_knocks[0].knocked_at), {
+                          addSuffix: true,
+                        })}
+                        {lead.lead_knocks[0].admin_users?.name
+                          ? ` · ${lead.lead_knocks[0].admin_users.name}`
+                          : ''}
+                      </p>
+                    ) : (
+                      <p className="mt-1 text-xs text-muted-foreground">No knocks recorded</p>
+                    )}
+                  </div>
+
+                  <div className="rounded-lg border p-3">
+                    <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      <PhoneCall className="h-3.5 w-3.5" />
+                      Cold Calls
+                    </div>
+                    <p className="mt-1 text-2xl font-semibold tabular-nums">
+                      {lead.call_count.toLocaleString()}
+                    </p>
+                    {lead.lead_calls?.[0] ? (
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Last: {callLabel(lead.lead_calls[0].disposition)} ·{' '}
+                        {formatDistanceToNow(new Date(lead.lead_calls[0].called_at), {
+                          addSuffix: true,
+                        })}
+                        {lead.lead_calls[0].admin_users?.name
+                          ? ` · ${lead.lead_calls[0].admin_users.name}`
+                          : ''}
+                      </p>
+                    ) : (
+                      <p className="mt-1 text-xs text-muted-foreground">No cold calls recorded</p>
+                    )}
+                  </div>
+                </div>
+
+                {contactHistory.length > 0 ? (
+                  <div>
+                    <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      Full History
+                    </p>
+                    <div className="max-h-80 divide-y overflow-y-auto pr-1">
+                      {contactHistory.map((event) => {
+                        const Icon = event.channel === 'knock' ? DoorOpen : PhoneCall;
+                        return (
+                          <div key={event.key} className="flex gap-3 py-3">
+                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted">
+                              <Icon className="h-4 w-4 text-muted-foreground" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+                                <p className="text-sm font-medium">
+                                  {event.channel === 'knock' ? 'Door knock' : 'Cold call'} ·{' '}
+                                  {event.label}
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                  {event.accountName ? `${event.accountName} · ` : ''}
+                                  {format(new Date(event.occurredAt), 'MMM d, yyyy · h:mm a')}
+                                </p>
+                              </div>
+                              {event.notes && (
+                                <p className="mt-0.5 text-sm text-muted-foreground">
+                                  {event.notes}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    No door knocks or cold calls have been recorded for this lead.
+                  </p>
+                )}
               </CardContent>
             </Card>
 

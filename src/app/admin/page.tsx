@@ -2,19 +2,49 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
-import { Users, TrendingUp, Flame, CalendarDays, ArrowRight, RefreshCw, DollarSign } from 'lucide-react';
-import { formatDistanceToNow } from 'date-fns';
+import {
+  Users,
+  TrendingUp,
+  Flame,
+  CalendarDays,
+  ArrowRight,
+  RefreshCw,
+  DollarSign,
+  DoorOpen,
+  PhoneCall,
+  AlertCircle,
+} from 'lucide-react';
+import { format, formatDistanceToNow } from 'date-fns';
 import { formatAddress } from '@/lib/utils/format';
 import { LeadStatusBadge } from '@/components/leads/lead-status-badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { DuplicateReviewPanel } from '@/components/leads/DuplicateReviewPanel';
-import type { DashboardStats, LeadStatus, UserRole } from '@/types';
+import type {
+  ContactActivitySummary,
+  DashboardStats,
+  LeadStatus,
+  UserRole,
+} from '@/types';
 import { PageHeader } from '@/components/layout/page-header';
 import { MarketFilter } from '@/components/markets/market-filter';
 import { useMarkets, ALL_MARKETS } from '@/components/markets/use-markets';
+import {
+  defaultContactActivityScope,
+  localContactActivityBounds,
+  type ContactActivityPeriod,
+} from '@/lib/leads/contact-activity';
+import { knockLabel } from '@/lib/leads/knocks';
+import { callLabel } from '@/lib/leads/calls';
 
 const STATUS_COLORS: Record<LeadStatus, string> = {
   new: 'bg-pipeline-new text-white',
@@ -36,12 +66,30 @@ const STATUS_LABELS: Record<LeadStatus, string> = {
   lost: 'Lost',
 };
 
+const CONTACT_PERIODS: { value: ContactActivityPeriod; label: string }[] = [
+  { value: 'today', label: 'Today' },
+  { value: 'week', label: 'Week' },
+  { value: 'month', label: 'Month' },
+];
+
+interface DashboardIdentity {
+  id: string;
+  name: string;
+  role: UserRole;
+}
+
 export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
-  const [userRole, setUserRole] = useState<UserRole>('admin');
+  const [identity, setIdentity] = useState<DashboardIdentity | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [contactPeriod, setContactPeriod] = useState<ContactActivityPeriod>('today');
+  const [contactUser, setContactUser] = useState('me');
+  const [contactUsers, setContactUsers] = useState<{ id: string; name: string }[]>([]);
+  const [contactActivity, setContactActivity] = useState<ContactActivitySummary | null>(null);
+  const [contactLoading, setContactLoading] = useState(true);
+  const [contactError, setContactError] = useState('');
 
   const { markets, homeMarketId, loading: marketsLoading } = useMarkets();
   const [market, setMarket] = useState('');
@@ -70,18 +118,90 @@ export default function DashboardPage() {
 
   useEffect(() => {
     fetchStats();
-
-    fetch('/api/admin/auth/me')
-      .then(r => r.json())
-      .then(d => { if (d.success) setUserRole(d.admin.role); })
-      .catch(() => {});
   }, [fetchStats]);
 
   useEffect(() => {
-    function onFocus() { fetchStats(true); }
+    fetch('/api/admin/auth/me')
+      .then(r => r.json())
+      .then(d => {
+        if (!d.success) {
+          setContactError('Failed to load account information');
+          setContactLoading(false);
+          return;
+        }
+        const nextIdentity: DashboardIdentity = {
+          id: d.admin.id,
+          name: d.admin.name,
+          role: d.admin.role,
+        };
+        setIdentity(nextIdentity);
+        setContactUser(defaultContactActivityScope(nextIdentity.role));
+      })
+      .catch(() => {
+        setContactError('Failed to load account information');
+        setContactLoading(false);
+      });
+  }, []);
+
+  useEffect(() => {
+    if (identity?.role !== 'admin') return;
+    fetch('/api/admin/users')
+      .then(r => r.json())
+      .then(d => {
+        if (d.success) {
+          setContactUsers(
+            (d.users ?? []).map((user: { id: string; name: string }) => ({
+              id: user.id,
+              name: user.name,
+            }))
+          );
+        }
+      })
+      .catch(() => {});
+  }, [identity?.role]);
+
+  const fetchContactActivity = useCallback(async () => {
+    if (!identity) return;
+    setContactLoading(true);
+    setContactError('');
+    try {
+      const bounds = localContactActivityBounds(contactPeriod);
+      const params = new URLSearchParams({
+        period: contactPeriod,
+        start: bounds.start,
+        end: bounds.end,
+        user_id: identity.role === 'admin' ? contactUser : 'me',
+      });
+      if (market) params.set('market_id', market);
+
+      const res = await fetch(`/api/admin/contact-activity?${params}`);
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to load contact activity');
+      }
+      setContactActivity(data.activity);
+    } catch (error) {
+      setContactActivity(null);
+      setContactError(
+        error instanceof Error ? error.message : 'Failed to load contact activity'
+      );
+    } finally {
+      setContactLoading(false);
+    }
+  }, [contactPeriod, contactUser, identity, market]);
+
+  useEffect(() => {
+    fetchContactActivity();
+  }, [fetchContactActivity]);
+
+  useEffect(() => {
+    function onFocus() {
+      fetchStats(true);
+      fetchContactActivity();
+    }
     window.addEventListener('focus', onFocus);
     return () => window.removeEventListener('focus', onFocus);
-  }, [fetchStats]);
+  }, [fetchContactActivity, fetchStats]);
 
   if (loading) {
     // Mirrors the real layout — same header, four stat cards, pipeline strip and
@@ -115,6 +235,15 @@ export default function DashboardPage() {
     );
   }
 
+  const contactUserLabel =
+    contactUser === 'all'
+      ? 'All Team'
+      : contactUser === 'me'
+        ? identity?.name || 'My Activity'
+        : contactUsers.find((user) => user.id === contactUser)?.name || 'Account';
+  const contactPeriodLabel =
+    CONTACT_PERIODS.find((period) => period.value === contactPeriod)?.label ?? 'Today';
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -125,7 +254,15 @@ export default function DashboardPage() {
             {!marketsLoading && (
               <MarketFilter markets={markets} value={marketValue} onChange={setMarket} className="w-[150px]" />
             )}
-            <Button variant="outline" size="sm" onClick={() => fetchStats(true)} disabled={refreshing}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                fetchStats(true);
+                fetchContactActivity();
+              }}
+              disabled={refreshing}
+            >
               <RefreshCw className={`h-3.5 w-3.5 mr-1 ${refreshing ? 'animate-spin' : ''}`} />
               Refresh
             </Button>
@@ -186,6 +323,162 @@ export default function DashboardPage() {
         </div>
       )}
 
+      {/* Real canvassing production, separate from generic CRM activity. */}
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <CardTitle className="text-lg">Contact Activity</CardTitle>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                {contactUserLabel} · {contactPeriodLabel}
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <div
+                className="inline-flex rounded-md border bg-muted/30 p-0.5"
+                aria-label="Contact activity period"
+              >
+                {CONTACT_PERIODS.map((period) => (
+                  <Button
+                    key={period.value}
+                    type="button"
+                    size="sm"
+                    variant={contactPeriod === period.value ? 'secondary' : 'ghost'}
+                    className="h-8 px-3 text-xs"
+                    aria-pressed={contactPeriod === period.value}
+                    onClick={() => setContactPeriod(period.value)}
+                  >
+                    {period.label}
+                  </Button>
+                ))}
+              </div>
+              {identity?.role === 'admin' && (
+                <Select value={contactUser} onValueChange={(value) => value && setContactUser(value)}>
+                  <SelectTrigger className="h-9 w-[170px]" aria-label="Contact activity account">
+                    <SelectValue>{contactUserLabel}</SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Team</SelectItem>
+                    {contactUsers.map((user) => (
+                      <SelectItem key={user.id} value={user.id}>
+                        {user.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {contactLoading ? (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                {[0, 1].map((item) => (
+                  <Skeleton key={item} className="h-24 rounded-lg" />
+                ))}
+              </div>
+              {[0, 1, 2].map((item) => (
+                <Skeleton key={item} className="h-14 rounded-lg" />
+              ))}
+            </div>
+          ) : contactError ? (
+            <div className="flex flex-col items-center gap-2 py-8 text-center">
+              <AlertCircle className="h-6 w-6 text-muted-foreground" />
+              <p className="text-sm text-muted-foreground">{contactError}</p>
+              <Button variant="outline" size="sm" onClick={fetchContactActivity}>
+                Try Again
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                {[
+                  {
+                    icon: DoorOpen,
+                    label: 'Door Knocks',
+                    value: contactActivity?.knockCount ?? 0,
+                  },
+                  {
+                    icon: PhoneCall,
+                    label: 'Cold Calls',
+                    value: contactActivity?.callCount ?? 0,
+                  },
+                ].map(({ icon: Icon, label, value }) => (
+                  <div key={label} className="rounded-lg border p-3">
+                    <div className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      <Icon className="h-3.5 w-3.5" />
+                      {label}
+                    </div>
+                    <p className="mt-1 text-3xl font-semibold tabular-nums tracking-tight">
+                      {value.toLocaleString()}
+                    </p>
+                  </div>
+                ))}
+              </div>
+
+              {(contactActivity?.events.length ?? 0) > 0 ? (
+                <div>
+                  <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    Recent Results
+                  </p>
+                  <div className="divide-y">
+                    {contactActivity!.events.map((event) => {
+                      const Icon = event.channel === 'knock' ? DoorOpen : PhoneCall;
+                      const result =
+                        event.channel === 'knock'
+                          ? knockLabel(event.disposition)
+                          : callLabel(event.disposition);
+                      const leadName = event.lead
+                        ? [event.lead.first_name, event.lead.last_name].filter(Boolean).join(' ') ||
+                          'Unnamed lead'
+                        : 'Deleted lead';
+                      const address = event.lead ? formatAddress(event.lead) : '';
+
+                      return (
+                        <Link
+                          key={`${event.channel}-${event.id}`}
+                          href={event.lead ? `/admin/leads/${event.lead.id}` : '/admin/leads'}
+                          className="flex items-center gap-3 rounded-md px-2 py-3 transition-colors hover:bg-muted/50"
+                        >
+                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted">
+                            <Icon className="h-4 w-4 text-muted-foreground" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-baseline gap-x-2">
+                              <p className="truncate text-sm font-medium">{leadName}</p>
+                              <span className="text-xs text-muted-foreground">{result}</span>
+                            </div>
+                            <p className="truncate text-xs text-muted-foreground">
+                              {address || 'No address'}
+                            </p>
+                          </div>
+                          <div className="shrink-0 text-right text-xs text-muted-foreground">
+                            {identity?.role === 'admin' && event.accountName && (
+                              <p>{event.accountName}</p>
+                            )}
+                            <p className="tabular-nums">
+                              {contactPeriod === 'today'
+                                ? format(new Date(event.occurredAt), 'h:mm a')
+                                : format(new Date(event.occurredAt), 'MMM d · h:mm a')}
+                            </p>
+                          </div>
+                          <ArrowRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                        </Link>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : (
+                <p className="py-8 text-center text-sm text-muted-foreground">
+                  No door knocks or cold calls in this period.
+                </p>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Pipeline */}
       <Card>
         <CardHeader className="pb-3">
@@ -209,7 +502,7 @@ export default function DashboardPage() {
       </Card>
 
       {/* Duplicate review (admin only) */}
-      {userRole === 'admin' && <DuplicateReviewPanel />}
+      {identity?.role === 'admin' && <DuplicateReviewPanel />}
 
       {/* Recent leads */}
       <Card>

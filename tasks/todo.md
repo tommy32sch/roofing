@@ -705,6 +705,32 @@ Review:
   redirect; the authenticated map controls were not exercised against real
   leads during this rollout.
 
+## Dashboard contact activity tracking
+
+Make door knocks and cold calls measurable without separating the totals from
+the leads they came from. Reps should see their own work; admins should be able
+to review the team or one account.
+
+- [x] Add secure Today / Week / Month knock and cold-call aggregation
+- [x] Add dashboard totals, account filtering, and recent lead-linked results
+- [x] Show lifetime knock/call summaries and structured history on each lead
+- [x] Cover period boundaries, role scoping, API/UI contracts, and error states
+- [ ] Run focused/full verification, deploy `main`, and verify Production
+
+Pre-deployment review:
+- Reps are server-enforced to their own activity. Admins default to All Team and
+  can select one account; the existing market selector scopes the same totals.
+- Today, Week and Month use device-local calendar boundaries so Vercel's UTC
+  clock cannot move a rep into tomorrow during their afternoon.
+- Each period shows independent door-knock and cold-call totals plus the 20 most
+  recent results, with result, account, time, address and a direct lead link.
+- Lead Overview now shows lifetime totals, latest result/account and a
+  chronological structured history for both channels.
+- No migration is required. Read-only live Supabase queries confirmed both
+  tables and their lead/account joins support the reporting shape.
+- Verification passed: 55 test files / 615 tests, TypeScript, changed-file
+  ESLint, `git diff --check`, and a network-enabled production build.
+
 ## Future: complete offline operation
 
 Allow a rep to launch and canvass from a completely closed app without an

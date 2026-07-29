@@ -226,6 +226,18 @@ export interface LeadAppointment {
   updated_at: string;
 }
 
+export interface LeadKnock {
+  id: string;
+  lead_id: string;
+  disposition: string;
+  notes: string | null;
+  knocked_at: string;
+  created_by: string | null;
+  client_id: string | null;
+  created_at: string;
+  admin_users?: { name: string } | null;
+}
+
 export interface LeadCall {
   id: string;
   lead_id: string;
@@ -235,6 +247,7 @@ export interface LeadCall {
   created_by: string | null;
   client_id: string | null;
   created_at: string;
+  admin_users?: { name: string } | null;
 }
 
 export const APPOINTMENT_TYPE_OPTIONS: { value: AppointmentType; label: string }[] = [
@@ -303,8 +316,34 @@ export interface LeadWithActivities extends Lead {
   lead_activities?: LeadActivity[];
   lead_sources?: LeadSource;
   lead_appointments?: LeadAppointment[];
+  lead_knocks?: LeadKnock[];
+  lead_calls?: LeadCall[];
   /** The upload this lead arrived in, embedded by the detail route. */
   lead_import_batches?: Pick<LeadImportBatch, 'id' | 'filename' | 'uploaded_by_name' | 'created_at'> | null;
+}
+
+export interface ContactActivityEvent {
+  id: string;
+  channel: 'knock' | 'cold_call';
+  leadId: string;
+  disposition: string;
+  occurredAt: string;
+  accountId: string | null;
+  accountName: string | null;
+  lead: {
+    id: string;
+    first_name: string;
+    last_name: string;
+    address_street: string | null;
+    address_city: string | null;
+    address_state: string | null;
+  } | null;
+}
+
+export interface ContactActivitySummary {
+  knockCount: number;
+  callCount: number;
+  events: ContactActivityEvent[];
 }
 
 export interface DashboardStats {

@@ -8,7 +8,6 @@ import { findAppointmentConflicts, conflictResponseBody } from '@/lib/leads/appo
 import { getRoofPricePerSquare } from '@/lib/leads/roof-value.server';
 import { notifyAppointmentBooked } from '@/lib/notifications/notify-appointment';
 
-const STATUS_ORDER: string[] = ['new', 'contacted', 'appointment_set', 'inspected', 'proposal_sent', 'sold', 'lost'];
 const SETTER_ALLOWED_STATUSES = new Set(['new', 'contacted', 'appointment_set', 'lost']);
 const DEMOGRAPHIC_REQUIRED_FIELDS = [
   'career', 'family_size', 'marital_status', 'age_range', 'household_income_range',
@@ -73,8 +72,15 @@ export async function GET(
       return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
     }
 
-    // Get activities and appointments
-    const [{ data: activities }, { data: appointments }] = await Promise.all([
+    // Bring structured contact history into the detail response. The generic
+    // activity feed is useful context, but it cannot show exact result totals
+    // or distinguish a manual "visit" note from a recorded door knock.
+    const [
+      { data: activities },
+      { data: appointments },
+      { data: knocks },
+      { data: calls },
+    ] = await Promise.all([
       supabase
         .from('lead_activities')
         .select('*')
@@ -85,11 +91,27 @@ export async function GET(
         .select('*')
         .eq('lead_id', leadId)
         .order('scheduled_at', { ascending: true }),
+      supabase
+        .from('lead_knocks')
+        .select('*, admin_users(name)')
+        .eq('lead_id', leadId)
+        .order('knocked_at', { ascending: false }),
+      supabase
+        .from('lead_calls')
+        .select('*, admin_users(name)')
+        .eq('lead_id', leadId)
+        .order('called_at', { ascending: false }),
     ]);
 
     return NextResponse.json({
       success: true,
-      lead: { ...lead, lead_activities: activities || [], lead_appointments: appointments || [] },
+      lead: {
+        ...lead,
+        lead_activities: activities || [],
+        lead_appointments: appointments || [],
+        lead_knocks: knocks || [],
+        lead_calls: calls || [],
+      },
     });
   } catch {
     return NextResponse.json({ success: false, error: 'Internal server error' }, { status: 500 });
