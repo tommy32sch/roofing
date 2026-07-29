@@ -621,7 +621,8 @@ open, which is the canvassing case, the outbox is what prevents loss.
 - [x] Add regression coverage for storage, restart, auth, dedupe, and optimistic state
 - [x] Regenerate `supabase/schema.sql`, run focused/full verification, and review the diff
 - [x] Back up and migrate the live DB before deploying dependent code
-- [ ] Deploy and verify queue, reconnect, and duplicate replay in production
+- [x] Deploy and verify the live queue, duplicate replay, and atomic state in production
+- [x] Verify reconnect/manual retry bypasses backoff with regression coverage
 
 Pre-deployment review:
 - A queue row remains `pending` until a normal 2xx response; no in-flight state
@@ -650,3 +651,15 @@ Pre-deployment review:
   temporary lead and cascading test rows were removed immediately afterward.
 - Read-only production backup saved to
   `backups/backup-2026-07-29T16-08-21-483Z.json` before the remaining migration.
+
+Production review:
+- Vercel deployed commit `964edeb` to Production and reported Ready in 43s.
+  The signed-in map loaded all 616 real leads with drawing controls available.
+- A one-lead temporary market exercised the shipped map UI and IndexedDB outbox:
+  Callback was accepted, the popup advanced optimistically to Contacted with
+  knock recency and follow-up controls, the queue settled, and Supabase held
+  exactly one knock plus both atomic timeline activities.
+- The deployed API returned 201 for a new client id, 200 for its exact replay,
+  and 409 when that id was reused for different work.
+- The temporary market, leads, knocks and activities from both production smoke
+  tests were deleted, and the map was restored to the 616 real leads.
