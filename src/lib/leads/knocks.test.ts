@@ -1,14 +1,46 @@
 import { describe, it, expect } from 'vitest';
-import { statusForDisposition, knockRecency, knockLabel, KNOCK_DISPOSITIONS } from './knocks';
+import {
+  KNOCK_DISPOSITIONS,
+  KNOCK_DISPOSITION_VALUES,
+  knockLabel,
+  knockRecency,
+  statusForDisposition,
+} from './knocks';
+
+describe('KNOCK_DISPOSITIONS', () => {
+  it('exposes the exact selectable product list in order', () => {
+    expect(KNOCK_DISPOSITIONS.map(({ value, label }) => ({ value, label }))).toEqual([
+      { value: 'not_home', label: 'Not Home' },
+      { value: 'callback', label: 'Go Back' },
+      { value: 'call_back', label: 'Call Back' },
+      { value: 'referral', label: 'Referral' },
+      { value: 'appointment_set', label: 'Appointment' },
+      { value: 'contract_signed', label: 'Contract Signed' },
+      { value: 'not_interested', label: 'Not Interested' },
+      { value: 'renter', label: 'Renter' },
+      { value: 'do_not_knock', label: 'Do Not Knock' },
+    ]);
+  });
+
+  it('accepts legacy no_damage without showing it as a selectable result', () => {
+    expect(KNOCK_DISPOSITION_VALUES.has('no_damage')).toBe(true);
+    expect(KNOCK_DISPOSITIONS.map((result) => result.value as string)).not.toContain('no_damage');
+    expect(knockLabel('no_damage')).toBe('No Damage');
+  });
+});
 
 describe('statusForDisposition', () => {
-  it('books an appointment', () => {
-    expect(statusForDisposition('appointment_set')).toBe('appointment_set');
+  it('does not bypass required appointment or won-lead workflows', () => {
+    expect(statusForDisposition('appointment_set')).toBe('contacted');
+    expect(statusForDisposition('contract_signed')).toBe('contacted');
   });
 
   it('counts answering the door as contact', () => {
     expect(statusForDisposition('callback')).toBe('contacted');
+    expect(statusForDisposition('call_back')).toBe('contacted');
+    expect(statusForDisposition('referral')).toBe('contacted');
     expect(statusForDisposition('not_interested')).toBe('contacted');
+    expect(statusForDisposition('renter')).toBe('contacted');
     expect(statusForDisposition('no_damage')).toBe('contacted');
   });
 
@@ -25,6 +57,7 @@ describe('statusForDisposition', () => {
     for (const d of KNOCK_DISPOSITIONS) {
       expect(() => statusForDisposition(d.value)).not.toThrow();
     }
+    expect(() => statusForDisposition('no_damage')).not.toThrow();
   });
 });
 
@@ -42,8 +75,9 @@ describe('knockRecency', () => {
 
 describe('knockLabel', () => {
   it('renders human labels', () => {
-    expect(knockLabel('not_home')).toBe('Not home');
-    expect(knockLabel('do_not_knock')).toBe('Do not knock');
+    expect(knockLabel('not_home')).toBe('Not Home');
+    expect(knockLabel('callback')).toBe('Go Back');
+    expect(knockLabel('do_not_knock')).toBe('Do Not Knock');
   });
   it('falls back to the raw value', () => {
     expect(knockLabel('mystery')).toBe('mystery');

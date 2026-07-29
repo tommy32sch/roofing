@@ -3,24 +3,46 @@ import type { LeadStatus } from '@/types';
 /**
  * Door-knock dispositions — the outcome a rep records while standing at a door.
  *
- * Ordered by how often they're used, because on a phone the first option should
- * be the one tapped most. "Not home" dominates real canvassing.
+ * This is the selectable product list, in the order shown to a rep. The
+ * historical database value `callback` now means "Go Back"; retaining that
+ * value keeps old rows and knocks already queued offline valid across deploys.
  */
 export const KNOCK_DISPOSITIONS = [
-  { value: 'not_home', label: 'Not home', hint: 'Nobody answered — worth another pass' },
-  { value: 'callback', label: 'Callback', hint: 'Interested, come back later' },
-  { value: 'appointment_set', label: 'Appointment set', hint: 'Books an inspection' },
-  { value: 'not_interested', label: 'Not interested', hint: 'Declined' },
-  { value: 'no_damage', label: 'No damage', hint: 'Roof looked fine — stop spending time here' },
-  { value: 'do_not_knock', label: 'Do not knock', hint: 'Homeowner asked us not to return' },
+  { value: 'not_home', label: 'Not Home', hint: 'Nobody answered' },
+  { value: 'callback', label: 'Go Back', hint: 'Return to the house later' },
+  { value: 'call_back', label: 'Call Back', hint: 'Follow up by phone' },
+  { value: 'referral', label: 'Referral', hint: 'The conversation produced a referral' },
+  { value: 'appointment_set', label: 'Appointment', hint: 'Schedule the appointment details next' },
+  { value: 'contract_signed', label: 'Contract Signed', hint: 'Complete the won-lead workflow next' },
+  { value: 'not_interested', label: 'Not Interested', hint: 'The homeowner declined' },
+  { value: 'renter', label: 'Renter', hint: 'The person at the property is not the owner' },
+  { value: 'do_not_knock', label: 'Do Not Knock', hint: 'The household asked us not to return' },
 ] as const;
 
-export type KnockDisposition = (typeof KNOCK_DISPOSITIONS)[number]['value'];
+/**
+ * Accepted for compatibility but intentionally omitted from the selectable
+ * list. Existing history and offline entries may still contain this value.
+ */
+const LEGACY_KNOCK_DISPOSITIONS = [
+  { value: 'no_damage', label: 'No Damage' },
+] as const;
 
-export const KNOCK_DISPOSITION_VALUES = new Set<string>(KNOCK_DISPOSITIONS.map((d) => d.value));
+export type SelectableKnockDisposition = (typeof KNOCK_DISPOSITIONS)[number]['value'];
+export type KnockDisposition =
+  | SelectableKnockDisposition
+  | (typeof LEGACY_KNOCK_DISPOSITIONS)[number]['value'];
+
+export const KNOCK_DISPOSITION_VALUES = new Set<string>([
+  ...KNOCK_DISPOSITIONS.map((d) => d.value),
+  ...LEGACY_KNOCK_DISPOSITIONS.map((d) => d.value),
+]);
 
 export function knockLabel(value: string): string {
-  return KNOCK_DISPOSITIONS.find((d) => d.value === value)?.label ?? value;
+  return (
+    KNOCK_DISPOSITIONS.find((d) => d.value === value)?.label ??
+    LEGACY_KNOCK_DISPOSITIONS.find((d) => d.value === value)?.label ??
+    value
+  );
 }
 
 /**
@@ -32,12 +54,17 @@ export function knockLabel(value: string): string {
  */
 export function statusForDisposition(d: KnockDisposition): LeadStatus | null {
   switch (d) {
-    case 'appointment_set':
-      return 'appointment_set';
     case 'callback':
+    case 'call_back':
+    case 'referral':
+    case 'appointment_set':
+    case 'contract_signed':
     case 'not_interested':
+    case 'renter':
     case 'no_damage':
-      return 'contacted'; // someone answered the door
+      // Appointment and contract results deliberately stop at Contacted. The
+      // required scheduling and won-lead forms own later pipeline transitions.
+      return 'contacted';
     case 'not_home':
     case 'do_not_knock':
       return null;

@@ -6,11 +6,11 @@ import type { OutboxEntry } from './outbox';
  * IndexedDB rather than localStorage because this has to survive a locked
  * phone, a backgrounded tab and a browser reclaiming memory — localStorage is
  * synchronous, small, and cleared more eagerly by mobile Safari under pressure.
- * A lost knock is the failure this whole feature exists to prevent.
+ * A lost field result is the failure this whole feature exists to prevent.
  *
  * Reads fail soft because a temporary browser-storage problem must not crash
  * the map. Writes return an explicit boolean: the UI may only tell a rep their
- * knock is saved after IndexedDB has committed the transaction.
+ * result is saved after IndexedDB has committed the transaction.
  */
 
 const DB_NAME = 'roof-leads-offline';

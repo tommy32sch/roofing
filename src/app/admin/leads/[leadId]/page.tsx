@@ -564,13 +564,13 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
                   <div className="flex items-start gap-2 rounded-md border border-red-200 bg-red-50 p-2 text-xs text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300">
                     <PhoneOff className="h-4 w-4 shrink-0 mt-0.5" />
                     <span>
-                      <span className="font-semibold">On the Do Not Call list.</span> The phone
-                      number was not stored — knock this door instead of calling.
+                      <span className="font-semibold">Do not call this lead.</span> Door knocking
+                      is still allowed unless the property is also marked Do Not Knock.
                     </span>
                   </div>
                 )}
                 {[lead.phone, lead.phone2, lead.phone3].map((p, i) =>
-                  p ? (
+                  p && !lead.is_dnc ? (
                     <div key={`phone-${i}`} className="flex items-center justify-between gap-2">
                       <a href={`tel:${p}`} className="flex items-center gap-2 text-sm hover:text-primary min-w-0">
                         <Phone className="h-4 w-4 text-muted-foreground shrink-0" />

@@ -1,12 +1,10 @@
 /**
  * Durable write queue for work done in the field.
  *
- * A canvasser is on a phone, walking, with signal that comes and goes between
- * houses. The failure this exists to prevent is quiet: a knock POST fails, a
- * toast appears, the rep has already turned to the next door, and the record is
- * gone. Knock recency drives what the map colours and what the Today queue
- * surfaces, so a missing knock is not a missing row — it is a door that looks
- * un-knocked and gets knocked again.
+ * A rep is on a phone with data that comes and goes between houses and calls.
+ * The failure this exists to prevent is quiet: a result POST fails, a toast
+ * appears, the rep moves on, and the record is gone. Those results drive map
+ * safety flags and follow-up work, so losing one creates duplicate outreach.
  *
  * All the decisions live here as pure functions over plain data, so the retry
  * arithmetic and the ordering rules can be tested without IndexedDB, a network,
@@ -75,9 +73,8 @@ export function createEntry<T>(input: {
 /**
  * Entries eligible to send right now, oldest first.
  *
- * Oldest-first matters: knocks replayed out of order would write
- * `last_disposition` in the wrong sequence, so the newest knock might not be
- * the one the door ends up showing.
+ * Oldest-first matters: results replayed out of order can leave a lead's
+ * visible latest-result fields describing an older interaction.
  */
 export function dueEntries<T>(
   entries: OutboxEntry<T>[],

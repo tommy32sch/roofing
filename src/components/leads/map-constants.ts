@@ -36,7 +36,49 @@ export interface GeoLead {
   last_disposition: string | null;
   knock_count: number;
   do_not_knock: boolean;
+  last_call_at: string | null;
+  last_call_disposition: string | null;
+  call_count: number;
   follow_up_date: string | null;
+}
+
+const KNOCK_FOLLOW_UP_RESULTS = new Set(['callback', 'call_back']);
+
+/**
+ * Show the follow-up shortcut only when the newest recorded interaction asks
+ * for one. An older Call Back should not keep prompting after a newer
+ * Not Interested result on the other channel.
+ */
+export function shouldPromptForFollowUp(
+  lead: Pick<
+    GeoLead,
+    | 'follow_up_date'
+    | 'last_knock_at'
+    | 'last_disposition'
+    | 'last_call_at'
+    | 'last_call_disposition'
+  >
+): boolean {
+  if (lead.follow_up_date) return true;
+
+  const knockAt = lead.last_knock_at ? Date.parse(lead.last_knock_at) : Number.NEGATIVE_INFINITY;
+  const callAt = lead.last_call_at ? Date.parse(lead.last_call_at) : Number.NEGATIVE_INFINITY;
+  const validKnockAt = Number.isNaN(knockAt) ? Number.NEGATIVE_INFINITY : knockAt;
+  const validCallAt = Number.isNaN(callAt) ? Number.NEGATIVE_INFINITY : callAt;
+
+  if (validKnockAt === Number.NEGATIVE_INFINITY && validCallAt === Number.NEGATIVE_INFINITY) {
+    return false;
+  }
+  if (validKnockAt > validCallAt) {
+    return !!lead.last_disposition && KNOCK_FOLLOW_UP_RESULTS.has(lead.last_disposition);
+  }
+  if (validCallAt > validKnockAt) {
+    return lead.last_call_disposition === 'call_back';
+  }
+  return (
+    (!!lead.last_disposition && KNOCK_FOLLOW_UP_RESULTS.has(lead.last_disposition)) ||
+    lead.last_call_disposition === 'call_back'
+  );
 }
 
 /** Stroke color used to ring Do Not Call pins (knock-only). */

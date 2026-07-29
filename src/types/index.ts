@@ -112,6 +112,10 @@ export interface Lead {
   last_disposition: string | null;
   knock_count: number;
   do_not_knock: boolean;
+  // Structured cold-call history, denormalized for map/list summaries.
+  last_call_at: string | null;
+  last_call_disposition: string | null;
+  call_count: number;
   /** Office this lead belongs to. Set at import, never derived from the
    *  address — most imported leads have no city/state at all. */
   market_id: number | null;
@@ -220,6 +224,17 @@ export interface LeadAppointment {
   created_by: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface LeadCall {
+  id: string;
+  lead_id: string;
+  disposition: string;
+  notes: string | null;
+  called_at: string;
+  created_by: string | null;
+  client_id: string | null;
+  created_at: string;
 }
 
 export const APPOINTMENT_TYPE_OPTIONS: { value: AppointmentType; label: string }[] = [

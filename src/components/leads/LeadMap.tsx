@@ -6,13 +6,15 @@ import { MapContainer, TileLayer, CircleMarker, Pane, Popup, Polygon, Polyline, 
 import type { Map as LeafletMap } from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { formatDistanceToNow } from 'date-fns';
-import { KNOCK_DISPOSITIONS, knockLabel, knockRecency, type KnockDisposition } from '@/lib/leads/knocks';
+import { knockLabel, knockRecency } from '@/lib/leads/knocks';
+import { callLabel } from '@/lib/leads/calls';
 import { Button } from '@/components/ui/button';
 import { FollowUpMenu } from '@/components/leads/FollowUpMenu';
+import type { LeadResultChannel } from '@/components/leads/LeadResultSheet';
 import { LEAD_STATUS_OPTIONS } from '@/types';
 import { shouldRecenterMap } from '@/lib/leads/markets';
 import { classifyDrawGestureEnd, isDrag, shouldCapture, simplifyPath } from '@/lib/leads/draw';
-import { STATUS_COLORS, DNC_RING_COLOR, DO_NOT_KNOCK_RING_COLOR, isLeadAddressDetailZoom, leadMarkerAppearance, stormColor, stormRadius, stormLabel, sortStormsForDrawing, stormAgeBucket, stormZoneStyle, stormAgeShort, type GeoLead, type StormReport } from './map-constants';
+import { STATUS_COLORS, DNC_RING_COLOR, DO_NOT_KNOCK_RING_COLOR, isLeadAddressDetailZoom, leadMarkerAppearance, shouldPromptForFollowUp, stormColor, stormRadius, stormLabel, sortStormsForDrawing, stormAgeBucket, stormZoneStyle, stormAgeShort, type GeoLead, type StormReport } from './map-constants';
 import { buildStormZones } from '@/lib/storm/zones';
 import type { Territory } from '@/types';
 
@@ -451,10 +453,8 @@ interface LeadMapProps {
    * while every touchdown remains visible for severity and exact details.
    */
   stormZones?: boolean;
-  /** Log a knock straight from the pin popup. */
-  onLogKnock?: (lead: GeoLead, disposition: KnockDisposition) => void;
-  /** Lead id currently being written, so its buttons can disable. */
-  loggingKnockFor?: string | null;
+  /** Open the phone-sized result picker from a lead pin. */
+  onOpenResult?: (lead: GeoLead, channel: LeadResultChannel) => void;
   /** Refetch after a follow-up is set from a popup. */
   onFollowUpChange?: () => void;
   /** Selected office, so the map can move to it when there's nothing to fit. */
@@ -486,8 +486,7 @@ export default function LeadMap({
   stormReports = [],
   stormNow = 0,
   stormZones = false,
-  onLogKnock,
-  loggingKnockFor,
+  onOpenResult,
   onFollowUpChange,
   marketId = null,
   marketCenter = null,
@@ -783,7 +782,7 @@ export default function LeadMap({
                 </p>
                 {lead.is_dnc && (
                   <p className="text-xs font-semibold" style={{ color: DNC_RING_COLOR }}>
-                    Do Not Call — knock only
+                    Do Not Call
                   </p>
                 )}
                 {lead.hail_size_inches != null && (
@@ -804,39 +803,58 @@ export default function LeadMap({
                     {lead.knock_count > 1 ? ` · ${lead.knock_count}×` : ''}
                   </p>
                 )}
+                {lead.last_call_at && (
+                  <p className="text-xs text-muted-foreground">
+                    Cold called {formatDistanceToNow(new Date(lead.last_call_at), { addSuffix: true })}
+                    {lead.last_call_disposition
+                      ? ` · ${callLabel(lead.last_call_disposition)}`
+                      : ''}
+                    {lead.call_count > 1 ? ` · ${lead.call_count}×` : ''}
+                  </p>
+                )}
 
-                {/* The daily loop: standing at the door, one tap to record what
-                    happened. Hidden for do-not-knock houses so the quickest
-                    action can't be to knock one again. */}
-                {onLogKnock && !lead.do_not_knock && (
+                {/* Identify the activity here, then choose the outcome in a
+                    phone-sized sheet outside Leaflet. Each restriction blocks
+                    only its own channel: DNC leads can still be knocked and
+                    do-not-knock houses can still be called. */}
+                {onOpenResult && (
                   <div className="border-t pt-1.5">
                     <p className="mb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                      Log knock
+                      Record result
                     </p>
-                    <div className="flex flex-wrap gap-1">
-                      {KNOCK_DISPOSITIONS.map((d) => (
-                        <button
-                          key={d.value}
-                          type="button"
-                          title={d.hint}
-                          disabled={loggingKnockFor === lead.id}
-                          onClick={() => onLogKnock(lead, d.value)}
-                          className="rounded border px-1.5 py-0.5 text-[11px] hover:bg-accent disabled:opacity-50"
-                        >
-                          {d.label}
-                        </button>
-                      ))}
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="min-h-11 h-auto px-2 text-xs"
+                        disabled={lead.do_not_knock}
+                        title={lead.do_not_knock ? 'This house is marked Do Not Knock' : undefined}
+                        onClick={() => onOpenResult(lead, 'knock')}
+                      >
+                        Knocked
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="min-h-11 h-auto px-2 text-xs"
+                        disabled={lead.is_dnc}
+                        title={lead.is_dnc ? 'This lead is marked Do Not Call' : undefined}
+                        onClick={() => onOpenResult(lead, 'cold_call')}
+                      >
+                        Cold called
+                      </Button>
                     </div>
                   </div>
                 )}
 
-                {/* A "Callback" knock is a promise to return. Without capturing
-                    when, it was recorded and then lost — so the control is
-                    promoted here rather than buried on the lead page. */}
-                {onLogKnock && (lead.last_disposition === 'callback' || lead.follow_up_date) && (
+                {/* Go Back and Call Back are promises to follow up. Without
+                    capturing when, the result is recorded and then lost — so
+                    the control stays here instead of being buried on the lead. */}
+                {onOpenResult && shouldPromptForFollowUp(lead) && (
                   <div className="border-t pt-1.5">
                     <p className="mb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                      {lead.follow_up_date ? 'Following up' : 'Come back when?'}
+                      {lead.follow_up_date ? 'Following up' : 'Follow up when?'}
                     </p>
                     <FollowUpMenu
                       leadId={lead.id}

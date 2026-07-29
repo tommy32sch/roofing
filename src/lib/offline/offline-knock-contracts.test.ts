@@ -7,11 +7,11 @@ const read = (path: string) => readFileSync(join(process.cwd(), path), 'utf8');
 const migration = read('supabase/migrations/022_offline_knocks.sql');
 const schema = read('supabase/schema.sql');
 const route = read('src/app/api/admin/leads/[leadId]/knocks/route.ts');
-const hook = read('src/lib/offline/useKnockOutbox.ts');
+const hook = read('src/lib/offline/useLeadResultOutbox.ts');
 const mapPage = read('src/app/admin/map/page.tsx');
 const store = read('src/lib/offline/store.ts');
 
-describe('offline knock persistence contracts', () => {
+describe('offline lead-result persistence contracts', () => {
   it('records the event and every derived write in one locked database transaction', () => {
     expect(migration).toContain('CREATE OR REPLACE FUNCTION record_lead_knock');
     expect(migration).toContain('FOR UPDATE');
@@ -40,20 +40,25 @@ describe('offline knock persistence contracts', () => {
     expect(store).toContain('export async function put(entry: OutboxEntry): Promise<boolean>');
   });
 
-  it('scopes draining to a confirmed owner and never persists an in-flight tombstone', () => {
+  it('uses one owner-scoped drainer for knocks and cold calls', () => {
     expect(hook).toContain('ownerId: string | null');
     expect(hook).toContain('entry.ownerId === options.ownerId');
     expect(hook).toContain('owner_id: entry.ownerId');
+    expect(hook).toContain("entry.kind === 'knock'");
+    expect(hook).toContain("entry.kind === 'cold_call'");
+    expect(hook).toContain("'knocks' : 'calls'");
+    expect(hook.match(/drainEntries</g)).toHaveLength(1);
     expect(hook).toContain('retryFailed');
     expect(hook).toContain('void flush(true)');
     expect(hook).not.toContain('markSending');
   });
 
-  it('overlays queued events on map leads and surfaces failed work', () => {
-    expect(mapPage).toContain('applyQueuedKnocks(leads, knockOutbox.entries)');
+  it('overlays both queued result types and surfaces failed work generically', () => {
+    expect(mapPage).toContain('applyQueuedCalls(applyQueuedKnocks(leads, queuedKnocks), queuedCalls)');
     expect(mapPage).toContain('leads={effectiveLeads}');
-    expect(mapPage).toContain('knockOutbox.failed > 0');
-    expect(mapPage).toContain('knockOutbox.retryFailed()');
-    expect(mapPage).toContain('knockOutbox.flush(true)');
+    expect(mapPage).toContain('resultOutbox.failed > 0');
+    expect(mapPage).toContain('resultOutbox.retryFailed()');
+    expect(mapPage).toContain('resultOutbox.flush(true)');
+    expect(mapPage).toContain('result${resultOutbox.pending === 1');
   });
 });

@@ -33,6 +33,7 @@ const TABLES = [
   'lead_activities',
   'lead_appointments',
   'lead_knocks',
+  'lead_calls',
   'lead_photos',
   'lead_tags',
   'email_import_logs',

@@ -663,3 +663,69 @@ Production review:
   and 409 when that id was reused for different work.
 - The temporary market, leads, knocks and activities from both production smoke
   tests were deleted, and the map was restored to the 616 real leads.
+
+## Map knock and cold-call results
+
+Every authenticated role should be able to open a lead pin, choose whether they
+knocked or cold-called, and record a structured result without leaving the map.
+Safety flags remain channel-specific: Do Not Knock blocks future knock actions,
+and Do Not Call blocks future call actions.
+
+- [x] Replace the legacy knock choices with the nine requested result options
+- [x] Add structured cold-call results and append-only call history
+- [x] Keep lead summaries, safety flags, pipeline status and timeline activity atomic
+- [x] Extend the durable map outbox to both knocks and cold calls
+- [x] Add a compact mobile-friendly channel/result picker to every role's map popup
+- [x] Prompt for follow-up timing after Go Back or Call Back results
+- [x] Cover result validation, derived lead state, offline replay and role availability
+- [x] Regenerate the schema snapshot and run focused/full verification
+
+Review:
+- Every authenticated role gets two clear pin actions, Knocked and Cold called,
+  followed by a bottom sheet with the exact requested result lists and 44px
+  touch targets. Do Not Knock and Do Not Call disable only their own channel.
+- Existing queued knocks remain compatible. One owner-scoped IndexedDB outbox
+  now routes knocks and cold calls, applies both optimistically, and preserves
+  pending work through weak or lost data service.
+- Migration 023 extends knock outcomes additively and adds append-only
+  `lead_calls`, latest-call summaries, sticky Do Not Call state, idempotent
+  client IDs, atomic lead/timeline updates, RLS and service-role-only RPCs.
+- Appointment and Contract Signed results are recorded first, then hand off to
+  the existing appointment-time or won-lead details workflow rather than
+  bypassing required business data. Setters can record Contract Signed but an
+  admin or closer must finish the won-lead workflow.
+- Verified: 53 test files / 608 tests, TypeScript, changed-file ESLint,
+  regenerated 23-migration schema, `git diff --check`, and a production
+  Turbopack build.
+- Migration 023 is live in Supabase. Read-only table/field checks succeeded,
+  and both result RPCs accepted their new types against a nonexistent lead
+  without creating test rows. These application changes have not been deployed.
+
+## Future: complete offline operation
+
+Allow a rep to launch and canvass from a completely closed app without an
+internet connection. Offline content must be downloaded while online first;
+areas and leads that were never downloaded cannot be available offline.
+
+- [ ] Make the app installable and cache its shell with a service worker
+- [ ] Add a "Download territory for offline use" workflow
+- [ ] Store downloaded territory, lead and rep-identity data in IndexedDB
+- [ ] Replace the public OpenStreetMap tile endpoint for offline map packages
+- [ ] Show download size, last-updated time, storage usage and removal controls
+- [ ] Extend sync to any additional offline actions beyond knocks
+- [ ] Test cold launch, reconnect and storage limits on iOS and Android
+
+## Future: create walk-up leads from the map
+
+Let a rep add a house that was not already a lead, record the first knock, and
+see the new pin immediately without leaving the canvassing map.
+
+- [ ] Add an explicit "Add house" map mode with tap/long-press placement
+- [ ] Resolve the selected coordinates to an address or Regrid parcel
+- [ ] Let the rep confirm or correct the address before saving
+- [ ] Support address-only leads when the homeowner's name is unknown
+- [ ] Warn when the address or a nearby coordinate already belongs to a lead
+- [ ] Capture the initial knock result, notes and any contact details in one sheet
+- [ ] Create the lead, first knock and activity history atomically
+- [ ] Add the new pin and knock state to the map immediately
+- [ ] Extend the offline outbox so a new lead and its first knock can sync together

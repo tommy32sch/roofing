@@ -4,9 +4,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { BoxSelect, UserCheck, LocateFixed, CloudHail, Wind, Pencil, ChevronDown, Check, Hexagon, MapPinned } from 'lucide-react';
 import { toast } from 'sonner';
-import { knockLabel, type KnockDisposition } from '@/lib/leads/knocks';
+import { knockLabel } from '@/lib/leads/knocks';
+import { callLabel } from '@/lib/leads/calls';
 import { applyQueuedKnocks } from '@/lib/leads/knock-sync';
-import { useKnockOutbox } from '@/lib/offline/useKnockOutbox';
+import { applyQueuedCalls } from '@/lib/leads/call-sync';
+import {
+  isColdCallResultEntry,
+  isKnockResultEntry,
+  useLeadResultOutbox,
+} from '@/lib/offline/useLeadResultOutbox';
 import type { Map as LeafletMap } from 'leaflet';
 import { Button } from '@/components/ui/button';
 import {
@@ -50,6 +56,13 @@ import { MarketFilter } from '@/components/markets/market-filter';
 import { useMarkets, ALL_MARKETS } from '@/components/markets/use-markets';
 import { TerritoryDialog } from '@/components/territories/TerritoryDialog';
 import { TerritorySheet } from '@/components/territories/TerritorySheet';
+import {
+  LeadResultSheet,
+  type LeadResultChannel,
+  type LeadResultSelection,
+} from '@/components/leads/LeadResultSheet';
+import { AppointmentModal } from '@/components/leads/AppointmentModal';
+import { WonLeadModal } from '@/components/leads/WonLeadModal';
 
 // Leaflet touches `window` at import time — client-only
 const LeadMap = dynamic(() => import('@/components/leads/LeadMap'), {
@@ -83,6 +96,13 @@ export default function MapPage() {
   const [userRole, setUserRole] = useState<UserRole>('setter');
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [identityLoaded, setIdentityLoaded] = useState(false);
+  const [resultTarget, setResultTarget] = useState<{
+    lead: GeoLead;
+    channel: LeadResultChannel;
+  } | null>(null);
+  const [savingResult, setSavingResult] = useState(false);
+  const [appointmentLeadId, setAppointmentLeadId] = useState<string | null>(null);
+  const [wonLeadId, setWonLeadId] = useState<string | null>(null);
   const [selection, setSelection] = useState<Map<string, number>>(new Map());
   const [visibleIds, setVisibleIds] = useState<Set<string>>(new Set());
   const [assignOpen, setAssignOpen] = useState(false);
@@ -157,13 +177,21 @@ export default function MapPage() {
     }
   }, [status, priority, market]);
 
-  const knockOutbox = useKnockOutbox({
+  const resultOutbox = useLeadResultOutbox({
     ownerId: identityLoaded ? currentUserId : null,
     onSettled: fetchLeads,
   });
+  const queuedKnocks = useMemo(
+    () => resultOutbox.entries.filter(isKnockResultEntry),
+    [resultOutbox.entries]
+  );
+  const queuedCalls = useMemo(
+    () => resultOutbox.entries.filter(isColdCallResultEntry),
+    [resultOutbox.entries]
+  );
   const effectiveLeads = useMemo(
-    () => applyQueuedKnocks(leads, knockOutbox.entries),
-    [knockOutbox.entries, leads]
+    () => applyQueuedCalls(applyQueuedKnocks(leads, queuedKnocks), queuedCalls),
+    [leads, queuedCalls, queuedKnocks]
   );
 
   useEffect(() => {
@@ -310,35 +338,69 @@ export default function MapPage() {
     });
   }
 
-  const [loggingKnockFor, setLoggingKnockFor] = useState<string | null>(null);
-
   /**
-   * Log a knock from the pin popup.
+   * Save a field result before doing anything that depends on it.
    *
-   * Goes through the offline outbox rather than straight to the network. A rep
-   * is walking a street on a phone and cannot stand at a door waiting to learn
-   * whether a POST succeeded — previously a failed request showed a toast and
-   * discarded the knock, and the door then looked un-knocked to everyone.
-   *
-   * The knock is durable the moment it is accepted; the request happens when
-   * the network allows, which may be seconds or streets later.
+   * Appointment and won-lead forms are follow-on workflows. The result first
+   * commits to IndexedDB so cancelling a form or losing data cannot erase what
+   * the rep already did.
    */
-  async function logKnock(lead: GeoLead, disposition: KnockDisposition) {
-    setLoggingKnockFor(lead.id);
+  async function logLeadResult(result: LeadResultSelection) {
+    const lead = resultTarget?.lead;
+    if (!lead) return;
+
+    setSavingResult(true);
     try {
-      await knockOutbox.enqueue({
+      const payload = {
         leadId: lead.id,
-        disposition,
         leadName: `${lead.first_name} ${lead.last_name}`.trim(),
-      });
+      };
+      if (result.channel === 'knock') {
+        await resultOutbox.enqueueKnock({
+          ...payload,
+          disposition: result.disposition,
+        });
+      } else {
+        await resultOutbox.enqueueCall({
+          ...payload,
+          disposition: result.disposition,
+        });
+      }
+
+      const label = result.channel === 'knock'
+        ? knockLabel(result.disposition)
+        : callLabel(result.disposition);
       toast.success(
-        `${lead.first_name} ${lead.last_name} — ${knockLabel(disposition)}` +
-          (knockOutbox.online ? '' : ' · saved, will sync')
+        `${payload.leadName || 'Lead'} — ${label}` +
+          (resultOutbox.online ? '' : ' · saved, will sync')
       );
+
+      setResultTarget(null);
+      const disposition = result.disposition as string;
+      if (
+        disposition === 'appointment_set' &&
+        (lead.status === 'new' || lead.status === 'contacted')
+      ) {
+        if (resultOutbox.online) {
+          setAppointmentLeadId(lead.id);
+        } else {
+          toast.info('Schedule the appointment when this device is back online');
+        }
+      }
+
+      if (disposition === 'contract_signed' && lead.status !== 'sold') {
+        if (userRole === 'setter') {
+          toast.info('An admin or closer can finish the won-lead details');
+        } else if (resultOutbox.online) {
+          setWonLeadId(lead.id);
+        } else {
+          toast.info('Finish the won-lead details when this device is back online');
+        }
+      }
     } catch {
-      toast.error('Could not save knock to this device');
+      toast.error('Could not save this result to the device');
     } finally {
-      setLoggingKnockFor(null);
+      setSavingResult(false);
     }
   }
 
@@ -651,22 +713,22 @@ export default function MapPage() {
   }
 
   const selectionTotal = [...selection.values()].reduce((sum, v) => sum + v, 0);
-  const knockSyncNeedsAttention = knockOutbox.storageError || knockOutbox.failed > 0;
-  const showKnockSync =
-    knockOutbox.pending > 0 || knockSyncNeedsAttention || !knockOutbox.online;
-  const knockSyncTitle = knockOutbox.storageError
+  const resultSyncNeedsAttention = resultOutbox.storageError || resultOutbox.failed > 0;
+  const showResultSync =
+    resultOutbox.pending > 0 || resultSyncNeedsAttention || !resultOutbox.online;
+  const resultSyncTitle = resultOutbox.storageError
     ? 'This browser cannot access durable offline storage'
-    : knockOutbox.failed > 0
-      ? `${knockOutbox.lastError ?? 'Sync failed'} — tap to retry`
-      : knockOutbox.online
+    : resultOutbox.failed > 0
+      ? `${resultOutbox.lastError ?? 'Sync failed'} — tap to retry`
+      : resultOutbox.online
         ? 'Tap to retry syncing now'
-        : 'Offline — knocks are saved on this device and will sync automatically';
-  const knockSyncLabel = knockOutbox.storageError
+        : 'Offline — results are saved on this device and will sync automatically';
+  const resultSyncLabel = resultOutbox.storageError
     ? 'Offline storage unavailable'
-    : knockOutbox.failed > 0
-      ? `${knockOutbox.failed} knock${knockOutbox.failed === 1 ? '' : 's'} need retry`
-      : knockOutbox.pending > 0
-        ? `${knockOutbox.pending} knock${knockOutbox.pending === 1 ? '' : 's'} to sync`
+    : resultOutbox.failed > 0
+      ? `${resultOutbox.failed} result${resultOutbox.failed === 1 ? '' : 's'} need retry`
+      : resultOutbox.pending > 0
+        ? `${resultOutbox.pending} result${resultOutbox.pending === 1 ? '' : 's'} to sync`
         : 'Offline';
   const drawAvailability = mapDrawAvailability({
     loading,
@@ -707,32 +769,32 @@ export default function MapPage() {
             </Button>
 
             {/* Unsynced work. Silence here would be the old bug wearing a new
-                face: the rep needs to know their knocks are held, not lost. */}
-            {showKnockSync && (
+                face: the rep needs to know their results are held, not lost. */}
+            {showResultSync && (
               <button
                 type="button"
                 onClick={() =>
-                  void (knockOutbox.failed > 0
-                    ? knockOutbox.retryFailed()
-                    : knockOutbox.flush(true))
+                  void (resultOutbox.failed > 0
+                    ? resultOutbox.retryFailed()
+                    : resultOutbox.flush(true))
                 }
-                title={knockSyncTitle}
+                title={resultSyncTitle}
                 className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium ${
-                  knockSyncNeedsAttention
+                  resultSyncNeedsAttention
                     ? 'border-destructive/40 bg-destructive/10 text-destructive'
                     : 'border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-400'
                 }`}
               >
                 <span
                   className={`h-1.5 w-1.5 rounded-full ${
-                    knockSyncNeedsAttention
+                    resultSyncNeedsAttention
                       ? 'bg-destructive'
-                      : knockOutbox.online
+                      : resultOutbox.online
                         ? 'bg-amber-500'
                         : 'bg-muted-foreground'
                   }`}
                 />
-                {knockSyncLabel}
+                {resultSyncLabel}
               </button>
             )}
 
@@ -1051,8 +1113,11 @@ export default function MapPage() {
             // A freehand trace is one shape, so it replaces rather than appends.
             onDrawPath={isAdmin ? (path) => setDrawPoints(path) : undefined}
             onMapReady={(map) => { mapRef.current = map; setMapInstance(map); }}
-            onLogKnock={identityLoaded && currentUserId ? logKnock : undefined}
-            loggingKnockFor={loggingKnockFor}
+            onOpenResult={
+              identityLoaded && currentUserId
+                ? (lead, channel) => setResultTarget({ lead, channel })
+                : undefined
+            }
             onFollowUpChange={fetchLeads}
             marketId={selectedMarket?.id ?? null}
             marketCenter={marketCenter}
@@ -1078,6 +1143,50 @@ export default function MapPage() {
         onArchiveChange={changeTerritoryArchived}
         pendingTerritoryId={territoryArchivePendingId}
       />
+
+      <LeadResultSheet
+        open={resultTarget !== null}
+        onOpenChange={(open) => {
+          if (!open && !savingResult) setResultTarget(null);
+        }}
+        lead={resultTarget?.lead ?? null}
+        channel={resultTarget?.channel ?? 'knock'}
+        onChannelChange={(channel) =>
+          setResultTarget((current) => current ? { ...current, channel } : current)
+        }
+        onSelect={(result) => void logLeadResult(result)}
+        saving={savingResult}
+      />
+
+      {appointmentLeadId && (
+        <AppointmentModal
+          leadId={appointmentLeadId}
+          open
+          onOpenChange={(open) => {
+            if (!open) setAppointmentLeadId(null);
+          }}
+          onSuccess={() => {
+            toast.success('Appointment set!');
+            setAppointmentLeadId(null);
+            fetchLeads();
+          }}
+        />
+      )}
+
+      {wonLeadId && (
+        <WonLeadModal
+          leadId={wonLeadId}
+          open
+          onOpenChange={(open) => {
+            if (!open) setWonLeadId(null);
+          }}
+          onSuccess={() => {
+            toast.success('Lead marked as won!');
+            setWonLeadId(null);
+            fetchLeads();
+          }}
+        />
+      )}
 
       {dialogMarketId != null && dialogBoundary.length >= 3 && (
         <TerritoryDialog

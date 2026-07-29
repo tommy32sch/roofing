@@ -13,6 +13,7 @@ import {
   stormZoneStyle,
   isLeadAddressDetailZoom,
   leadMarkerAppearance,
+  shouldPromptForFollowUp,
   DNC_RING_COLOR,
   DO_NOT_KNOCK_RING_COLOR,
   type StormReport,
@@ -111,6 +112,56 @@ describe('lead marker appearance', () => {
     expect(
       leadMarkerAppearance({ ...base, addressDetail: true, isDnc: true }).strokeColor
     ).toBe(DNC_RING_COLOR);
+  });
+});
+
+describe('lead result follow-up prompt', () => {
+  const base = {
+    follow_up_date: null,
+    last_knock_at: null,
+    last_disposition: null,
+    last_call_at: null,
+    last_call_disposition: null,
+  };
+
+  it('prompts for the newest Go Back or Call Back result', () => {
+    expect(
+      shouldPromptForFollowUp({
+        ...base,
+        last_knock_at: '2026-07-29T10:00:00Z',
+        last_disposition: 'callback',
+      })
+    ).toBe(true);
+    expect(
+      shouldPromptForFollowUp({
+        ...base,
+        last_call_at: '2026-07-29T10:00:00Z',
+        last_call_disposition: 'call_back',
+      })
+    ).toBe(true);
+  });
+
+  it('does not let an older callback override a newer final result', () => {
+    expect(
+      shouldPromptForFollowUp({
+        ...base,
+        last_call_at: '2026-07-29T09:00:00Z',
+        last_call_disposition: 'call_back',
+        last_knock_at: '2026-07-29T10:00:00Z',
+        last_disposition: 'not_interested',
+      })
+    ).toBe(false);
+  });
+
+  it('keeps an explicitly scheduled follow-up visible', () => {
+    expect(
+      shouldPromptForFollowUp({
+        ...base,
+        follow_up_date: '2026-08-01',
+        last_knock_at: '2026-07-29T10:00:00Z',
+        last_disposition: 'not_interested',
+      })
+    ).toBe(true);
   });
 });
 
