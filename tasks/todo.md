@@ -715,7 +715,7 @@ to review the team or one account.
 - [x] Add dashboard totals, account filtering, and recent lead-linked results
 - [x] Show lifetime knock/call summaries and structured history on each lead
 - [x] Cover period boundaries, role scoping, API/UI contracts, and error states
-- [ ] Run focused/full verification, deploy `main`, and verify Production
+- [x] Run focused/full verification, deploy `main`, and verify Production
 
 Pre-deployment review:
 - Reps are server-enforced to their own activity. Admins default to All Team and
@@ -759,3 +759,9 @@ see the new pin immediately without leaving the canvassing map.
 - [ ] Create the lead, first knock and activity history atomically
 - [ ] Add the new pin and knock state to the map immediately
 - [ ] Extend the offline outbox so a new lead and its first knock can sync together
+
+Production review:
+- Committed and pushed as `57a6da7`; the work was complete but had been left
+  uncommitted, so none of it had reached the live site.
+- `/api/admin/contact-activity` returns 401 unauthenticated on
+  roofing-ebon.vercel.app, confirming the new route deployed and is auth-gated.
