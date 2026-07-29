@@ -588,3 +588,65 @@ created and removed afterwards):
 - Delivery reported `not_configured` rather than failing: `sendEmail` fails
   closed, so reminders queue but send nothing until Resend leaves test mode.
 - 519 tests, typecheck, lint (unchanged at the 1 pre-existing error), build.
+
+## Offline knock capture
+
+A canvasser walks a street with patchy signal. Today a failed knock POST shows
+a toast and the knock is gone — the rep has already moved to the next door and
+will not retype it. Territories, knock recency and the Today queue all quietly
+degrade from the missing rows.
+
+Three problems, not one:
+- Durability: the knock must survive a failed request, a locked phone and a
+  closed tab. An in-memory retry is not enough.
+- Timestamp truth: `knocked_at` currently defaults to server NOW(). A knock
+  taken at 10:05 and synced at 11:30 would claim 11:30, which corrupts knock
+  recency — the thing the map colours doors by.
+- Idempotency: a flaky connection retries. Without a stable client id the same
+  door records twice and knock_count inflates.
+
+Scope now: the durable outbox. A service worker for cold-starting the app with
+no signal is a separate, larger piece and is NOT included — with the app already
+open, which is the canvassing case, the outbox is what prevents loss.
+
+- [x] Recover the interrupted Claude Code draft and audit its failure modes
+- [x] Migration 022: add `client_id` and one atomic, idempotent knock-recording RPC
+- [x] Make IndexedDB writes prove transaction completion instead of failing soft
+- [x] Scope queued work to the authenticated rep and gate draining on identity
+- [x] Retry transient/auth failures indefinitely; retain and surface permanent failures
+- [x] Remove the crash window that can strand a persisted `sending` entry
+- [x] Make the knock route validate time/idempotency and delegate one atomic DB write
+- [x] Optimistically update the pin, knock count, DNK state, and pipeline status
+- [x] Show pending/failed work and support an explicit retry
+- [x] Add regression coverage for storage, restart, auth, dedupe, and optimistic state
+- [x] Regenerate `supabase/schema.sql`, run focused/full verification, and review the diff
+- [x] Back up and migrate the live DB before deploying dependent code
+- [ ] Deploy and verify queue, reconnect, and duplicate replay in production
+
+Pre-deployment review:
+- A queue row remains `pending` until a normal 2xx response; no in-flight state
+  is persisted, so closing or locking the phone cannot strand it.
+- IndexedDB writes resolve success only on transaction commit. Unavailable or
+  aborted storage is shown as an error instead of a false “saved” confirmation.
+- Queue rows carry the originating admin id, and the API rejects a replay under
+  another account. Auth failures remain queued and retry after sign-in.
+- Transient failures retry indefinitely with capped backoff. Permanent payload
+  failures remain in IndexedDB, appear in the map toolbar, and can be retried.
+- Scheduled polling respects backoff, while reconnect and the explicit retry
+  control bypass it so a rep never taps “retry now” and sees a silent no-op.
+- `record_lead_knock` locks one lead row and atomically inserts the event,
+  increments the count, preserves timestamp ordering and sticky DNK state, moves
+  pipeline status only forward, and writes both timeline activities.
+- Server leads are overlaid with all queued events, so pin recency, knock count,
+  callback controls, DNK protection, and pipeline colour update immediately and
+  remain optimistic after a refetch or page reload.
+- Verification passed: 54 focused offline/knock tests, 573 full tests,
+  TypeScript, changed-file ESLint, production build, schema regeneration, and
+  `git diff --check`.
+- Live migration applied successfully. Supabase's OpenAPI schema now exposes
+  `record_lead_knock`.
+- A controlled live smoke test proved a new write, duplicate replay, client-id
+  conflict detection, atomic lead state and atomic activity history. Its
+  temporary lead and cascading test rows were removed immediately afterward.
+- Read-only production backup saved to
+  `backups/backup-2026-07-29T16-08-21-483Z.json` before the remaining migration.

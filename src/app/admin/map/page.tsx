@@ -5,6 +5,8 @@ import dynamic from 'next/dynamic';
 import { BoxSelect, UserCheck, LocateFixed, CloudHail, Wind, Pencil, ChevronDown, Check, Hexagon, MapPinned } from 'lucide-react';
 import { toast } from 'sonner';
 import { knockLabel, type KnockDisposition } from '@/lib/leads/knocks';
+import { applyQueuedKnocks } from '@/lib/leads/knock-sync';
+import { useKnockOutbox } from '@/lib/offline/useKnockOutbox';
 import type { Map as LeafletMap } from 'leaflet';
 import { Button } from '@/components/ui/button';
 import {
@@ -155,6 +157,15 @@ export default function MapPage() {
     }
   }, [status, priority, market]);
 
+  const knockOutbox = useKnockOutbox({
+    ownerId: identityLoaded ? currentUserId : null,
+    onSettled: fetchLeads,
+  });
+  const effectiveLeads = useMemo(
+    () => applyQueuedKnocks(leads, knockOutbox.entries),
+    [knockOutbox.entries, leads]
+  );
+
   useEffect(() => {
     fetchLeads();
   }, [fetchLeads]);
@@ -258,11 +269,11 @@ export default function MapPage() {
     if (!map) return;
     const bounds = map.getBounds();
     const next = new Set<string>();
-    for (const lead of leads) {
+    for (const lead of effectiveLeads) {
       if (bounds.contains([lead.latitude, lead.longitude])) next.add(lead.id);
     }
     setVisibleIds(next);
-  }, [leads]);
+  }, [effectiveLeads]);
 
   useEffect(() => {
     if (!mapInstance) return;
@@ -291,7 +302,7 @@ export default function MapPage() {
       if (allVisibleSelected) {
         for (const id of visibleIds) next.delete(id);
       } else {
-        for (const lead of leads) {
+        for (const lead of effectiveLeads) {
           if (visibleIds.has(lead.id)) next.set(lead.id, Number(lead.estimated_roof_value) || 0);
         }
       }
@@ -302,29 +313,30 @@ export default function MapPage() {
   const [loggingKnockFor, setLoggingKnockFor] = useState<string | null>(null);
 
   /**
-   * Log a knock from the pin popup. Refetches so the pin immediately reflects
-   * the new state — a rep needs to see at a glance that this door is done.
+   * Log a knock from the pin popup.
+   *
+   * Goes through the offline outbox rather than straight to the network. A rep
+   * is walking a street on a phone and cannot stand at a door waiting to learn
+   * whether a POST succeeded — previously a failed request showed a toast and
+   * discarded the knock, and the door then looked un-knocked to everyone.
+   *
+   * The knock is durable the moment it is accepted; the request happens when
+   * the network allows, which may be seconds or streets later.
    */
   async function logKnock(lead: GeoLead, disposition: KnockDisposition) {
     setLoggingKnockFor(lead.id);
     try {
-      const res = await fetch(`/api/admin/leads/${lead.id}/knocks`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ disposition }),
+      await knockOutbox.enqueue({
+        leadId: lead.id,
+        disposition,
+        leadName: `${lead.first_name} ${lead.last_name}`.trim(),
       });
-      const data = await res.json();
-      if (data.success) {
-        toast.success(
-          `${lead.first_name} ${lead.last_name} — ${knockLabel(disposition)}` +
-            (data.statusChangedTo ? ` · moved to ${data.statusChangedTo.replace('_', ' ')}` : '')
-        );
-        fetchLeads();
-      } else {
-        toast.error(data.error || 'Failed to log knock');
-      }
+      toast.success(
+        `${lead.first_name} ${lead.last_name} — ${knockLabel(disposition)}` +
+          (knockOutbox.online ? '' : ' · saved, will sync')
+      );
     } catch {
-      toast.error('Failed to log knock');
+      toast.error('Could not save knock to this device');
     } finally {
       setLoggingKnockFor(null);
     }
@@ -456,17 +468,17 @@ export default function MapPage() {
   const territoryLeadCounts = useMemo(() => {
     const counts: Record<string, number> = {};
     for (const territory of territories) {
-      counts[territory.id] = leads.filter(
+      counts[territory.id] = effectiveLeads.filter(
         (lead) =>
           lead.market_id === territory.market_id &&
           pointInPolygon([lead.latitude, lead.longitude], territory.boundary)
       ).length;
     }
     return counts;
-  }, [leads, territories]);
+  }, [effectiveLeads, territories]);
 
   function leadsInsideTerritory(territory: Pick<Territory, 'market_id' | 'boundary'>) {
-    return leads.filter(
+    return effectiveLeads.filter(
       (lead) =>
         lead.market_id === territory.market_id &&
         pointInPolygon([lead.latitude, lead.longitude], territory.boundary)
@@ -513,7 +525,7 @@ export default function MapPage() {
       return;
     }
     if (drawPurpose === 'selection') {
-      const inside = leads.filter((lead) =>
+      const inside = effectiveLeads.filter((lead) =>
         pointInPolygon([lead.latitude, lead.longitude], drawPoints)
       );
       if (inside.length === 0) {
@@ -639,9 +651,26 @@ export default function MapPage() {
   }
 
   const selectionTotal = [...selection.values()].reduce((sum, v) => sum + v, 0);
+  const knockSyncNeedsAttention = knockOutbox.storageError || knockOutbox.failed > 0;
+  const showKnockSync =
+    knockOutbox.pending > 0 || knockSyncNeedsAttention || !knockOutbox.online;
+  const knockSyncTitle = knockOutbox.storageError
+    ? 'This browser cannot access durable offline storage'
+    : knockOutbox.failed > 0
+      ? `${knockOutbox.lastError ?? 'Sync failed'} — tap to retry`
+      : knockOutbox.online
+        ? 'Tap to retry syncing now'
+        : 'Offline — knocks are saved on this device and will sync automatically';
+  const knockSyncLabel = knockOutbox.storageError
+    ? 'Offline storage unavailable'
+    : knockOutbox.failed > 0
+      ? `${knockOutbox.failed} knock${knockOutbox.failed === 1 ? '' : 's'} need retry`
+      : knockOutbox.pending > 0
+        ? `${knockOutbox.pending} knock${knockOutbox.pending === 1 ? '' : 's'} to sync`
+        : 'Offline';
   const drawAvailability = mapDrawAvailability({
     loading,
-    shownLeadCount: leads.length,
+    shownLeadCount: effectiveLeads.length,
     selectedMarketId: selectedMarket?.id ?? null,
   });
   const dialogBoundary = editingTerritory && !editingBoundary
@@ -650,7 +679,7 @@ export default function MapPage() {
   const dialogMarketId = editingTerritory?.market_id ?? selectedMarket?.id ?? null;
   const dialogShownLeadCount = dialogMarketId == null
     ? 0
-    : leads.filter(
+    : effectiveLeads.filter(
         (lead) =>
           lead.market_id === dialogMarketId &&
           pointInPolygon([lead.latitude, lead.longitude], dialogBoundary)
@@ -677,6 +706,36 @@ export default function MapPage() {
               Territories ({activeTerritories.length})
             </Button>
 
+            {/* Unsynced work. Silence here would be the old bug wearing a new
+                face: the rep needs to know their knocks are held, not lost. */}
+            {showKnockSync && (
+              <button
+                type="button"
+                onClick={() =>
+                  void (knockOutbox.failed > 0
+                    ? knockOutbox.retryFailed()
+                    : knockOutbox.flush(true))
+                }
+                title={knockSyncTitle}
+                className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium ${
+                  knockSyncNeedsAttention
+                    ? 'border-destructive/40 bg-destructive/10 text-destructive'
+                    : 'border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-400'
+                }`}
+              >
+                <span
+                  className={`h-1.5 w-1.5 rounded-full ${
+                    knockSyncNeedsAttention
+                      ? 'bg-destructive'
+                      : knockOutbox.online
+                        ? 'bg-amber-500'
+                        : 'bg-muted-foreground'
+                  }`}
+                />
+                {knockSyncLabel}
+              </button>
+            )}
+
             {isAdmin && (
               <Button
                 variant={allVisibleSelected ? 'default' : 'outline'}
@@ -697,7 +756,7 @@ export default function MapPage() {
                   onClick={startSelectionArea}
                   disabled={drawAvailability.selectionDisabled}
                   title={
-                    leads.length === 0
+                    effectiveLeads.length === 0
                       ? 'No mapped leads match the current filters'
                       : 'Draw an area to select leads for assignment'
                   }
@@ -975,7 +1034,7 @@ export default function MapPage() {
           <Skeleton className="h-full w-full rounded-md" />
         ) : (
           <LeadMap
-            leads={leads}
+            leads={effectiveLeads}
             selectedIds={new Set(selection.keys())}
             onToggleSelect={isAdmin ? toggleSelect : undefined}
             stormReports={stormReports}
@@ -992,7 +1051,7 @@ export default function MapPage() {
             // A freehand trace is one shape, so it replaces rather than appends.
             onDrawPath={isAdmin ? (path) => setDrawPoints(path) : undefined}
             onMapReady={(map) => { mapRef.current = map; setMapInstance(map); }}
-            onLogKnock={logKnock}
+            onLogKnock={identityLoaded && currentUserId ? logKnock : undefined}
             loggingKnockFor={loggingKnockFor}
             onFollowUpChange={fetchLeads}
             marketId={selectedMarket?.id ?? null}
