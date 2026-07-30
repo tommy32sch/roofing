@@ -37,6 +37,7 @@ import { StreetSelectSheet } from '@/components/leads/StreetSelectSheet';
 import { LEAD_STATUS_OPTIONS, LEAD_PRIORITY_OPTIONS } from '@/types';
 import type { LeadWithSource, UserRole } from '@/types';
 import { LIMITS } from '@/lib/utils/validation';
+import { leadFilterKey, selectionSurvivesFilterChange } from '@/lib/leads/selection';
 import { STREET_DIRECTIONS } from '@/lib/utils/lead-query';
 import { formatDistanceToNow, isPast, isToday } from 'date-fns';
 import { EmptyState } from '@/components/layout/empty-state';
@@ -237,6 +238,36 @@ function LeadsListContent() {
       })
       .catch(() => {});
   }, [fetchDncCount]);
+
+  // A selection means "these rows, from the list I am looking at". Changing a
+  // filter breaks that premise: rows picked before the change stay in the Map
+  // but stop being rendered, so the assign bar would offer to reassign leads the
+  // operator cannot see — the whole database, if they had selected broadly
+  // first. Bulk assign has no undo, so the selection is dropped instead.
+  //
+  // Paging is deliberately excluded from the key: accumulating a selection while
+  // walking pages of ONE filter is a real workflow.
+  //
+  // Reset during render rather than in an effect. An effect would let one paint
+  // happen with a stale selection still armed, and it trips
+  // react-hooks/set-state-in-effect.
+  const filterKey = leadFilterKey({
+    status,
+    priority,
+    search,
+    streetNumber,
+    streetDir,
+    streetName,
+    streets: streetsParam,
+    dncOnly,
+    marketId: marketParam,
+    createdBy,
+  });
+  const [selectionScope, setSelectionScope] = useState(filterKey);
+  if (!selectionSurvivesFilterChange(selectionScope, filterKey)) {
+    setSelectionScope(filterKey);
+    if (selection.size > 0) setSelection(new Map());
+  }
 
   function setSelected(entries: { id: string; value: number | null }[], selected: boolean) {
     setSelection((prev) => {
