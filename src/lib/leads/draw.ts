@@ -133,3 +133,50 @@ export function shouldCapture(
   if (!last) return true;
   return Math.hypot(next.x - last.x, next.y - last.y) >= spacing;
 }
+
+/**
+ * Smallest lasso that counts, measured as the longer side of its screen-space
+ * bounding box.
+ *
+ * With release committing the selection, every stray flick past the 6px drag
+ * threshold would otherwise select whatever happened to sit under it. 24px is
+ * below any deliberate loop and above the accidental ones.
+ */
+export const MIN_LASSO_SPAN_PX = 24;
+
+export interface PixelBounds {
+  minX: number;
+  maxX: number;
+  minY: number;
+  maxY: number;
+}
+
+export function emptyBounds(): PixelBounds {
+  return { minX: Infinity, maxX: -Infinity, minY: Infinity, maxY: -Infinity };
+}
+
+export function growBounds(bounds: PixelBounds, p: { x: number; y: number }): PixelBounds {
+  return {
+    minX: Math.min(bounds.minX, p.x),
+    maxX: Math.max(bounds.maxX, p.x),
+    minY: Math.min(bounds.minY, p.y),
+    maxY: Math.max(bounds.maxY, p.y),
+  };
+}
+
+/**
+ * Whether the traced area is big enough to be intentional.
+ *
+ * Uses the LONGER side rather than area, so a long thin lasso down one side of a
+ * street still qualifies — that is a real way to pick a block, and an area test
+ * would reject it.
+ */
+export function isDeliberateLasso(
+  bounds: PixelBounds,
+  minSpan: number = MIN_LASSO_SPAN_PX
+): boolean {
+  if (!Number.isFinite(bounds.minX) || !Number.isFinite(bounds.minY)) return false;
+  const width = bounds.maxX - bounds.minX;
+  const height = bounds.maxY - bounds.minY;
+  return Math.max(width, height) >= minSpan;
+}

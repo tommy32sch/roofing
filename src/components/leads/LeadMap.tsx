@@ -13,7 +13,7 @@ import { FollowUpMenu } from '@/components/leads/FollowUpMenu';
 import type { LeadResultChannel } from '@/components/leads/LeadResultSheet';
 import { LEAD_STATUS_OPTIONS } from '@/types';
 import { shouldRecenterMap } from '@/lib/leads/markets';
-import { classifyDrawGestureEnd, isDrag, shouldCapture, simplifyPath } from '@/lib/leads/draw';
+import { classifyDrawGestureEnd, isDrag, shouldCapture, simplifyPath, isDeliberateLasso, emptyBounds, growBounds } from '@/lib/leads/draw';
 import { STATUS_COLORS, DNC_RING_COLOR, DO_NOT_KNOCK_RING_COLOR, isLeadAddressDetailZoom, leadMarkerAppearance, shouldPromptForFollowUp, stormColor, stormRadius, stormLabel, sortStormsForDrawing, stormAgeBucket, stormZoneStyle, stormAgeShort, type GeoLead, type StormReport } from './map-constants';
 import { buildStormZones } from '@/lib/storm/zones';
 import type { Territory } from '@/types';
@@ -227,13 +227,19 @@ function FocusView({
 function DrawLayer({
   drawing,
   points,
-  onPoint,
   onPath,
+  onCommit,
 }: {
   drawing: boolean;
   points: [number, number][];
-  onPoint: (lat: number, lng: number) => void;
   onPath: (path: [number, number][]) => void;
+  /**
+   * Supplied only when releasing should commit the shape immediately, which is
+   * lead selection. Territory drawing leaves this undefined and keeps its
+   * explicit Finish, because finishing there opens a naming dialog and the
+   * outline usually wants tidying first.
+   */
+  onCommit?: (path: [number, number][]) => void;
 }) {
   const map = useMap();
   // Refs, not state: these change on every pointer event and must not each
@@ -244,14 +250,15 @@ function DrawLayer({
   const freehandRef = useRef(false);
   const activePointerRef = useRef<number | null>(null);
   const originalPathRef = useRef<[number, number][]>([]);
-  const latestRef = useRef({ points, onPoint, onPath });
+  const boundsRef = useRef(emptyBounds());
+  const latestRef = useRef({ points, onPath, onCommit });
 
   // The parent updates points on every captured move and currently supplies
   // inline callbacks. Keep the pointer listeners mounted for the whole gesture
   // while still calling the latest props after those rerenders.
   useEffect(() => {
-    latestRef.current = { points, onPoint, onPath };
-  }, [points, onPoint, onPath]);
+    latestRef.current = { points, onPath, onCommit };
+  }, [points, onPath, onCommit]);
 
   useEffect(() => {
     if (!drawing) return;
@@ -309,6 +316,7 @@ function DrawLayer({
       lastRef.current = null;
       pathRef.current = [];
       freehandRef.current = false;
+      boundsRef.current = emptyBounds();
       originalPathRef.current = [...latestRef.current.points];
       capture(e.pointerId);
     };
@@ -328,6 +336,7 @@ function DrawLayer({
 
       if (!shouldCapture(lastRef.current, at, { capturedCount: pathRef.current.length })) return;
       lastRef.current = at;
+      boundsRef.current = growBounds(boundsRef.current, at);
       const ll = map.containerPointToLatLng([at.x, at.y]);
       pathRef.current = [...pathRef.current, [ll.lat, ll.lng]];
       latestRef.current.onPath(pathRef.current);
@@ -338,6 +347,7 @@ function DrawLayer({
       const start = startRef.current;
       const wasFreehand = freehandRef.current;
       const raw = pathRef.current;
+      const bounds = boundsRef.current;
       const originalPath = originalPathRef.current;
 
       activePointerRef.current = null;
@@ -345,6 +355,7 @@ function DrawLayer({
       lastRef.current = null;
       pathRef.current = [];
       originalPathRef.current = [];
+      boundsRef.current = emptyBounds();
       freehandRef.current = false;
       release(e.pointerId);
       if (!start) return;
@@ -357,22 +368,39 @@ function DrawLayer({
         return;
       }
 
-      if (action === 'point') {
-        // Never really moved — treat it as placing one corner.
-        const ll = map.containerPointToLatLng([start.x, start.y]);
-        latestRef.current.onPoint(ll.lat, ll.lng);
-        return;
-      }
+      // A press that never travelled is not a shape. Tap-to-place corners was
+      // removed in favour of pure freehand, so a stationary tap does nothing
+      // rather than dropping a stray vertex into the outline.
+      if (action === 'point') return;
 
       // Collapse the trace to the handful of vertices that describe it. The
       // tolerance is derived from the current scale so it means the same number
       // of SCREEN pixels at every zoom — a fixed value in degrees would erase a
       // whole neighbourhood when zoomed out.
       if (raw.length < 3) return;
+
+      // Release commits, so an accidental flick would otherwise select whatever
+      // sat under it. Roll the preview back rather than leaving a sliver drawn.
+      if (!isDeliberateLasso(bounds)) {
+        latestRef.current.onPath(originalPath);
+        return;
+      }
+
       const origin = map.containerPointToLatLng([0, 0]);
       const offset = map.containerPointToLatLng([SIMPLIFY_TOLERANCE_PX, 0]);
       const tolerance = Math.abs(offset.lng - origin.lng);
-      latestRef.current.onPath(simplifyPath(raw, tolerance));
+      const shape = simplifyPath(raw, tolerance);
+
+      const commit = latestRef.current.onCommit;
+      if (commit) {
+        // The polygon is implicitly closed start-to-end, so lifting the finger
+        // IS closing the loop. Hand it straight over and clear the preview —
+        // draw mode stays active so the next area can be lassoed immediately.
+        commit(shape);
+        latestRef.current.onPath([]);
+        return;
+      }
+      latestRef.current.onPath(shape);
     };
 
     const onUp = (e: PointerEvent) => finishGesture(e, false);
@@ -465,9 +493,10 @@ interface LeadMapProps {
   /** Territory-drawing mode */
   drawing?: boolean;
   drawPoints?: [number, number][];
-  onDrawPoint?: (lat: number, lng: number) => void;
   /** Replaces the whole outline — a freehand trace, not a single vertex. */
   onDrawPath?: (path: [number, number][]) => void;
+  /** Commit on release. Selection mode only; territories keep Finish. */
+  onDrawCommit?: (path: [number, number][]) => void;
   /** Persisted canvassing boundaries for the selected market. */
   territories?: Territory[];
   territoryLeadCounts?: Record<string, number>;
@@ -493,8 +522,8 @@ export default function LeadMap({
   marketLoading = false,
   drawing = false,
   drawPoints = [],
-  onDrawPoint,
   onDrawPath,
+  onDrawCommit,
   territories = [],
   territoryLeadCounts = {},
   currentUserId = null,
@@ -887,8 +916,8 @@ export default function LeadMap({
 
       {/* The active draft is last so its handles stay visible. DrawLayer's
           carefully-tested pointer lifecycle remains untouched. */}
-      {onDrawPoint && onDrawPath && (
-        <DrawLayer drawing={drawing} points={drawPoints} onPoint={onDrawPoint} onPath={onDrawPath} />
+      {onDrawPath && (
+        <DrawLayer drawing={drawing} points={drawPoints} onPath={onDrawPath} onCommit={onDrawCommit} />
       )}
       </Pane>
     </MapContainer>

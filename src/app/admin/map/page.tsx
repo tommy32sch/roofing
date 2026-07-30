@@ -104,6 +104,15 @@ export default function MapPage() {
   const [appointmentLeadId, setAppointmentLeadId] = useState<string | null>(null);
   const [wonLeadId, setWonLeadId] = useState<string | null>(null);
   const [selection, setSelection] = useState<Map<string, number>>(new Map());
+  // Mirror of the selection for reading inside event handlers. A setState
+  // updater runs AFTER the handler returns, so counting new leads inside the
+  // updater and reporting the total afterwards always reported zero — and
+  // StrictMode double-invokes updaters, which would double any count kept
+  // there. Read from the ref, write through setState.
+  const selectionRef = useRef(selection);
+  useEffect(() => {
+    selectionRef.current = selection;
+  }, [selection]);
   const [visibleIds, setVisibleIds] = useState<Set<string>>(new Set());
   const [assignOpen, setAssignOpen] = useState(false);
   const [geocoding, setGeocoding] = useState(false);
@@ -581,6 +590,50 @@ export default function MapPage() {
     setDrawing(true);
   }
 
+  /**
+   * Commit one freehand lasso, then stay ready for the next.
+   *
+   * Called on pointer release rather than from a button: a polygon is implicitly
+   * closed start-to-end, so lifting the finger already closes the loop and a
+   * separate Finish step was pure ceremony.
+   *
+   * Additive on purpose — several loops build one selection, which is how you
+   * pick two streets that are not adjacent. Draw mode stays on so the next area
+   * needs no re-arming; Done exits.
+   */
+  const commitLassoSelection = useCallback(
+    (path: [number, number][]) => {
+      if (path.length < 3) return;
+      const inside = effectiveLeads.filter((lead) =>
+        pointInPolygon([lead.latitude, lead.longitude], path)
+      );
+      setDrawPoints([]);
+      if (inside.length === 0) {
+        toast.info('No leads inside that shape');
+        return;
+      }
+      // Counted against the ref so the number is known before the toast fires.
+      const current = selectionRef.current;
+      const added = inside.filter((lead) => !current.has(lead.id)).length;
+      setSelection((prev) => {
+        const next = new Map(prev);
+        for (const lead of inside) {
+          next.set(lead.id, Number(lead.estimated_roof_value) || 0);
+        }
+        return next;
+      });
+      // Report what the shape ADDED, not what it enclosed. On a second
+      // overlapping loop those differ, and "12 selected" when nothing changed
+      // reads as a bug.
+      toast.success(
+        added === 0
+          ? 'Those leads were already selected'
+          : `${added} lead${added !== 1 ? 's' : ''} added — draw another or press Done`
+      );
+    },
+    [effectiveLeads]
+  );
+
   function finishDraw() {
     if (drawPoints.length < 3) {
       toast.error('Add at least 3 points to make an area');
@@ -840,17 +893,29 @@ export default function MapPage() {
             )}
             {isAdmin && drawing && (
               <>
-                <Button variant="default" size="sm" onClick={finishDraw} disabled={drawPoints.length < 3}>
-                  Finish{drawPoints.length > 0 ? ` (${drawPoints.length})` : ''}
-                </Button>
+                {/* Selection commits on release, so there is nothing to finish —
+                    Done just leaves draw mode, and stays enabled because the
+                    selection already exists. Territory still needs an explicit
+                    Finish to reach its naming dialog. */}
+                {drawPurpose === 'selection' ? (
+                  <Button variant="default" size="sm" onClick={cancelDraw}>
+                    Done
+                  </Button>
+                ) : (
+                  <Button variant="default" size="sm" onClick={finishDraw} disabled={drawPoints.length < 3}>
+                    Finish{drawPoints.length > 0 ? ` (${drawPoints.length})` : ''}
+                  </Button>
+                )}
                 {drawPoints.length > 0 && (
                   <Button variant="outline" size="sm" onClick={() => setDrawPoints([])}>
                     Clear
                   </Button>
                 )}
-                <Button variant="ghost" size="sm" onClick={cancelDraw}>
-                  Cancel
-                </Button>
+                {drawPurpose !== 'selection' && (
+                  <Button variant="ghost" size="sm" onClick={cancelDraw}>
+                    Cancel
+                  </Button>
+                )}
               </>
             )}
             {/* Two independent toggles rather than one button plus a type
@@ -985,15 +1050,15 @@ export default function MapPage() {
         <div className="rounded-md border border-blue-300 bg-blue-50 dark:bg-blue-950/30 px-3 py-2 text-xs text-blue-700 dark:text-blue-300">
           {drawPurpose === 'selection' ? (
             <>
-              <strong>Drag</strong> to draw around leads, or <strong>tap</strong> to drop
-              corners one at a time. Then <strong>Finish</strong> to select every lead inside
-              for assignment.
+              <strong>Draw a loop</strong> around the leads you want and lift your
+              finger — everything inside is selected. Keep drawing to add more
+              areas, then press <strong>Done</strong>.
             </>
           ) : (
             <>
-              <strong>Drag</strong> to draw around a neighborhood, or <strong>tap</strong> to
-              drop corners one at a time. Then <strong>Finish</strong> to name and save the
-              territory. Leads inside stay available for explicit bulk assignment.
+              <strong>Draw a loop</strong> around the neighborhood, then press
+              <strong> Finish</strong> to name and save the territory. Leads inside stay
+              available for explicit bulk assignment.
             </>
           )}
         </div>
@@ -1109,9 +1174,13 @@ export default function MapPage() {
             onEditTerritory={isAdmin ? editTerritoryDetails : undefined}
             drawing={drawing}
             drawPoints={drawPoints}
-            onDrawPoint={isAdmin ? (lat, lng) => setDrawPoints((p) => [...p, [lat, lng]]) : undefined}
             // A freehand trace is one shape, so it replaces rather than appends.
             onDrawPath={isAdmin ? (path) => setDrawPoints(path) : undefined}
+            // Selection commits the moment the finger lifts — the polygon is
+            // implicitly closed, so releasing IS closing the loop. Territory
+            // drawing deliberately omits this and keeps Finish, because that
+            // path opens a naming dialog.
+            onDrawCommit={isAdmin && drawPurpose === 'selection' ? commitLassoSelection : undefined}
             onMapReady={(map) => { mapRef.current = map; setMapInstance(map); }}
             onOpenResult={
               identityLoaded && currentUserId

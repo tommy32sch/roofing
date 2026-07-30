@@ -9,6 +9,10 @@ import {
   MAX_CAPTURE_POINTS,
   classifyDrawGestureEnd,
   type DrawGestureEndAction,
+  isDeliberateLasso,
+  emptyBounds,
+  growBounds,
+  MIN_LASSO_SPAN_PX,
 } from './draw';
 
 type SimulatedPointerEvent =
@@ -222,5 +226,40 @@ describe('shouldCapture', () => {
   it('honours a custom spacing', () => {
     expect(shouldCapture({ x: 0, y: 0 }, { x: 3, y: 0 }, { spacing: 2 })).toBe(true);
     expect(shouldCapture({ x: 0, y: 0 }, { x: 3, y: 0 }, { spacing: 10 })).toBe(false);
+  });
+});
+
+describe('lasso size guard', () => {
+  const box = (w: number, h: number) => ({ minX: 0, maxX: w, minY: 0, maxY: h });
+
+  it('rejects an empty trace', () => {
+    expect(isDeliberateLasso(emptyBounds())).toBe(false);
+  });
+
+  // Release now commits the selection, so an accidental flick must not select.
+  it('rejects a flick barely past the drag threshold', () => {
+    expect(isDeliberateLasso(box(8, 6))).toBe(false);
+  });
+
+  it('accepts a deliberate loop', () => {
+    expect(isDeliberateLasso(box(120, 90))).toBe(true);
+  });
+
+  it('triggers exactly at the threshold', () => {
+    expect(isDeliberateLasso(box(MIN_LASSO_SPAN_PX, 0))).toBe(true);
+    expect(isDeliberateLasso(box(MIN_LASSO_SPAN_PX - 1, 0))).toBe(false);
+  });
+
+  // A long thin lasso down one side of a street is a real way to pick a block;
+  // an area test would throw it away.
+  it('accepts a long thin lasso that an area test would reject', () => {
+    expect(isDeliberateLasso(box(400, 5))).toBe(true);
+  });
+
+  it('grows to cover every captured point', () => {
+    let b = emptyBounds();
+    for (const p of [{ x: 50, y: 50 }, { x: 10, y: 90 }, { x: 200, y: 20 }]) b = growBounds(b, p);
+    expect(b).toEqual({ minX: 10, maxX: 200, minY: 20, maxY: 90 });
+    expect(isDeliberateLasso(b)).toBe(true);
   });
 });
