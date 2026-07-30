@@ -829,3 +829,86 @@ Also fixed: migration 023 was used twice — Codex added `023_contact_results.sq
 while this session was away and mine collided. Renamed to
 `024_appointment_outcomes.sql` and regenerated `schema.sql`. The live database
 was unaffected; only the file ordering was wrong.
+
+## Exact placement for the last 12 leads — CASS-backed geocoder
+
+### The problem, precisely
+
+12 leads sit on street-level pins because neither free source holds their house:
+
+| Cluster | Leads | Evidence |
+|---|---|---|
+| E Flowing Spg 5503–5584 | 8 | Census address range for that street starts at 5700; all 8 are below it |
+| E Valley View Dr 5918–5950 | 4 | Nominatim returns `category=highway`; Census has no record |
+
+Already tried and ruled out: free-form Nominatim, Census with the city name,
+USPS suffix expansion, and street-centroid interpolation (rejected — it produces
+confident wrong pins, the failure that put 37 leads 33 miles away).
+
+Their ZIP+4 codes split cleanly by parity — `-8079` odd, `-8080` even, i.e.
+opposite sides of the street. USPS clearly holds these addresses at a
+granularity OSM and TIGER do not, which is the case for a CASS-backed provider.
+
+### Provider
+
+Geocodio first: US-only (matches the app), 2,500/day free, **no credit card**,
+and it blends USPS data with other sources. Smarty is the fallback if Geocodio
+misses — CASS-certified, built directly from the USPS address file, so it is the
+most likely to hold new-build addresses, but its free tier is smaller.
+
+Explicitly NOT LocationIQ, Geoapify or Photon: all OSM-derived, so they inherit
+the exact gap being solved. A generous free tier is worthless if the data is the
+same data.
+
+### Design
+
+A third tier on the existing chain, consulted only when the previous answer is
+below house-level — the precision plumbing added in 698cec9 is the seam:
+
+    Nominatim  ->  Census  ->  CASS provider
+       (free)      (free)      (keyed, optional)
+
+- `src/lib/integrations/geocode-cass.ts`, written against a provider-agnostic
+  interface so swapping Geocodio for Smarty is a config change, not a rewrite.
+- Key lives in `app_settings`, mirroring `regrid_api_key`: editable in Settings
+  by an admin, no redeploy to rotate, never in the bundle.
+- Absent key = today's behaviour exactly. The feature must be additive, because
+  the app has to keep working for anyone who never configures it.
+- Cost is negligible by construction: the third tier only runs when the first two
+  fail to place a house, which today is 12 addresses out of 967.
+
+### Steps
+
+- [ ] Owner: create a Geocodio account, paste the key into Settings
+- [ ] VALIDATION GATE — query the 12 known-bad addresses directly, before any
+      wiring. If they do not resolve house-level, stop and try Smarty instead.
+      No integration work until the data is proven to exist.
+- [ ] `geocode-cass.ts` + tests: request shape, response parsing, accuracy-code
+      handling, failure returns null rather than throwing
+- [ ] Extend the chain; a keyless install must be byte-identical in behaviour
+- [ ] Settings UI field + a "test connection" button, matching Regrid's pattern
+- [ ] `npm run backup`, then clear and re-geocode ONLY those 12
+- [ ] Verify: 12 distinct coordinates, all within the correct block, and the
+      odd/even ZIP+4 split lands on opposite sides of the street
+- [ ] Confirm the app-wide stacked count reaches 0
+- [ ] Deploy and re-verify on production
+
+### Risks
+
+- The provider may not have them either. The validation gate exists so this is
+  discovered in one minute, before any code is written.
+- A paid dependency creeping into the critical path. Mitigated by keeping it
+  optional and last in the chain.
+- Repair scope creep. Only the 12 get cleared, identified by explicit id list —
+  the same discipline that kept the 37-lead repair from touching anything else.
+
+### Rollback
+
+`npm run backup` first; every previous coordinate saved to a rollback file, as
+with the earlier repairs. Removing the key reverts behaviour immediately without
+a deploy.
+
+### Not in scope
+
+Storing precision per lead so the UI can mark approximate pins. Worth doing, but
+it is a schema change and a separate decision.
