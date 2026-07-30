@@ -12,6 +12,7 @@
 
 import { createClient } from '@supabase/supabase-js';
 import { geocodeAddress } from '../src/lib/integrations/geocode';
+import { buildGeocodeQuery } from '../src/lib/leads/geocode-query';
 import { assertSafeTarget } from './lib/guard';
 
 const DELAY_MS = 1100;
@@ -70,12 +71,14 @@ async function geocodeLeads() {
     const label = [lead.address_street, lead.address_city, lead.address_state]
       .filter(Boolean)
       .join(', ');
-    const result = await geocodeAddress(
-      lead.address_street!.trim(),
-      lead.address_city?.trim() || defCity,
-      lead.address_state?.trim() || defState,
-      lead.address_zip
-    );
+    // Shares the app's precedence rules. Substituting a default city over a
+    // lead's own ZIP is what mislocated leads here: "Phoenix" plus ZIP 85132
+    // (Pinal County) either matches nothing or matches a same-named street in
+    // the wrong county.
+    const query = buildGeocodeQuery(lead, { city: defCity, state: defState });
+    const result = query
+      ? await geocodeAddress(query.street, query.city, query.state, query.zip)
+      : null;
 
     if (result) {
       const { error: updateError } = await supabase

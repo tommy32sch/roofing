@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/supabase/server';
 import { getAuthenticatedAdmin } from '@/lib/auth/jwt';
 import { geocodeAddress, getGeoDefaults } from '@/lib/integrations/geocode';
+import { buildGeocodeQuery } from '@/lib/leads/geocode-query';
 
 // Nominatim allows ~1 request/second, and serverless functions have a short
 // timeout — so geocode a small batch per call and let the client loop through
@@ -76,12 +77,14 @@ export async function POST(request: NextRequest) {
     for (let i = 0; i < batch.length; i++) {
       const lead = batch[i];
       const region = await defaultsFor(lead.market_id);
-      const result = await geocodeAddress(
-        lead.address_street!.trim(),
-        lead.address_city?.trim() || region.city,
-        lead.address_state?.trim() || region.state,
-        lead.address_zip
-      );
+      // Same precedence as single-lead geocoding: never send a default city
+      // alongside the lead's own ZIP. Doing so is what left every one of these
+      // leads unmapped — the market default "Phoenix" contradicted ZIP 85132,
+      // which is Pinal County, so Nominatim matched nothing.
+      const query = buildGeocodeQuery(lead, region);
+      const result = query
+        ? await geocodeAddress(query.street, query.city, query.state, query.zip)
+        : null;
       if (result) {
         const { error: upErr } = await supabase
           .from('leads')

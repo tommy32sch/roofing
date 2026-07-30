@@ -1,4 +1,5 @@
 import { db } from '@/lib/supabase/server';
+import { buildGeocodeQuery } from '@/lib/leads/geocode-query';
 
 /**
  * Free geocoding via OSM Nominatim.
@@ -110,18 +111,15 @@ export async function geocodeLeadIfNeeded(
 ): Promise<boolean> {
   if (!lead.address_street?.trim()) return false;
 
-  // Fall back to the default region when the lead lacks its own city/state, so
-  // a bare street resolves within the right area — its own market's region
-  // first, so a Minnesota street doesn't land in Arizona.
+  // The default region rescues a bare street, but it must never be layered on
+  // top of a ZIP the lead already has — Nominatim ANDs its fields, and a
+  // guessed city that disagrees with the ZIP matches nothing. buildGeocodeQuery
+  // owns that precedence, and returns null when the lead is not geocodable.
   const defaults = await getGeoDefaults(lead.market_id);
-  const city = lead.address_city?.trim() || defaults.city;
-  const state = lead.address_state?.trim() || defaults.state;
+  const query = buildGeocodeQuery(lead, defaults);
+  if (!query) return false;
 
-  // A street alone (no city/zip, no default region) is not geocodable —
-  // Nominatim would match a same-named street elsewhere in the US.
-  if (!city && !lead.address_zip?.trim()) return false;
-
-  const result = await geocodeAddress(lead.address_street.trim(), city, state, lead.address_zip);
+  const result = await geocodeAddress(query.street, query.city, query.state, query.zip);
   if (!result) return false;
 
   const supabase = db();
