@@ -1,6 +1,7 @@
 import { db } from '@/lib/supabase/server';
 import { buildGeocodeQuery } from '@/lib/leads/geocode-query';
 import { geocodeAddressCensus } from './geocode-census';
+import { classifyNominatimPrecision, shouldSeekBetterPrecision, preferMorePrecise, type GeocodePrecision } from './geocode-precision';
 
 /**
  * Free geocoding via OSM Nominatim.
@@ -17,6 +18,12 @@ const USER_AGENT = 'RoofLeadsCRM/1.0 (lead address mapping)';
 export interface GeocodeResult {
   latitude: number;
   longitude: number;
+  /**
+   * How specific the answer is. 'street' means the geocoder found the road but
+   * not the house, which is why distinct addresses used to land on identical
+   * coordinates.
+   */
+  precision?: GeocodePrecision;
 }
 
 export async function geocodeAddress(
@@ -50,7 +57,7 @@ export async function geocodeAddress(
     const longitude = parseFloat(first.lon);
     if (Number.isNaN(latitude) || Number.isNaN(longitude)) return null;
 
-    return { latitude, longitude };
+    return { latitude, longitude, precision: classifyNominatimPrecision(first) };
   } catch {
     return null;
   }
@@ -75,11 +82,27 @@ export async function geocodeAddressWithFallback(query: {
   zip: string | null;
 }): Promise<GeocodeResult | null> {
   const primary = await geocodeAddress(query.street, query.city, query.state, query.zip);
-  if (primary) return primary;
-  if (!query.street?.trim()) return null;
+
+  // Nominatim returning SOMETHING is not the same as it finding the house. A
+  // road-level hit is the street's midpoint, which is exactly how eight
+  // distinct houses ended up on one pin. Ask Census whenever the answer is not
+  // house-level — not only when it is missing entirely.
+  const needsSecondOpinion = !primary || shouldSeekBetterPrecision(primary.precision ?? 'area');
+  if (!needsSecondOpinion) return primary;
+  if (!query.street?.trim()) return primary;
 
   const census = await geocodeAddressCensus(query);
-  return census ? { latitude: census.latitude, longitude: census.longitude } : null;
+  // Census only ever returns matched address points, so a hit is house-level.
+  const best = preferMorePrecise(
+    primary ? { value: primary, precision: primary.precision ?? 'area' } : null,
+    census
+      ? {
+          value: { latitude: census.latitude, longitude: census.longitude, precision: 'house' as const },
+          precision: 'house' as const,
+        }
+      : null
+  );
+  return best?.value ?? null;
 }
 
 /**
