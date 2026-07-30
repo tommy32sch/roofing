@@ -1,5 +1,6 @@
 import { db } from '@/lib/supabase/server';
 import { buildGeocodeQuery } from '@/lib/leads/geocode-query';
+import { geocodeAddressCensus } from './geocode-census';
 
 /**
  * Free geocoding via OSM Nominatim.
@@ -53,6 +54,32 @@ export async function geocodeAddress(
   } catch {
     return null;
   }
+}
+
+/**
+ * Nominatim first, then the US Census geocoder.
+ *
+ * OSM is volunteer-mapped and whole streets can be missing — 27 leads in one
+ * ZIP sat unmapped because it had no house numbers on two streets, all of which
+ * Census resolved. Census is free, keyless and US-only, and agreed with
+ * Nominatim to four decimal places on an address both could place, so mixing
+ * the two does not shift existing pins.
+ *
+ * Only attempted when there is a street. The market-centre callers pass an
+ * empty street to geocode a city, which Census cannot do and Nominatim can.
+ */
+export async function geocodeAddressWithFallback(query: {
+  street: string;
+  city: string | null;
+  state: string | null;
+  zip: string | null;
+}): Promise<GeocodeResult | null> {
+  const primary = await geocodeAddress(query.street, query.city, query.state, query.zip);
+  if (primary) return primary;
+  if (!query.street?.trim()) return null;
+
+  const census = await geocodeAddressCensus(query);
+  return census ? { latitude: census.latitude, longitude: census.longitude } : null;
 }
 
 /**
@@ -119,7 +146,7 @@ export async function geocodeLeadIfNeeded(
   const query = buildGeocodeQuery(lead, defaults);
   if (!query) return false;
 
-  const result = await geocodeAddress(query.street, query.city, query.state, query.zip);
+  const result = await geocodeAddressWithFallback(query);
   if (!result) return false;
 
   const supabase = db();

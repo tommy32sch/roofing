@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/supabase/server';
 import { getAuthenticatedAdmin } from '@/lib/auth/jwt';
-import { geocodeAddress, getGeoDefaults } from '@/lib/integrations/geocode';
+import { geocodeAddressWithFallback, getGeoDefaults } from '@/lib/integrations/geocode';
 import { buildGeocodeQuery } from '@/lib/leads/geocode-query';
 
 // Nominatim allows ~1 request/second, and serverless functions have a short
@@ -87,9 +87,7 @@ export async function POST(request: NextRequest) {
       // leads unmapped — the market default "Phoenix" contradicted ZIP 85132,
       // which is Pinal County, so Nominatim matched nothing.
       const query = buildGeocodeQuery(lead, region);
-      const result = query
-        ? await geocodeAddress(query.street, query.city, query.state, query.zip)
-        : null;
+      const result = query ? await geocodeAddressWithFallback(query) : null;
       if (result) {
         const { error: upErr } = await supabase
           .from('leads')

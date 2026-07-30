@@ -11,7 +11,7 @@
  */
 
 import { createClient } from '@supabase/supabase-js';
-import { geocodeAddress } from '../src/lib/integrations/geocode';
+import { geocodeAddressWithFallback } from '../src/lib/integrations/geocode';
 import { buildGeocodeQuery } from '../src/lib/leads/geocode-query';
 import { assertSafeTarget } from './lib/guard';
 
@@ -76,9 +76,7 @@ async function geocodeLeads() {
     // (Pinal County) either matches nothing or matches a same-named street in
     // the wrong county.
     const query = buildGeocodeQuery(lead, { city: defCity, state: defState });
-    const result = query
-      ? await geocodeAddress(query.street, query.city, query.state, query.zip)
-      : null;
+    const result = query ? await geocodeAddressWithFallback(query) : null;
 
     if (result) {
       const { error: updateError } = await supabase
