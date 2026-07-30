@@ -164,14 +164,238 @@
   --pipeline-lost: oklch(0.68 0.19 22);
 }
 
+/* ---------------------------------------------------------------------------
+   Surface and light.
+   ---------------------------------------------------------------------------
+   The palette above was already correct; what was missing was depth. Every
+   panel sat at the same optical level, so a dense screen read as a wall of
+   rectangles with no hierarchy.
+
+   The model is a single light source above and slightly left of the viewport.
+   Panels get a hairline lit top edge and a faint vertical falloff, which is how
+   a real surface catches light — this reads as machined hardware rather than as
+   a drop shadow, and drop shadows on a near-black background only ever look
+   like blur.
+
+   Two rules keep it professional rather than decorative:
+     1. Glow attaches ONLY to interactive and brand elements, never to text.
+        These screens are read on phones in Arizona sunlight; luminous body copy
+        is the fastest way to make a field tool unusable.
+     2. Nothing here lowers a contrast pair. Every value is additive light on
+        surfaces, so the WCAG AA text ratios verified for the tokens still hold.
+   --------------------------------------------------------------------------- */
+
+:root {
+  /* Lit top edge, and the falloff beneath it. */
+  --surface-edge: oklch(1 0 0 / 55%);
+  --surface-sheen: oklch(1 0 0 / 0%);
+  /* Reproduces the hairline that Card's ring-1 used to draw, since the
+     elevation rule below takes over the whole box-shadow stack. */
+  --panel-ring: oklch(0.18 0.012 40 / 12%);
+  --panel-ring-hover: oklch(0.18 0.012 40 / 20%);
+  --elevate-1:
+    0 1px 2px oklch(0.25 0.01 45 / 7%),
+    0 8px 20px -14px oklch(0.25 0.01 45 / 12%);
+  --elevate-2:
+    0 1px 2px oklch(0.25 0.01 45 / 9%),
+    0 18px 40px -22px oklch(0.25 0.01 45 / 20%);
+  /* Ambient warmth behind the whole app, anchored to the light source. */
+  --ambient: radial-gradient(
+    1100px 520px at 12% -12%,
+    oklch(0.70 0.10 60 / 7%),
+    transparent 62%
+  );
+}
+
+.dark {
+  --surface-edge: oklch(1 0 0 / 7%);
+  --surface-sheen: oklch(1 0 0 / 2.5%);
+  --panel-ring: oklch(1 0 0 / 10%);
+  --panel-ring-hover: oklch(1 0 0 / 18%);
+  --elevate-1:
+    0 1px 2px oklch(0 0 0 / 45%),
+    0 10px 26px -16px oklch(0 0 0 / 55%);
+  --elevate-2:
+    0 1px 2px oklch(0 0 0 / 55%),
+    0 22px 48px -24px oklch(0 0 0 / 70%);
+  --ambient: radial-gradient(
+    1100px 520px at 12% -12%,
+    oklch(0.62 0.14 58 / 11%),
+    transparent 62%
+  );
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
   }
   body {
     @apply bg-background text-foreground;
+    /* Fixed so the light source stays put while content scrolls under it —
+       a vignette that scrolls away reads as a gradient, not as lighting. */
+    background-image: var(--ambient);
+    background-attachment: fixed;
+    background-repeat: no-repeat;
+  }
+
+  /* Orange selection rather than the browser's blue, which fights the brand
+     everywhere text is dragged. */
+  ::selection {
+    background: var(--primary);
+    color: var(--primary-foreground);
+  }
+
+  /* Default scrollbars are the single biggest tell of an unfinished web app,
+     and on dark surfaces they are a bright grey slab. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in oklch, var(--foreground) 22%, transparent) transparent;
+  }
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: color-mix(in oklch, var(--foreground) 18%, transparent);
+    border: 2px solid transparent;
+    background-clip: content-box;
+    border-radius: 9999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: color-mix(in oklch, var(--foreground) 32%, transparent);
+    background-clip: content-box;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Elevation, deliberately UNLAYERED.
+   ---------------------------------------------------------------------------
+   Card already carries Tailwind's `ring-1`, which compiles to box-shadow and
+   lives in `@layer utilities`. Cascade layers outrank specificity, so nothing
+   written inside `@layer components` can beat it however specific it is — the
+   elevation just silently never renders. Unlayered declarations sit above every
+   layer, which is the only clean way to win without `!important`.
+
+   Owning the whole box-shadow stack means the hairline the ring used to draw is
+   reproduced here as the middle layer, via --panel-ring.
+   --------------------------------------------------------------------------- */
+  [data-slot="card"],
+  [data-slot="popover-content"],
+  [data-slot="dropdown-menu-content"],
+  [data-slot="select-content"] {
+    background-image: linear-gradient(to bottom, var(--surface-sheen), transparent 60%);
+    box-shadow:
+      inset 0 1px 0 0 var(--surface-edge),
+      0 0 0 1px var(--panel-ring),
+      var(--elevate-1);
+  }
+
+  /* Floating surfaces sit above the page, so they carry the deeper shadow —
+     that difference is what tells you a menu is on top rather than inline. */
+  [data-slot="popover-content"],
+  [data-slot="dropdown-menu-content"],
+  [data-slot="select-content"],
+  [data-slot="dialog-content"],
+  [data-slot="sheet-content"] {
+    box-shadow:
+      inset 0 1px 0 0 var(--surface-edge),
+      0 0 0 1px var(--panel-ring),
+      var(--elevate-2);
+  }
+
+  /* Hover lifts the panel slightly. Shadow only — no transform, because a card
+     that moves under the cursor makes a dense table feel unstable. */
+  [data-slot="card"] {
+    transition: box-shadow 160ms ease, background-color 160ms ease;
+  }
+  [data-slot="card"]:hover {
+    box-shadow:
+      inset 0 1px 0 0 var(--surface-edge),
+      0 0 0 1px var(--panel-ring-hover),
+      var(--elevate-2);
+  }
+
+  /* Brand fills carry a faint halo of their own colour. Restrained to filled
+     actions: this is what makes a primary button look energised rather than
+     painted on, and it never touches text. */
+  [data-slot="button"].bg-primary,
+  [data-slot="button"][data-variant="default"] {
+    box-shadow:
+      inset 0 1px 0 0 oklch(1 0 0 / 22%),
+      0 1px 2px oklch(0 0 0 / 25%),
+      0 6px 18px -8px color-mix(in oklch, var(--primary) 55%, transparent);
+  }
+  [data-slot="button"].bg-primary:hover,
+  [data-slot="button"][data-variant="default"]:hover {
+    box-shadow:
+      inset 0 1px 0 0 oklch(1 0 0 / 28%),
+      0 1px 2px oklch(0 0 0 / 28%),
+      0 10px 26px -8px color-mix(in oklch, var(--primary) 70%, transparent);
+  }
+
+  /* The sidebar is a fixed chrome edge, so it gets its own inner light rather
+     than borrowing the page's — otherwise it disappears into the background at
+     the exact place the eye needs a boundary. */
+  [data-slot="sidebar"],
+  aside[data-sidebar] {
+    background-image: linear-gradient(to bottom, var(--surface-sheen), transparent 40%);
+    box-shadow: inset -1px 0 0 0 var(--surface-edge);
+  }
+
+  /* Micro-labels become instrument legends: monospaced, widely tracked, in the
+     same family as the tabular figures they sit above. Proportional small-caps
+     read as body copy shrunk down; monospace reads as a measurement. Targeted
+     via the utility trio these labels already share across every page, so no
+     component needs editing. */
+  .text-xs.uppercase.tracking-wide {
+    font-family: var(--font-mono), ui-monospace, monospace;
+    letter-spacing: 0.09em;
+    font-size: 0.6875rem;
+    /* Mono at small sizes sits optically low against the figure beneath it. */
+    font-feature-settings: "cv02", "ss01";
+  }
+
+  /* The active nav item gets a lit edge rather than only a fill. The fill alone
+     is ambiguous at a glance in a long list — the bar is what makes "you are
+     here" instant, and it is the one place a brand glow earns its keep. */
+  [aria-current="page"] {
+    position: relative;
+    box-shadow:
+      inset 2px 0 0 0 var(--primary),
+      inset 0 1px 0 0 var(--surface-edge);
+  }
+  [aria-current="page"]::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    border-radius: inherit;
+    background: linear-gradient(
+      to right,
+      color-mix(in oklch, var(--primary) 16%, transparent),
+      transparent 55%
+    );
+  }
+
+  /* Rows read as a ledger: hairline separation, and a hover that indicates
+     "this line is live" without shifting anything. */
+  [data-slot="table"] tbody tr {
+    transition: background-color 120ms ease;
+  }
+  [data-slot="table"] tbody tr:hover {
+    background: color-mix(in oklch, var(--foreground) 4%, transparent);
+  }
+
+  /* Keyboard focus gets a ring AND a halo. The ring alone is easy to lose
+     against a busy table; the halo is what makes it findable at a glance. */
+  :where(a, button, [role="button"], input, select, textarea, [tabindex]):focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+    box-shadow: 0 0 0 5px color-mix(in oklch, var(--ring) 25%, transparent);
+  }
 
 /* Age label written on each storm zone (react-leaflet permanent Tooltip).
    A dark pill in screen pixels: legible at any zoom, on any basemap colour,
