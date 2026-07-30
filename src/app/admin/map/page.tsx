@@ -417,6 +417,7 @@ export default function MapPage() {
     setGeocoding(true);
     let cursor: string | null = null;
     let totalGeocoded = 0;
+    const failedAddresses: string[] = [];
     try {
       // Loop batches until the endpoint reports it reached the end
       for (;;) {
@@ -431,6 +432,7 @@ export default function MapPage() {
           nextCursor: string | null;
           remaining: number;
           done: boolean;
+          failed?: string[];
           error?: string;
         } = await res.json();
         if (!data.success) {
@@ -438,6 +440,7 @@ export default function MapPage() {
           break;
         }
         totalGeocoded += data.geocoded;
+        if (data.failed?.length) failedAddresses.push(...data.failed);
         cursor = data.nextCursor;
         setMissingCoords(data.remaining);
         setGeocodeStatus(`Geocoded ${totalGeocoded}... ${data.remaining} left`);
@@ -446,8 +449,25 @@ export default function MapPage() {
       if (totalGeocoded > 0) {
         toast.success(`Placed ${totalGeocoded} lead${totalGeocoded !== 1 ? 's' : ''} on the map`);
         await fetchLeads();
-      } else {
-        toast.info('No new leads could be geocoded (check their addresses)');
+      }
+      // Name the streets that failed. These are nearly always addresses missing
+      // from OpenStreetMap — typically one new-build street — and saying so is
+      // the difference between an actionable answer and clicking a button that
+      // appears to do nothing.
+      if (failedAddresses.length > 0) {
+        const streets = [
+          ...new Set(
+            failedAddresses.map((a) => a.replace(/^\s*\d+\s+/, '').replace(/\s+\d{5}(-\d{4})?$/, ''))
+          ),
+        ];
+        const shown = streets.slice(0, 3).join(', ');
+        const more = streets.length > 3 ? ` and ${streets.length - 3} more` : '';
+        toast.error(
+          `${failedAddresses.length} address${failedAddresses.length !== 1 ? 'es' : ''} not found by the map service — ${shown}${more}. These streets are missing from OpenStreetMap, so they cannot be placed automatically.`,
+          { duration: 12000 }
+        );
+      } else if (totalGeocoded === 0) {
+        toast.info('Nothing left to place on the map');
       }
     } catch {
       toast.error('Geocoding stopped unexpectedly');

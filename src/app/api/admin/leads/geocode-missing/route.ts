@@ -73,6 +73,11 @@ export async function POST(request: NextRequest) {
 
     const batch = rows || [];
     let geocoded = 0;
+    // Addresses the geocoder could not place. Reported back so the operator is
+    // told WHICH ones failed instead of "check their addresses" — these are
+    // usually a whole street missing from OpenStreetMap, which is actionable
+    // once you can see it, and impossible to guess otherwise.
+    const failed: string[] = [];
 
     for (let i = 0; i < batch.length; i++) {
       const lead = batch[i];
@@ -92,6 +97,10 @@ export async function POST(request: NextRequest) {
           .eq('id', lead.id)
           .is('latitude', null);
         if (!upErr) geocoded++;
+      } else {
+        failed.push(
+          [lead.address_street?.trim(), lead.address_zip?.trim()].filter(Boolean).join(' ')
+        );
       }
       if (i < batch.length - 1) await sleep(DELAY_MS);
     }
@@ -115,6 +124,7 @@ export async function POST(request: NextRequest) {
       done,
       nextCursor,
       remaining: remaining ?? 0,
+      failed,
     });
   } catch {
     return NextResponse.json({ success: false, error: 'Internal server error' }, { status: 500 });
