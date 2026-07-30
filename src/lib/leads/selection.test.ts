@@ -17,6 +17,8 @@ const EMPTY: LeadFilterScope = {
   dncOnly: false,
   marketId: '',
   createdBy: '',
+  assignedSetter: '',
+  assignedCloser: '',
 };
 
 /** A non-default value for each field, used to prove the key reacts to it. */
@@ -31,6 +33,8 @@ const CHANGED: LeadFilterScope = {
   dncOnly: true,
   marketId: '2',
   createdBy: 'user-1',
+  assignedSetter: 'unassigned',
+  assignedCloser: 'user-2',
 };
 
 describe('leadFilterKey', () => {

@@ -4,6 +4,7 @@ import { getAuthenticatedAdmin } from '@/lib/auth/jwt';
 import { marketFilterFor } from '@/lib/leads/market-context';
 import { resolveUploaderFilter } from '@/lib/leads/attribution';
 import { applyMarketFilter } from '@/lib/leads/markets';
+import { parseAssigneeFilter, applyAssigneeFilter } from '@/lib/leads/assignment-filter';
 import { parsePhoneNumber } from 'libphonenumber-js';
 import { enrichLead } from '@/lib/integrations/regrid';
 import { geocodeLeadIfNeeded } from '@/lib/integrations/geocode';
@@ -36,7 +37,13 @@ export async function GET(request: NextRequest) {
 
     let query = supabase
       .from('leads')
-      .select('*, lead_sources!source_id(id, display_name)', { count: 'exact' });
+      // Two embeds of admin_users, so each MUST name its foreign key explicitly
+      // — without the !fk hint PostgREST cannot tell which column a join means
+      // and rejects the request as ambiguous.
+      .select(
+        '*, lead_sources!source_id(id, display_name), assigned_setter:admin_users!assigned_setter_id(id, name), assigned_closer:admin_users!assigned_closer_id(id, name)',
+        { count: 'exact' }
+      );
 
     // Office scoping: explicit ?market_id, else the caller's home market.
     query = applyMarketFilter(query, await marketFilterFor(admin.sub, searchParams.get('market_id')));
@@ -45,6 +52,13 @@ export async function GET(request: NextRequest) {
     // rather than widening to every lead.
     const uploader = resolveUploaderFilter(searchParams.get('created_by'));
     if (uploader) query = query.eq('created_by', uploader);
+
+    // "Who owns this?" Accepts a user id or the literal `unassigned`, which needs
+    // IS NULL rather than an equality — a filter that only matches a person can
+    // never surface the leads nobody owns, which is where they fall through.
+    // Readable by every role: knowing who owns a door prevents double-knocking.
+    query = applyAssigneeFilter(query, 'setter', parseAssigneeFilter(searchParams.get('assigned_setter')));
+    query = applyAssigneeFilter(query, 'closer', parseAssigneeFilter(searchParams.get('assigned_closer')));
 
     // Closers see leads from appointment_set onwards (their working pipeline + history)
     const CLOSER_STATUSES = ['appointment_set', 'inspected', 'proposal_sent', 'sold', 'lost'];

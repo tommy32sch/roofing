@@ -308,8 +308,17 @@ export interface EmailImportLog {
   created_at: string;
 }
 
+/** The rep each assignment column points at, embedded by the list route. */
+export interface AssignedRep {
+  id: string;
+  name: string;
+}
+
 export interface LeadWithSource extends Lead {
   lead_sources?: LeadSource;
+  /** Null when nobody owns this lead in that role — the case worth surfacing. */
+  assigned_setter?: AssignedRep | null;
+  assigned_closer?: AssignedRep | null;
 }
 
 export interface LeadWithActivities extends Lead {

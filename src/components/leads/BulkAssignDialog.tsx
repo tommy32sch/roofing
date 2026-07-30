@@ -39,14 +39,24 @@ interface BulkAssignDialogProps {
   onOpenChange: (open: boolean) => void;
   leadIds: string[];
   onAssigned: () => void;
+  /**
+   * Open straight into unassign mode.
+   *
+   * "Clear the owner" is a different intent from "give these to someone", and
+   * making it a separate entry point means an operator fixing a bad bulk assign
+   * never has to first pick a person they are about to discard. The role picker
+   * still applies — a lead has both a setter and a closer, so unassigning has to
+   * say which.
+   */
+  defaultUnassign?: boolean;
 }
 
-export function BulkAssignDialog({ open, onOpenChange, leadIds, onAssigned }: BulkAssignDialogProps) {
+export function BulkAssignDialog({ open, onOpenChange, leadIds, onAssigned, defaultUnassign = false }: BulkAssignDialogProps) {
   const [users, setUsers] = useState<DialogUser[]>([]);
   const [usersLoaded, setUsersLoaded] = useState(false);
   const [role, setRole] = useState<'setter' | 'closer'>('setter');
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
-  const [unassign, setUnassign] = useState(false);
+  const [unassign, setUnassign] = useState(defaultUnassign);
   const [strategy, setStrategy] = useState<'count' | 'value'>('count');
   const [preview, setPreview] = useState<AssignmentSummary[] | null>(null);
   const [previewSkipped, setPreviewSkipped] = useState(0);

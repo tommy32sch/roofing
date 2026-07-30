@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useState, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Search, Upload, Sparkles, Download, CalendarClock, MapPin, UserCheck, PhoneOff, CopyCheck, SlidersHorizontal, Navigation, Phone } from 'lucide-react';
+import { Search, Upload, Sparkles, Download, CalendarClock, MapPin, UserCheck, UserMinus, PhoneOff, CopyCheck, SlidersHorizontal, Navigation, Phone } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatPhone, formatAddress, mapsUrl } from '@/lib/utils/format';
 import { PageHeader } from '@/components/layout/page-header';
@@ -38,6 +38,7 @@ import { LEAD_STATUS_OPTIONS, LEAD_PRIORITY_OPTIONS } from '@/types';
 import type { LeadWithSource, UserRole } from '@/types';
 import { LIMITS } from '@/lib/utils/validation';
 import { leadFilterKey, selectionSurvivesFilterChange } from '@/lib/leads/selection';
+import { assigneeLabel, UNASSIGNED } from '@/lib/leads/assignment-filter';
 import { STREET_DIRECTIONS } from '@/lib/utils/lead-query';
 import { formatDistanceToNow, isPast, isToday } from 'date-fns';
 import { EmptyState } from '@/components/layout/empty-state';
@@ -61,6 +62,10 @@ function LeadsListContent() {
   const [userRole, setUserRole] = useState<UserRole>('setter');
   const [selection, setSelection] = useState<Map<string, number>>(new Map());
   const [assignOpen, setAssignOpen] = useState(false);
+  // Which intent the dialog was opened with. Used as its key so it remounts
+  // with fresh state per mode — cheaper and less error-prone than syncing a
+  // prop into state that only initialises on mount.
+  const [assignMode, setAssignMode] = useState<'assign' | 'unassign'>('assign');
   const [streetsOpen, setStreetsOpen] = useState(false);
   const [dncCount, setDncCount] = useState(0);
   const [dncScrubOpen, setDncScrubOpen] = useState(false);
@@ -86,10 +91,16 @@ function LeadsListContent() {
   const marketValue = marketParam || (homeMarketId != null ? String(homeMarketId) : ALL_MARKETS);
   // "Show me what this person uploaded." Admin-only because /api/admin/users is.
   const createdBy = searchParams.get('created_by') || '';
+  // Ownership filters. The COLUMNS are visible to every role, but the
+  // person-pickers need the user list from /api/admin/users, which is
+  // admin-only — so reps can see who owns a lead without being able to
+  // enumerate the roster.
+  const assignedSetter = searchParams.get('assigned_setter') || '';
+  const assignedCloser = searchParams.get('assigned_closer') || '';
   const [uploaders, setUploaders] = useState<{ id: string; name: string }[]>([]);
   const page = parseInt(searchParams.get('page') || '1', 10);
   // Drives the mobile filter button's active state
-  const activeFilterCount = [status, priority, streetNumber, streetDir, streetName, streetsParam, dncOnly ? 'dnc' : '', marketParam, createdBy].filter(Boolean).length;
+  const activeFilterCount = [status, priority, streetNumber, streetDir, streetName, streetsParam, dncOnly ? 'dnc' : '', marketParam, createdBy, assignedSetter, assignedCloser].filter(Boolean).length;
 
   // Only show optional columns that actually carry data. Freshly imported lists
   // have no source or values yet, and three columns of "—" on every row is noise
@@ -99,7 +110,8 @@ function LeadsListContent() {
   const showEstValue = leads.some((l) => l.estimated_roof_value != null);
   const showDealValue = leads.some((l) => l.deal_value != null);
   const columnCount =
-    (isAdmin ? 1 : 0) + 7 + [showSource, showAddedBy, showEstValue, showDealValue].filter(Boolean).length;
+    // +2 for the always-on Setter and Closer columns.
+    (isAdmin ? 1 : 0) + 9 + [showSource, showAddedBy, showEstValue, showDealValue].filter(Boolean).length;
 
   function applyFilterParams(params: URLSearchParams) {
     if (status) params.set('status', status);
@@ -112,6 +124,8 @@ function LeadsListContent() {
     if (dncOnly) params.set('is_dnc', 'true');
     if (marketParam) params.set('market_id', marketParam);
     if (createdBy) params.set('created_by', createdBy);
+    if (assignedSetter) params.set('assigned_setter', assignedSetter);
+    if (assignedCloser) params.set('assigned_closer', assignedCloser);
   }
 
   function toggleStreetFilter(name: string, selected: boolean) {
@@ -140,6 +154,8 @@ function LeadsListContent() {
     if (dncOnly) params.set('is_dnc', 'true');
     if (marketParam) params.set('market_id', marketParam);
     if (createdBy) params.set('created_by', createdBy);
+    if (assignedSetter) params.set('assigned_setter', assignedSetter);
+    if (assignedCloser) params.set('assigned_closer', assignedCloser);
     params.set('page', page.toString());
     params.set('limit', '25');
 
@@ -156,7 +172,7 @@ function LeadsListContent() {
     } finally {
       setLoading(false);
     }
-  }, [status, priority, search, streetNumber, streetDir, streetName, streetsParam, dncOnly, page, marketParam, createdBy]);
+  }, [status, priority, search, streetNumber, streetDir, streetName, streetsParam, dncOnly, page, marketParam, createdBy, assignedSetter, assignedCloser]);
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -262,6 +278,8 @@ function LeadsListContent() {
     dncOnly,
     marketId: marketParam,
     createdBy,
+    assignedSetter,
+    assignedCloser,
   });
   const [selectionScope, setSelectionScope] = useState(filterKey);
   if (!selectionSurvivesFilterChange(selectionScope, filterKey)) {
@@ -406,6 +424,56 @@ function LeadsListContent() {
             </SelectContent>
           </Select>
         )}
+        {/* Ownership filters. Available to every role, not just admins: knowing
+            who owns a door is how a crew avoids knocking it twice. "Unassigned"
+            is the operationally important option — it is the only way to find
+            leads nobody is working. */}
+        {isAdmin && uploaders.length > 0 && (
+          <>
+            <Select
+              value={assignedSetter || 'all'}
+              onValueChange={(v) => updateFilter('assigned_setter', v === 'all' ? '' : v ?? '')}
+            >
+              <SelectTrigger className="sm:w-[170px]" aria-label="Setter">
+                <SelectValue>
+                  {assignedSetter === UNASSIGNED
+                    ? 'Setter: unassigned'
+                    : assignedSetter
+                      ? `Setter: ${uploaders.find((u) => u.id === assignedSetter)?.name ?? '—'}`
+                      : 'Any setter'}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Any setter</SelectItem>
+                <SelectItem value={UNASSIGNED}>Unassigned</SelectItem>
+                {uploaders.map((u) => (
+                  <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select
+              value={assignedCloser || 'all'}
+              onValueChange={(v) => updateFilter('assigned_closer', v === 'all' ? '' : v ?? '')}
+            >
+              <SelectTrigger className="sm:w-[170px]" aria-label="Closer">
+                <SelectValue>
+                  {assignedCloser === UNASSIGNED
+                    ? 'Closer: unassigned'
+                    : assignedCloser
+                      ? `Closer: ${uploaders.find((u) => u.id === assignedCloser)?.name ?? '—'}`
+                      : 'Any closer'}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Any closer</SelectItem>
+                <SelectItem value={UNASSIGNED}>Unassigned</SelectItem>
+                {uploaders.map((u) => (
+                  <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </>
+        )}
         <Select value={status} onValueChange={(v) => updateFilter('status', v === 'all' ? '' : v ?? '')}>
           <SelectTrigger className="sm:w-[160px]">
             <SelectValue placeholder="All Statuses" />
@@ -511,6 +579,11 @@ function LeadsListContent() {
               {showAddedBy && <TableHead className="hidden lg:table-cell">Added by</TableHead>}
               {showEstValue && <TableHead className="hidden lg:table-cell">Est. Value</TableHead>}
               {showDealValue && <TableHead className="hidden lg:table-cell">Deal Value</TableHead>}
+              {/* Always shown, unlike the columns above, which appear only when
+                  some row has data. An empty assignment column is the point:
+                  "nobody owns this" is the state worth seeing. */}
+              <TableHead className="hidden lg:table-cell">Setter</TableHead>
+              <TableHead className="hidden lg:table-cell">Closer</TableHead>
               <TableHead className="hidden md:table-cell">Added</TableHead>
             </TableRow>
           </TableHeader>
@@ -528,6 +601,8 @@ function LeadsListContent() {
                   {showAddedBy && <TableCell className="hidden lg:table-cell"><Skeleton className="h-4 w-20" /></TableCell>}
                   {showEstValue && <TableCell className="hidden lg:table-cell"><Skeleton className="h-4 w-16" /></TableCell>}
                   {showDealValue && <TableCell className="hidden lg:table-cell"><Skeleton className="h-4 w-16" /></TableCell>}
+                  <TableCell className="hidden lg:table-cell"><Skeleton className="h-4 w-20" /></TableCell>
+                  <TableCell className="hidden lg:table-cell"><Skeleton className="h-4 w-20" /></TableCell>
                   <TableCell className="hidden md:table-cell"><Skeleton className="h-4 w-16" /></TableCell>
                 </TableRow>
               ))
@@ -699,6 +774,22 @@ function LeadsListContent() {
                       {lead.deal_value != null ? `$${Number(lead.deal_value).toLocaleString()}` : '—'}
                     </TableCell>
                   )}
+                  {/* Unowned is styled as absence, not as a value: a muted dash
+                      scans as a gap so a column of them reads as a problem. */}
+                  <TableCell className="hidden lg:table-cell text-sm">
+                    {lead.assigned_setter?.name ? (
+                      <span className="text-foreground">{assigneeLabel(lead.assigned_setter.name)}</span>
+                    ) : (
+                      <span className="text-muted-foreground/60">—</span>
+                    )}
+                  </TableCell>
+                  <TableCell className="hidden lg:table-cell text-sm">
+                    {lead.assigned_closer?.name ? (
+                      <span className="text-foreground">{assigneeLabel(lead.assigned_closer.name)}</span>
+                    ) : (
+                      <span className="text-muted-foreground/60">—</span>
+                    )}
+                  </TableCell>
                   <TableCell className="hidden md:table-cell text-sm text-muted-foreground">
                     {formatDistanceToNow(new Date(lead.created_at), { addSuffix: true })}
                   </TableCell>
@@ -763,11 +854,23 @@ function LeadsListContent() {
           )}
           <Button
             size="sm"
-            onClick={() => setAssignOpen(true)}
+            onClick={() => { setAssignMode('assign'); setAssignOpen(true); }}
             disabled={selection.size > LIMITS.BULK_ASSIGN_MAX}
           >
             <UserCheck className="h-4 w-4 mr-1" />
             Assign
+          </Button>
+          {/* Its own button rather than a checkbox buried in the dialog:
+              clearing a bad assignment is a distinct job from making one, and
+              the operator should not have to pick a person to discard. */}
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => { setAssignMode('unassign'); setAssignOpen(true); }}
+            disabled={selection.size > LIMITS.BULK_ASSIGN_MAX}
+          >
+            <UserMinus className="h-4 w-4 mr-1" />
+            Unassign
           </Button>
           <Button size="sm" variant="ghost" onClick={() => setSelection(new Map())}>
             Clear
@@ -778,6 +881,8 @@ function LeadsListContent() {
       {isAdmin && (
         <>
           <BulkAssignDialog
+            key={assignMode}
+            defaultUnassign={assignMode === 'unassign'}
             open={assignOpen}
             onOpenChange={setAssignOpen}
             leadIds={[...selection.keys()]}

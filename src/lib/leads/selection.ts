@@ -28,6 +28,8 @@ export interface LeadFilterScope {
   dncOnly: boolean;
   marketId: string;
   createdBy: string;
+  assignedSetter: string;
+  assignedCloser: string;
 }
 
 /** Field order for the key. Exported so the test can assert full coverage. */
@@ -42,6 +44,8 @@ export const LEAD_FILTER_FIELDS: (keyof LeadFilterScope)[] = [
   'dncOnly',
   'marketId',
   'createdBy',
+  'assignedSetter',
+  'assignedCloser',
 ];
 
 /**
