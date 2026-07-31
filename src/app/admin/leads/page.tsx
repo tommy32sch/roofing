@@ -355,10 +355,14 @@ function LeadsListContent() {
                 Re-check dupes
               </Button>
             )}
-            <Button variant="outline" size="sm" className="hidden sm:inline-flex" onClick={handleExport}>
-              <Download className="h-4 w-4 mr-1" />
-              Export
-            </Button>
+            {/* Admin-only: the CSV carries names, phones, emails and addresses
+                for every matching lead. The route enforces this too. */}
+            {isAdmin && (
+              <Button variant="outline" size="sm" className="hidden sm:inline-flex" onClick={handleExport}>
+                <Download className="h-4 w-4 mr-1" />
+                Export
+              </Button>
+            )}
             <Link href="/admin/leads/import" className="hidden sm:block">
               <Button variant="outline" size="sm">
                 <Upload className="h-4 w-4 mr-1" />

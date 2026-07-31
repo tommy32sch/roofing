@@ -22,6 +22,20 @@ export async function GET(request: NextRequest) {
     if (!admin) {
       return NextResponse.json({ success: false, error: 'Not authenticated' }, { status: 401 });
     }
+    /**
+     * Admin-only. Every role can SEE these leads — that is deliberate, so reps
+     * know who owns a door and don't double-knock — but one click that pulls
+     * 10,000 rows of names, phones, emails and addresses into a file is a
+     * different exposure from browsing them on screen. It is how a lead list
+     * leaves with a departing rep.
+     *
+     * The button is hidden for non-admins too; this is the half that a hidden
+     * button cannot enforce, since the endpoint is a plain GET anyone signed in
+     * could request directly.
+     */
+    if (admin.role !== 'admin') {
+      return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
+    }
 
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status');
@@ -39,21 +53,13 @@ export async function GET(request: NextRequest) {
       .order('created_at', { ascending: false })
       .limit(10000);
 
-    const CLOSER_STATUSES = ['appointment_set', 'inspected', 'proposal_sent', 'sold', 'lost'];
-    if (admin.role === 'closer') {
-      if (status && CLOSER_STATUSES.includes(status)) {
-        query = query.eq('status', status);
-      } else {
-        query = query.in('status', CLOSER_STATUSES);
-      }
-    } else if (status) {
-      query = query.eq('status', status);
-    }
-
-    if (admin.role !== 'closer') {
-      if (priority) query = query.eq('priority', priority);
-      if (sourceId) query = query.eq('source_id', parseInt(sourceId, 10));
-    }
+    // Only admins reach this point, so the closer status/priority scoping that
+    // used to live here was unreachable — and kept implying a closer could
+    // still export a narrowed list. The filters below are simply the ones the
+    // Leads page passed in.
+    if (status) query = query.eq('status', status);
+    if (priority) query = query.eq('priority', priority);
+    if (sourceId) query = query.eq('source_id', parseInt(sourceId, 10));
 
     const searchFilter = buildLeadSearchFilter(search);
     if (searchFilter) {
