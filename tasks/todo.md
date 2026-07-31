@@ -932,3 +932,19 @@ average latitude 33.091778, evens 33.092230, 50 metres apart — which is the
 proof this is per-building data rather than interpolation.
 
 Remaining: rotate the Geocodio key, since it was pasted into a chat transcript.
+
+## Open action — rotate the Geocodio API key
+
+The key was pasted into a chat transcript on 2026-07-31 while validating the
+CASS geocoder, so it should be treated as exposed. Rotating costs nothing and
+needs no deploy.
+
+- [ ] Generate a new key at geocod.io
+- [ ] Paste it into Settings → Geocoder API key (stored in app_settings, not env)
+- [ ] Revoke the old key in the Geocodio dashboard
+- [ ] Confirm geocoding still works: the Map's "not on the map" action should
+      report 0 remaining rather than a run of failures
+
+Not urgent — the free tier has no billing attached, so the worst case is someone
+else consuming the daily quota. But it is a real credential and the fix is a
+two-minute job.
