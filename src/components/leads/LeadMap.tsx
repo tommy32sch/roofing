@@ -587,10 +587,18 @@ export default function LeadMap({
        * shrank the sigmoid so most gestures collapsed onto the 0.25 floor, and
        * zooming crawled.
        *
-       * 0.5/50 is the balance. Levels per gesture:
-       *   nudge 0.5 | flick 1.0 | mouse notch 1.0 | big swipe 2.5
-       * Half-level minimum keeps cursor anchoring honest, and a big swipe now
-       * covers more ground than stock Leaflet did (2.5 vs 2.0).
+       * 0.5/30 is the setting. Levels per gesture, from Leaflet's sigmoid:
+       *   nudge 0.5 | flick 1.0 | mouse notch 1.5 | big swipe 3.5
+       *
+       * Note what the px value does and does not buy. Small gestures are
+       * pinned to the 0.5 floor by the ceil above, so nudge and flick are
+       * IDENTICAL at 30 and at 50 — lowering it only lengthens the harder
+       * gestures (notch 1.0 -> 1.5, swipe 2.5 -> 3.5). Reach for zoomSnap,
+       * not this, if the small movements ever need to change.
+       *
+       * The half-level floor is also what keeps cursor anchoring honest, so
+       * the extra speed doesn't drag the point you were pointing at out from
+       * under the cursor.
        *
        * zoomDelta 1 = a full level per +/- press. It must stay a multiple of
        * zoomSnap, or _limitZoom re-snaps the result and the press lands
@@ -602,7 +610,7 @@ export default function LeadMap({
        */
       zoomSnap={0.5}
       zoomDelta={1}
-      wheelPxPerZoomLevel={50}
+      wheelPxPerZoomLevel={30}
       className="h-full w-full z-0 rounded-md"
     >
       <TileLayer
