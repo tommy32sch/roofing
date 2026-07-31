@@ -7,36 +7,14 @@ import { estimateRoofValue } from '@/lib/leads/roof-value';
 import { findAppointmentConflicts, conflictResponseBody } from '@/lib/leads/appointment-guard';
 import { getRoofPricePerSquare } from '@/lib/leads/roof-value.server';
 import { notifyAppointmentBooked } from '@/lib/notifications/notify-appointment';
+import { pickWritableLeadFields, statusDenialReason } from '@/lib/leads/lead-fields';
 
-const SETTER_ALLOWED_STATUSES = new Set(['new', 'contacted', 'appointment_set', 'lost']);
+// The mass-assignment whitelist and the setter status rules are shared with the
+// create route — see src/lib/leads/lead-fields.ts for why they live there.
 const DEMOGRAPHIC_REQUIRED_FIELDS = [
   'career', 'family_size', 'marital_status', 'age_range', 'household_income_range',
   'education_level', 'years_in_home', 'insurance_carrier', 'decision_maker', 'referral_source',
 ] as const;
-
-// Fields only an admin may set. Everything financial/assignment-related lives here
-// so a setter/closer can't award themselves leads or edit deal value via the API.
-// market_id sits here with the other assignment fields: moving a lead to the
-// other office changes whose book it lands in, so it is an admin action.
-const LEAD_ADMIN_ONLY_FIELDS = new Set(['deal_value', 'assigned_setter_id', 'assigned_closer_id', 'market_id']);
-
-// The complete set of lead columns a client may write. Anything not listed
-// (id, coordinates, enrichment/estimate/normalized fields, timestamps, duplicate
-// flags) is server-controlled and silently ignored on update — this is the guard
-// against mass assignment, since the route uses the service-role key (no RLS).
-const LEAD_EDITABLE_FIELDS = new Set<string>([
-  'first_name', 'last_name', 'phone', 'phone2', 'phone3', 'email', 'email2',
-  'address_street', 'address_city', 'address_state', 'address_zip',
-  'mailing_street', 'mailing_city', 'mailing_state', 'mailing_zip',
-  'home_value', 'year_built', 'sqft', 'lot_size', 'bedrooms', 'bathrooms', 'stories',
-  'assessed_value', 'last_sale_date', 'last_sale_price', 'owner_type', 'apn',
-  'roof_age', 'roof_type', 'roof_score', 'roof_material_notes',
-  'hail_date', 'hail_size_inches', 'storm_id',
-  'status', 'priority', 'source_id', 'source_notes', 'follow_up_date',
-  'career', 'family_size', 'marital_status', 'age_range', 'household_income_range',
-  'education_level', 'years_in_home', 'insurance_carrier', 'decision_maker', 'referral_source',
-  ...LEAD_ADMIN_ONLY_FIELDS,
-]);
 
 export async function GET(
   request: NextRequest,
@@ -149,17 +127,9 @@ export async function PATCH(
 
     // Enforce role-based status transition rules
     if (body.status && body.status !== currentLead.status) {
-      if (admin.role === 'setter' && !SETTER_ALLOWED_STATUSES.has(body.status)) {
-        return NextResponse.json(
-          { success: false, error: 'Setters cannot set this status' },
-          { status: 403 }
-        );
-      }
-      if (admin.role === 'setter' && body.status === 'sold') {
-        return NextResponse.json(
-          { success: false, error: 'Setters cannot mark a lead as sold' },
-          { status: 403 }
-        );
+      const denial = statusDenialReason(body.status, admin.role);
+      if (denial) {
+        return NextResponse.json({ success: false, error: denial }, { status: 403 });
       }
     }
 
@@ -217,12 +187,7 @@ export async function PATCH(
 
     // Whitelist editable fields — anything else in the payload is ignored, and
     // admin-only fields (deal value, assignments) are dropped for non-admins.
-    const update: Record<string, unknown> = {};
-    for (const key of Object.keys(body)) {
-      if (!LEAD_EDITABLE_FIELDS.has(key)) continue;
-      if (LEAD_ADMIN_ONLY_FIELDS.has(key) && admin.role !== 'admin') continue;
-      update[key] = body[key];
-    }
+    const update: Record<string, unknown> = pickWritableLeadFields(body, admin.role);
 
     // Normalize phone if being updated
     if (update.phone !== undefined) {

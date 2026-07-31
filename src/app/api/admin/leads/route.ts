@@ -10,6 +10,7 @@ import { enrichLead } from '@/lib/integrations/regrid';
 import { geocodeLeadIfNeeded } from '@/lib/integrations/geocode';
 import { buildLeadSearchFilter, safeSortColumn, sanitizeSearch, sanitizeStreetNumber, directionRegex, buildStreetNamesFilter } from '@/lib/utils/lead-query';
 import { estimateRoofValue } from '@/lib/leads/roof-value';
+import { pickWritableLeadFields, statusDenialReason } from '@/lib/leads/lead-fields';
 import { getRoofPricePerSquare } from '@/lib/leads/roof-value.server';
 
 export async function GET(request: NextRequest) {
@@ -143,7 +144,7 @@ export async function POST(request: NextRequest) {
     const supabase = db();
     const body = await request.json();
 
-    const { first_name, last_name, phone, email, ...rest } = body;
+    const { first_name, last_name, phone, email } = body;
 
     if (!first_name?.trim() || !last_name?.trim()) {
       return NextResponse.json(
@@ -151,6 +152,19 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    /**
+     * Whitelist what the caller may write. This used to be `...rest` — the raw
+     * request body spread into a service-role insert — so a setter could create
+     * a lead with deal_value, assigned_setter_id and status 'sold' set, and the
+     * performance leaderboard counted it. Same rule as the update path, which is
+     * why it lives in a shared module now.
+     */
+    const denial = statusDenialReason(body.status, admin.role);
+    if (denial) {
+      return NextResponse.json({ success: false, error: denial }, { status: 403 });
+    }
+    const writable = pickWritableLeadFields(body, admin.role);
 
     // Normalize phone
     let phone_normalized: string | null = null;
@@ -167,20 +181,31 @@ export async function POST(request: NextRequest) {
 
     // Estimate roof value from any property data supplied at creation. If the
     // lead is later auto-enriched, enrichLead recomputes this from richer data.
+    // Coerced rather than passed through: the whitelist returns unknown values,
+    // and the old `...rest` was implicitly any — a string "2000" for sqft would
+    // have reached the estimator and produced a garbage roof value.
+    const asNumber = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+    const asString = (v: unknown): string | null => (typeof v === 'string' ? v : null);
     const estimate = estimateRoofValue(
-      { sqft: rest.sqft ?? null, stories: rest.stories ?? null, roof_type: rest.roof_type ?? null },
+      {
+        sqft: asNumber(writable.sqft),
+        stories: asNumber(writable.stories),
+        roof_type: asString(writable.roof_type),
+      },
       { basePricePerSquare: await getRoofPricePerSquare() }
     );
 
     const { data: lead, error } = await supabase
       .from('leads')
       .insert({
+        ...writable,
+        // After the spread, so the name/contact validation and normalization
+        // above win over the same keys arriving in the body.
         first_name: first_name.trim(),
         last_name: last_name.trim(),
         phone: phone?.trim() || null,
         phone_normalized,
         email: email?.trim()?.toLowerCase() || null,
-        ...rest,
         estimated_roof_value: estimate?.value ?? null,
         created_by: admin.sub,
         created_by_name: admin.name?.trim() || admin.email,
