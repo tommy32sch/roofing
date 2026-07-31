@@ -93,11 +93,11 @@ function FitBounds({ leads, territories }: { leads: GeoLead[]; territories: Terr
     return whenSized(map, () => {
       map.invalidateSize();
       map.fitBounds(points, { padding: [40, 40], maxZoom: 16 });
-      // Land on a whole zoom level. zoomSnap 0.25 makes manual zooming smooth,
-      // but it also lets fitBounds settle between levels, where raster tiles are
-      // upscaled and the basemap goes soft — measured 304px for a 256px tile at
-      // zoom 10.25. Rounding DOWN keeps everything that was fitted in view;
-      // rounding up would crop it.
+      // Land on a whole zoom level. A fractional zoomSnap makes manual zooming
+      // smooth, but it also lets fitBounds settle between levels, where raster
+      // tiles are upscaled and the basemap goes soft — a half level renders a
+      // 256px tile at ~362px. Rounding DOWN keeps everything that was fitted in
+      // view; rounding up would crop it.
       const fitted = map.getZoom();
       if (!Number.isInteger(fitted)) map.setZoom(Math.floor(fitted), { animate: false });
       // Re-measure once more after the view settles so the tile layer requests
@@ -587,18 +587,27 @@ export default function LeadMap({
        * shrank the sigmoid so most gestures collapsed onto the 0.25 floor, and
        * zooming crawled.
        *
-       * 0.5/30 is the setting. Levels per gesture, from Leaflet's sigmoid:
-       *   nudge 0.5 | flick 1.0 | mouse notch 1.5 | big swipe 3.5
+       * 0.5/10 is the setting. Levels per gesture, from Leaflet's sigmoid:
+       *   nudge 1.0 | flick 2.5 | mouse notch 3.0 | big swipe 4.0
+       * roughly double what 0.5/30 gave (0.5 / 1.0 / 1.5 / 3.5).
        *
-       * Note what the px value does and does not buy. Small gestures are
-       * pinned to the 0.5 floor by the ceil above, so nudge and flick are
-       * IDENTICAL at 30 and at 50 — lowering it only lengthens the harder
-       * gestures (notch 1.0 -> 1.5, swipe 2.5 -> 3.5). Reach for zoomSnap,
-       * not this, if the small movements ever need to change.
+       * Two ceilings bound this, and neither is worked around by turning the
+       * px value down further:
        *
-       * The half-level floor is also what keeps cursor anchoring honest, so
-       * the extra speed doesn't drag the point you were pointing at out from
-       * under the cursor.
+       * 1. The sigmoid saturates. d3 = 4*log2(2/(1+exp(-|d2|))) approaches 4
+       *    as the delta grows, so ONE debounced burst can never move more
+       *    than 4 levels however hard you scroll. A big swipe is already at
+       *    that ceiling here. Continuous scrolling still goes further, but
+       *    only by firing more bursts.
+       * 2. Small gestures are pinned to the zoomSnap floor by the ceil above.
+       *    A nudge could not exceed 0.5 at ANY px value until this drop made
+       *    even the smallest delta clear a full level. zoomSnap, not this, is
+       *    the dial for the small movements.
+       *
+       * The cost of 10 is control: the smallest scroll now moves a whole
+       * level, so precise framing is done by dragging, not by inching the
+       * wheel. That is the trade the speed was worth. 15 or 20 is the middle
+       * ground if a nudge starts overshooting.
        *
        * zoomDelta 1 = a full level per +/- press. It must stay a multiple of
        * zoomSnap, or _limitZoom re-snaps the result and the press lands
@@ -610,7 +619,7 @@ export default function LeadMap({
        */
       zoomSnap={0.5}
       zoomDelta={1}
-      wheelPxPerZoomLevel={30}
+      wheelPxPerZoomLevel={10}
       className="h-full w-full z-0 rounded-md"
     >
       <TileLayer
