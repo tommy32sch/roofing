@@ -158,8 +158,27 @@ is always an admin — the only role that can now export.
 **Fix:** in `escapeCsv`, prefix any value starting with `= + - @ \t \r` with a single
 quote before the existing quote/comma escaping.
 
-### 6. A successful login wipes the shared brute-force budget
+### 6. ~~A successful login wipes the shared brute-force budget~~ — FIXED
 `src/app/api/admin/auth/login/route.ts:84`
+
+**Fixed 2026-07-31.** Split into two budgets. A per-ACCOUNT limit (10 per 15 min, keyed on
+the submitted email) is now the real defence — guesses against one address accumulate
+wherever they come from, so spreading an attack across IPs buys nothing. Success clears
+only that account's budget, which is safe because clearing it required that account's own
+password, and it preserves the original lockout fix.
+
+The per-IP budget stays as a backstop against one source sweeping many accounts, is no
+longer cleared on success, and was loosened to 50 per 15 min. That bucket is the one that
+can lock a whole office out at once via shared NAT, and with per-account capped at 10 it
+was buying almost nothing.
+
+**Also closed finding #10 (login timing leak) in the same change**, since it lives in this
+file: the unknown-email branch now burns a cost-12 bcrypt compare against a constant hash
+(measured ~211ms, matching a real account) instead of returning in ~1ms, so response time
+no longer reveals which addresses exist. The account budget is also charged BEFORE the
+lookup, so the budget itself cannot be used to enumerate accounts either.
+
+The original finding:
 
 Login is limited to 5 attempts per 15 min keyed on client IP, and a success calls
 `resetRateLimit` on that shared per-IP bucket. So any valid account holder can burn 4
