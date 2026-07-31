@@ -19,6 +19,7 @@ import { PageHeader } from '@/components/layout/page-header';
 import { EmptyState } from '@/components/layout/empty-state';
 import { MarketFilter } from '@/components/markets/market-filter';
 import { useMarkets, ALL_MARKETS } from '@/components/markets/use-markets';
+import { DeletedLeadsPanel } from '@/components/leads/DeletedLeadsPanel';
 
 const ACTIVITY_ICONS: Record<string, React.ElementType> = {
   note: MessageSquare,
@@ -112,6 +113,11 @@ export default function ActivityPage() {
             : `in ${markets.find(m => String(m.id) === marketValue)?.name ?? 'this market'}`
         }`}
       />
+
+      {/* Deleted leads sit above the feed because they cannot appear IN it:
+          lead_activities cascades on lead delete, so a deletion erases its own
+          trail. Renders nothing when nothing has been deleted. */}
+      <DeletedLeadsPanel />
 
       {/* Filters */}
       <div className="flex flex-wrap gap-3">
