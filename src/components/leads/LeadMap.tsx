@@ -159,6 +159,31 @@ function MarketView({
   return null;
 }
 
+/**
+ * Turn a tap on the map into a placed house.
+ *
+ * Bound directly to Leaflet's click rather than a React handler so it sees the
+ * same synthesised event on touch that a marker would, and so the crosshair
+ * cursor can be applied to the container while the mode is live — without it
+ * there is nothing telling the rep the next tap does something different.
+ */
+function ClickToPlace({ active, onPlace }: { active: boolean; onPlace: (lat: number, lng: number) => void }) {
+  const map = useMap();
+  useEffect(() => {
+    if (!active) return;
+    const handler = (e: { latlng: { lat: number; lng: number } }) => onPlace(e.latlng.lat, e.latlng.lng);
+    map.on('click', handler);
+    const el = map.getContainer();
+    const previousCursor = el.style.cursor;
+    el.style.cursor = 'crosshair';
+    return () => {
+      map.off('click', handler);
+      el.style.cursor = previousCursor;
+    };
+  }, [active, map, onPlace]);
+  return null;
+}
+
 function MapReady({ onMapReady }: { onMapReady?: (map: LeafletMap) => void }) {
   const map = useMap();
   useEffect(() => {
@@ -487,6 +512,11 @@ interface LeadMapProps {
    * while every touchdown remains visible for severity and exact details.
    */
   stormZones?: boolean;
+  /** Add-house mode: the next tap on the map places a pin instead of selecting. */
+  addingHouse?: boolean;
+  onPlaceHouse?: (latitude: number, longitude: number) => void;
+  /** The pin awaiting confirmation, drawn so the rep can see what they picked. */
+  pendingHouse?: { latitude: number; longitude: number } | null;
   /** Open the phone-sized result picker from a lead pin. */
   onOpenResult?: (lead: GeoLead, channel: LeadResultChannel) => void;
   /** Refetch after a follow-up is set from a popup. */
@@ -543,6 +573,9 @@ export default function LeadMap({
   onSelectTerritoryLeads,
   onEditTerritory,
   focus = null,
+  addingHouse = false,
+  onPlaceHouse,
+  pendingHouse = null,
 }: LeadMapProps) {
   const [addressDetail, setAddressDetail] = useState(false);
   // Zone construction uses quadratic clustering in the worst case. Keep it
@@ -984,6 +1017,20 @@ export default function LeadMap({
       {/* Committed areas, beneath the active draft so the line being drawn
           always reads on top. Filled rather than outlined: several of these
           overlapping need to be distinguishable at a glance. */}
+      <ClickToPlace active={addingHouse && !!onPlaceHouse} onPlace={(lat, lng) => onPlaceHouse?.(lat, lng)} />
+
+      {/* The pin awaiting confirmation. Green and larger than a lead dot so it
+          reads as "this is the one you just placed", not another lead. */}
+      {pendingHouse && (
+        <CircleMarker
+          center={[pendingHouse.latitude, pendingHouse.longitude]}
+          radius={11}
+          pathOptions={{ color: '#16a34a', weight: 3, fillColor: '#16a34a', fillOpacity: 0.45 }}
+        >
+          <Tooltip permanent direction="top">New house</Tooltip>
+        </CircleMarker>
+      )}
+
       {drawing &&
         (lassoAreas ?? []).map((area, i) => (
           <Polygon

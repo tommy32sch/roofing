@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
-import { BoxSelect, UserCheck, LocateFixed, CloudHail, Wind, Pencil, ChevronDown, Check, Hexagon, MapPinned, Undo2 } from 'lucide-react';
+import { BoxSelect, UserCheck, LocateFixed, CloudHail, Wind, Pencil, ChevronDown, Check, Hexagon, MapPinned, Undo2, HousePlus, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { knockLabel } from '@/lib/leads/knocks';
 import { callLabel } from '@/lib/leads/calls';
@@ -52,6 +52,7 @@ import { LIMITS } from '@/lib/utils/validation';
 import { leadsAfterRemovingArea, totalLeadsInAreas, newLeadsFromArea, type LassoArea } from '@/lib/leads/lasso-areas';
 import { pointInPolygon } from '@/lib/leads/geo-polygon';
 import { mapDrawAvailability, type MapDrawPurpose } from '@/lib/leads/map-drawing';
+import { AddHouseSheet } from '@/components/leads/AddHouseSheet';
 import { PageHeader } from '@/components/layout/page-header';
 import { MarketFilter } from '@/components/markets/market-filter';
 import { useMarkets, ALL_MARKETS } from '@/components/markets/use-markets';
@@ -146,6 +147,10 @@ export default function MapPage() {
     zoom?: number;
   } | null>(null);
   const [mapInstance, setMapInstance] = useState<LeafletMap | null>(null);
+  // Add-house mode. Exclusive with drawing: both want the next tap on the map,
+  // and a rep who thinks they are lassoing while placing a pin gets neither.
+  const [addingHouse, setAddingHouse] = useState(false);
+  const [pendingHouse, setPendingHouse] = useState<{ latitude: number; longitude: number } | null>(null);
   const [drawing, setDrawing] = useState(false);
   const [drawPurpose, setDrawPurpose] = useState<MapDrawPurpose | null>(null);
   // Areas committed during this draw session. Kept so several loops are
@@ -924,7 +929,20 @@ export default function MapPage() {
                 {visibleIds.size > 0 && ` (${visibleIds.size})`}
               </Button>
             )}
-            {isAdmin && !drawing && (
+            {!drawing && (
+              /* Every role, not just admin: a setter finding an unlisted house
+                 is the whole reason this exists. */
+              <Button
+                variant={addingHouse ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => { setAddingHouse(a => !a); setPendingHouse(null); }}
+                title="Tap the map to add a house that isn't a lead yet"
+              >
+                {addingHouse ? <X className="h-4 w-4 mr-1" /> : <HousePlus className="h-4 w-4 mr-1" />}
+                {addingHouse ? 'Cancel' : 'Add house'}
+              </Button>
+            )}
+            {isAdmin && !drawing && !addingHouse && (
               <>
                 <Button
                   variant="outline"
@@ -1245,6 +1263,9 @@ export default function MapPage() {
           <Skeleton className="h-full w-full rounded-md" />
         ) : (
           <LeadMap
+            addingHouse={addingHouse}
+            pendingHouse={pendingHouse}
+            onPlaceHouse={(latitude, longitude) => setPendingHouse({ latitude, longitude })}
             leads={effectiveLeads}
             selectedIds={new Set(selection.keys())}
             onToggleSelect={isAdmin ? toggleSelect : undefined}
@@ -1427,6 +1448,20 @@ export default function MapPage() {
           }}
         />
       )}
-    </div>
+    
+      <AddHouseSheet
+        open={!!pendingHouse}
+        onOpenChange={(o) => { if (!o) setPendingHouse(null); }}
+        point={pendingHouse}
+        marketId={selectedMarket?.id ?? null}
+        onCreated={() => {
+          // Leave add mode after a save: the rep placed the house they walked
+          // up to, and staying armed makes the next map tap create another.
+          setAddingHouse(false);
+          setPendingHouse(null);
+          fetchLeads();
+        }}
+      />
+</div>
   );
 }

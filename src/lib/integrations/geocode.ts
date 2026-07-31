@@ -83,7 +83,7 @@ export async function geocodeAddress(
  * redeploy, matching how the Regrid key works. A missing key is the normal case
  * and must stay silent — the tier is optional.
  */
-async function getCassKey(): Promise<string | null> {
+export async function getCassKey(): Promise<string | null> {
   try {
     const { data } = await db()
       .from('app_settings')

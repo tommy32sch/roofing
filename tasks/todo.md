@@ -750,15 +750,22 @@ areas and leads that were never downloaded cannot be available offline.
 Let a rep add a house that was not already a lead, record the first knock, and
 see the new pin immediately without leaving the canvassing map.
 
-- [ ] Add an explicit "Add house" map mode with tap/long-press placement
-- [ ] Resolve the selected coordinates to an address or Regrid parcel
-- [ ] Let the rep confirm or correct the address before saving
-- [ ] Support address-only leads when the homeowner's name is unknown
-- [ ] Warn when the address or a nearby coordinate already belongs to a lead
-- [ ] Capture the initial knock result, notes and any contact details in one sheet
-- [ ] Create the lead, first knock and activity history atomically
-- [ ] Add the new pin and knock state to the map immediately
-- [ ] Extend the offline outbox so a new lead and its first knock can sync together
+- [x] Add an explicit "Add house" map mode with tap placement
+- [x] Resolve the selected coordinates to an address (Geocodio reverse, Nominatim fallback)
+- [x] Let the rep confirm or correct the address before saving
+- [x] Support address-only leads when the homeowner's name is unknown
+- [x] Warn when a nearby coordinate already belongs to a lead (30m radius)
+- [x] Capture the initial knock result, notes and any contact details in one sheet
+- [x] Create the lead, first knock and activity history in one request — see note below
+- [x] Add the new pin and knock state to the map immediately
+
+**Note on atomicity.** The lead and knock are created in one request but not one
+transaction. The knock goes through the same `record_lead_knock` RPC the lead page uses,
+so derived state cannot drift; if it fails the lead is deliberately KEPT and the response
+reports `knockRecorded: false`. Discarding a lead the rep just entered while standing at a
+door, to preserve a technicality, would be the worse failure. A true transaction would
+need a new DB function wrapping both.
+- [ ] Extend the offline outbox so a new lead and its first knock can sync together — BLOCKED on "Future: complete offline operation", which has not been started
 
 Production review:
 - Committed and pushed as `57a6da7`; the work was complete but had been left
