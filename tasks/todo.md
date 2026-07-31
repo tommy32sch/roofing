@@ -891,7 +891,7 @@ below house-level — the precision plumbing added in 698cec9 is the seam:
 - [x] Verify: 12 distinct coordinates, all within the correct block, and the
       odd/even ZIP+4 split lands on opposite sides of the street
 - [x] Confirm the app-wide stacked count reaches 0
-- [ ] Deploy and re-verify on production
+- [x] Deploy and re-verify on production — 967 mapped, 0 unmapped, 0 stacked
 
 ### Risks
 
@@ -939,10 +939,16 @@ The key was pasted into a chat transcript on 2026-07-31 while validating the
 CASS geocoder, so it should be treated as exposed. Rotating costs nothing and
 needs no deploy.
 
-- [ ] Generate a new key at geocod.io
-- [ ] Paste it into Settings → Geocoder API key (stored in app_settings, not env)
-- [ ] Revoke the old key in the Geocodio dashboard
-- [ ] Confirm geocoding still works: the Map's "not on the map" action should
+**CLOSED 2026-07-31 — accepted risk, do not re-raise.** Three rotation attempts each
+re-saved the same key (verified by SHA-256: the stored value stayed byte-identical to the
+exposed one while updated_at confirmed the writes were landing). Owner decided not to
+pursue it. Exposure is bounded — a free-tier geocoding key that cannot reach leads, the
+database or customers; worst case is a stranger consuming the monthly lookup quota.
+
+- [x] ~~Generate a new key at geocod.io~~
+- [x] ~~Paste it into Settings → Geocoder API key~~
+- [x] ~~Revoke the old key in the Geocodio dashboard~~
+- [x] Confirm geocoding still works — verified live: rooftop accuracy, exact coords
       report 0 remaining rather than a run of failures
 
 Not urgent — the free tier has no billing attached, so the worst case is someone
