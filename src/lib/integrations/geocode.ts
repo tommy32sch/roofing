@@ -2,6 +2,7 @@ import { db } from '@/lib/supabase/server';
 import { buildGeocodeQuery } from '@/lib/leads/geocode-query';
 import { geocodeAddressCensus } from './geocode-census';
 import { classifyNominatimPrecision, shouldSeekBetterPrecision, preferMorePrecise, type GeocodePrecision } from './geocode-precision';
+import { geocodeAddressCass } from './geocode-cass';
 
 /**
  * Free geocoding via OSM Nominatim.
@@ -75,6 +76,27 @@ export async function geocodeAddress(
  * Only attempted when there is a street. The market-centre callers pass an
  * empty street to geocode a city, which Census cannot do and Nominatim can.
  */
+/**
+ * The commercial geocoder's key, or null when none is configured.
+ *
+ * Read from settings rather than the environment so it can be rotated without a
+ * redeploy, matching how the Regrid key works. A missing key is the normal case
+ * and must stay silent — the tier is optional.
+ */
+async function getCassKey(): Promise<string | null> {
+  try {
+    const { data } = await db()
+      .from('app_settings')
+      .select('geocode_api_key')
+      .eq('id', 'default')
+      .single();
+    const key = (data as { geocode_api_key?: string | null } | null)?.geocode_api_key;
+    return key?.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
 export async function geocodeAddressWithFallback(query: {
   street: string;
   city: string | null;
@@ -93,7 +115,7 @@ export async function geocodeAddressWithFallback(query: {
 
   const census = await geocodeAddressCensus(query);
   // Census only ever returns matched address points, so a hit is house-level.
-  const best = preferMorePrecise(
+  let best = preferMorePrecise(
     primary ? { value: primary, precision: primary.precision ?? 'area' } : null,
     census
       ? {
@@ -102,6 +124,23 @@ export async function geocodeAddressWithFallback(query: {
         }
       : null
   );
+
+  // Third tier: the only source with data independent of OpenStreetMap. Reached
+  // only when the two free ones failed to place the actual building, so it costs
+  // a request for a handful of addresses rather than for every lead.
+  if (!best || shouldSeekBetterPrecision(best.precision)) {
+    const key = await getCassKey();
+    if (key) {
+      const cass = await geocodeAddressCass(query, key);
+      if (cass) {
+        best = preferMorePrecise(best, {
+          value: { latitude: cass.latitude, longitude: cass.longitude, precision: cass.precision },
+          precision: cass.precision,
+        });
+      }
+    }
+  }
+
   return best?.value ?? null;
 }
 

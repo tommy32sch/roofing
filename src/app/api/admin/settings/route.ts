@@ -43,7 +43,7 @@ export async function PATCH(request: NextRequest) {
     const body = await request.json();
     const {
       company_name, default_lead_status, default_lead_priority,
-      regrid_api_key, auto_enrich_enabled, roof_price_per_square,
+      regrid_api_key, geocode_api_key, auto_enrich_enabled, roof_price_per_square,
       default_geo_city, default_geo_state,
       email_import_enabled, allowed_sender_emails,
     } = body;
@@ -54,6 +54,7 @@ export async function PATCH(request: NextRequest) {
     if (default_lead_status !== undefined) updates.default_lead_status = default_lead_status;
     if (default_lead_priority !== undefined) updates.default_lead_priority = default_lead_priority;
     if (regrid_api_key !== undefined) updates.regrid_api_key = regrid_api_key || null;
+    if (geocode_api_key !== undefined) updates.geocode_api_key = geocode_api_key || null;
     if (auto_enrich_enabled !== undefined) updates.auto_enrich_enabled = auto_enrich_enabled;
     if (roof_price_per_square !== undefined) {
       updates.roof_price_per_square =

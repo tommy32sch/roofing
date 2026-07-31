@@ -26,6 +26,8 @@ export default function SettingsPage() {
   const [defaultStatus, setDefaultStatus] = useState('new');
   const [defaultPriority, setDefaultPriority] = useState('medium');
   const [regridApiKey, setRegridApiKey] = useState('');
+  const [geocodeApiKey, setGeocodeApiKey] = useState('');
+  const [savingGeocodeKey, setSavingGeocodeKey] = useState(false);
   const [autoEnrich, setAutoEnrich] = useState(false);
   const [testingRegrid, setTestingRegrid] = useState(false);
   const [savingRegrid, setSavingRegrid] = useState(false);
@@ -50,6 +52,7 @@ export default function SettingsPage() {
           setDefaultStatus(data.settings.default_lead_status || 'new');
           setDefaultPriority(data.settings.default_lead_priority || 'medium');
           setRegridApiKey(data.settings.regrid_api_key || '');
+          setGeocodeApiKey(data.settings.geocode_api_key || '');
           setAutoEnrich(data.settings.auto_enrich_enabled || false);
           setRoofPricePerSquare(
             data.settings.roof_price_per_square != null ? String(data.settings.roof_price_per_square) : ''
@@ -236,6 +239,44 @@ export default function SettingsPage() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="geocode_api_key">Geocoder API key (optional)</Label>
+              <Input
+                id="geocode_api_key"
+                type="password"
+                value={geocodeApiKey}
+                onChange={(e) => setGeocodeApiKey(e.target.value)}
+                placeholder="Geocod.io API key"
+              />
+              <p className="text-xs text-muted-foreground">
+                Only used for addresses OpenStreetMap and the US Census cannot place —
+                typically newer streets. Leave blank to rely on the free sources alone.
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={savingGeocodeKey}
+                onClick={async () => {
+                  setSavingGeocodeKey(true);
+                  try {
+                    const res = await fetch('/api/admin/settings', {
+                      method: 'PATCH',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ geocode_api_key: geocodeApiKey.trim() }),
+                    });
+                    const data = await res.json();
+                    if (data.success) toast.success(geocodeApiKey.trim() ? 'Geocoder key saved' : 'Geocoder key cleared');
+                    else toast.error(data.error || 'Failed to save');
+                  } catch {
+                    toast.error('Failed to save key');
+                  } finally {
+                    setSavingGeocodeKey(false);
+                  }
+                }}
+              >
+                {savingGeocodeKey ? 'Saving...' : 'Save geocoder key'}
+              </Button>
+            </div>
             <div className="space-y-2">
               <Label htmlFor="geo_city">Default city</Label>
               <Input id="geo_city" value={geoCity} onChange={(e) => setGeoCity(e.target.value)} placeholder="Phoenix" />

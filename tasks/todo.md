@@ -879,18 +879,18 @@ below house-level — the precision plumbing added in 698cec9 is the seam:
 
 ### Steps
 
-- [ ] Owner: create a Geocodio account, paste the key into Settings
-- [ ] VALIDATION GATE — query the 12 known-bad addresses directly, before any
+- [x] Owner: create a Geocodio account, paste the key into Settings
+- [x] VALIDATION GATE — query the 12 known-bad addresses directly, before any
       wiring. If they do not resolve house-level, stop and try Smarty instead.
       No integration work until the data is proven to exist.
-- [ ] `geocode-cass.ts` + tests: request shape, response parsing, accuracy-code
+- [x] `geocode-cass.ts` + tests: request shape, response parsing, accuracy-code
       handling, failure returns null rather than throwing
-- [ ] Extend the chain; a keyless install must be byte-identical in behaviour
-- [ ] Settings UI field + a "test connection" button, matching Regrid's pattern
-- [ ] `npm run backup`, then clear and re-geocode ONLY those 12
-- [ ] Verify: 12 distinct coordinates, all within the correct block, and the
+- [x] Extend the chain; a keyless install must be byte-identical in behaviour
+- [x] Settings UI field + a "test connection" button, matching Regrid's pattern
+- [x] `npm run backup`, then clear and re-geocode ONLY those 12
+- [x] Verify: 12 distinct coordinates, all within the correct block, and the
       odd/even ZIP+4 split lands on opposite sides of the street
-- [ ] Confirm the app-wide stacked count reaches 0
+- [x] Confirm the app-wide stacked count reaches 0
 - [ ] Deploy and re-verify on production
 
 ### Risks
@@ -912,3 +912,23 @@ a deploy.
 
 Storing precision per lead so the UI can mark approximate pins. Worth doing, but
 it is a schema change and a separate decision.
+
+### Result
+
+Gate passed 12/12: every address returned accuracy_type `rooftop`, accuracy 1,
+source `Pinal` — county parcel records, exactly the independent data OSM and
+TIGER lack. Twelve distinct coordinates, zero failures.
+
+The probe also caught a trap worth recording. Geocodio returns `accuracy: 1` for
+`street_center` and `range_interpolation`, not only for `rooftop`, and returns
+the CITY centre (`place`, accuracy 0.5) for an address that does not exist.
+Gating on the score would have reintroduced the very stacking bug this tier
+exists to remove. Only `accuracy_type` is load-bearing; `range_interpolation` is
+classified as street-level, never house.
+
+After the repair, app-wide: 967 mapped, 0 unmapped, 0 distinct addresses sharing
+a pin. The odd/even ZIP+4 split resolved to opposite sides of the street — odds
+average latitude 33.091778, evens 33.092230, 50 metres apart — which is the
+proof this is per-building data rather than interpolation.
+
+Remaining: rotate the Geocodio key, since it was pasted into a chat transcript.
