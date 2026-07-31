@@ -2,19 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/supabase/server';
 import { getAuthenticatedAdmin } from '@/lib/auth/jwt';
 import { buildLeadSearchFilter, sanitizeSearch, sanitizeStreetNumber, directionRegex, buildStreetNamesFilter } from '@/lib/utils/lead-query';
+// Escaping lives in a shared module because it does two jobs — CSV quoting AND
+// neutralising spreadsheet formulas in attacker-supplied lead text.
+import { csvRow as row } from '@/lib/utils/csv';
 
-function escapeCsv(value: unknown): string {
-  if (value === null || value === undefined) return '';
-  const str = String(value);
-  if (str.includes(',') || str.includes('"') || str.includes('\n')) {
-    return `"${str.replace(/"/g, '""')}"`;
-  }
-  return str;
-}
 
-function row(values: unknown[]): string {
-  return values.map(escapeCsv).join(',');
-}
 
 export async function GET(request: NextRequest) {
   try {
