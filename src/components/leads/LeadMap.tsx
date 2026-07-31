@@ -92,10 +92,14 @@ function FitBounds({ leads, territories }: { leads: GeoLead[]; territories: Terr
     // into a stale (small) viewport.
     return whenSized(map, () => {
       map.invalidateSize();
-      map.fitBounds(
-        points,
-        { padding: [40, 40], maxZoom: 16 }
-      );
+      map.fitBounds(points, { padding: [40, 40], maxZoom: 16 });
+      // Land on a whole zoom level. zoomSnap 0.25 makes manual zooming smooth,
+      // but it also lets fitBounds settle between levels, where raster tiles are
+      // upscaled and the basemap goes soft — measured 304px for a 256px tile at
+      // zoom 10.25. Rounding DOWN keeps everything that was fitted in view;
+      // rounding up would crop it.
+      const fitted = map.getZoom();
+      if (!Number.isInteger(fitted)) map.setZoom(Math.floor(fitted), { animate: false });
       // Re-measure once more after the view settles so the tile layer requests
       // tiles for the full container (not a stale smaller area).
       requestAnimationFrame(() => map.invalidateSize());
@@ -141,10 +145,12 @@ function MarketView({
       // page is in a background tab — the animation would never progress and
       // the map would sit on the previous office. Jump straight there instead;
       // nobody is watching the transition anyway.
+      // Whole levels only, for the same tile-sharpness reason as FitBounds.
+      const settled = Number.isInteger(zoom) ? zoom : Math.floor(zoom);
       if (typeof document !== 'undefined' && document.hidden) {
-        map.setView(target, zoom, { animate: false });
+        map.setView(target, settled, { animate: false });
       } else {
-        map.flyTo(target, zoom, { duration: 0.8 });
+        map.flyTo(target, settled, { duration: 0.8 });
       }
     });
     // marketId is the trigger: re-centre on switch, not on every render.
@@ -562,6 +568,24 @@ export default function LeadMap({
       // looks blank. We measured them stuck at 0.19. No fade = tiles paint at
       // full opacity immediately.
       fadeAnimation={false}
+      /* Zoom feel.
+       *
+       * Leaflet defaults to zoomSnap 1, so every wheel notch doubles the scale
+       * and the view settles on a whole level. That is the clunkiness — and it
+       * also fights cursor-anchored zoom, because snapping back to an integer
+       * level shifts the point you were pointing at. Quarter steps keep the
+       * cursor where it belongs and make zooming feel continuous.
+       *
+       * zoomDelta is the +/- buttons: half a level is a gentler press than
+       * doubling the scale, while still making obvious progress.
+       *
+       * wheelPxPerZoomLevel above the default of 60 slows a trackpad, which
+       * emits many small deltas and otherwise flies through several levels from
+       * one gesture.
+       */
+      zoomSnap={0.25}
+      zoomDelta={0.5}
+      wheelPxPerZoomLevel={100}
       className="h-full w-full z-0 rounded-md"
     >
       <TileLayer
