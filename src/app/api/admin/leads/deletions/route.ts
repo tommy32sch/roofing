@@ -33,6 +33,14 @@ export async function GET(request: NextRequest) {
     const deletedBy = searchParams.get('deleted_by');
     if (deletedBy) query = query.eq('deleted_by', deletedBy);
 
+    // The panel is a review queue, so pending is the default view. Reviewed
+    // rows are never removed — they are just not what the queue is for.
+    if (searchParams.get('reviewed') === '1') {
+      query = query.not('reviewed_at', 'is', null);
+    } else if (searchParams.get('all') !== '1') {
+      query = query.is('reviewed_at', null);
+    }
+
     const { data, count, error } = await query.range(offset, offset + limit - 1);
     if (error) {
       return NextResponse.json({ success: false, error: error.message }, { status: 500 });

@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { formatDistanceToNow } from 'date-fns';
-import { Trash2, ChevronDown, ChevronRight, AlertTriangle } from 'lucide-react';
+import { Trash2, ChevronDown, ChevronRight, AlertTriangle, Check, Undo2 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import { deletedLeadLabel, isSignificantDeletion, totalDestroyed } from '@/lib/leads/lead-deletion';
 import { formatAddressShort } from '@/lib/utils/format';
 
@@ -19,6 +20,8 @@ interface Deletion {
   deleted_by_name: string | null;
   deleted_by_role: string | null;
   deleted_at: string;
+  reviewed_at: string | null;
+  reviewed_by_name: string | null;
   activities_destroyed: number;
   knocks_destroyed: number;
   calls_destroyed: number;
@@ -27,21 +30,28 @@ interface Deletion {
 }
 
 /**
- * Recently deleted leads.
+ * Deleted leads awaiting review.
  *
  * Deleting a lead cascades through its whole history, so without this there is
- * no evidence a lead ever existed. Renders nothing at all when nothing has been
- * deleted — an empty "Deleted leads" card on every visit is noise, and the point
- * is to be noticeable on the rare occasion it is not empty.
+ * no evidence a lead ever existed. It is a queue rather than a log: approving a
+ * deletion stamps who signed it off and drops it out of the list, so the panel
+ * keeps meaning "these need a look" instead of growing forever and being
+ * ignored.
+ *
+ * Approving never deletes the audit row. Clearing the panel by destroying the
+ * record would undo the entire reason the record exists.
  */
 export function DeletedLeadsPanel() {
   const [deletions, setDeletions] = useState<Deletion[]>([]);
   const [total, setTotal] = useState(0);
   const [open, setOpen] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  const [showReviewed, setShowReviewed] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetch('/api/admin/leads/deletions?limit=20')
+  const load = useCallback((reviewed: boolean) => {
+    const q = reviewed ? 'reviewed=1&limit=20' : 'limit=20';
+    return fetch(`/api/admin/leads/deletions?${q}`)
       .then(r => r.json())
       .then(d => {
         if (d.success) {
@@ -53,28 +63,84 @@ export function DeletedLeadsPanel() {
       .finally(() => setLoaded(true));
   }, []);
 
-  if (!loaded || total === 0) return null;
+  useEffect(() => { load(showReviewed); }, [load, showReviewed]);
+
+  async function review(id: string, undo: boolean) {
+    setBusy(id);
+    try {
+      const res = await fetch(`/api/admin/leads/deletions/${id}/review`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ undo }),
+      });
+      if (res.ok) await load(showReviewed);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function approveAll() {
+    setBusy('all');
+    try {
+      // Sequential rather than parallel: this is a handful of rows at most, and
+      // a partial failure should leave the rest untouched and visible.
+      for (const d of deletions) {
+        await fetch(`/api/admin/leads/deletions/${d.id}/review`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ undo: false }),
+        });
+      }
+      await load(showReviewed);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  // Nothing pending and not deliberately browsing history: stay out of the way.
+  if (!loaded) return null;
+  if (total === 0 && !showReviewed) return null;
 
   return (
-    <Card className="border-destructive/30">
+    <Card className={showReviewed ? undefined : 'border-destructive/30'}>
       <CardContent className="p-0">
-        <button
-          type="button"
-          onClick={() => setOpen(o => !o)}
-          className="flex w-full items-center gap-2 px-4 py-3 text-left"
-        >
-          {open ? <ChevronDown className="h-4 w-4 shrink-0" /> : <ChevronRight className="h-4 w-4 shrink-0" />}
-          <Trash2 className="h-4 w-4 shrink-0 text-destructive" />
-          <span className="font-medium">
-            {total.toLocaleString()} deleted lead{total === 1 ? '' : 's'}
-          </span>
-          <span className="text-xs text-muted-foreground">
-            most recent {formatDistanceToNow(new Date(deletions[0].deleted_at), { addSuffix: true })}
-          </span>
-        </button>
+        <div className="flex items-center gap-2 px-4 py-3">
+          <button
+            type="button"
+            onClick={() => setOpen(o => !o)}
+            className="flex min-w-0 flex-1 items-center gap-2 text-left"
+          >
+            {open ? <ChevronDown className="h-4 w-4 shrink-0" /> : <ChevronRight className="h-4 w-4 shrink-0" />}
+            <Trash2 className={`h-4 w-4 shrink-0 ${showReviewed ? 'text-muted-foreground' : 'text-destructive'}`} />
+            <span className="truncate font-medium">
+              {showReviewed
+                ? `${total.toLocaleString()} approved deletion${total === 1 ? '' : 's'}`
+                : `${total.toLocaleString()} deleted lead${total === 1 ? '' : 's'} to review`}
+            </span>
+            {deletions.length > 0 && (
+              <span className="hidden shrink-0 text-xs text-muted-foreground sm:inline">
+                most recent {formatDistanceToNow(new Date(deletions[0].deleted_at), { addSuffix: true })}
+              </span>
+            )}
+          </button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="shrink-0 text-xs"
+            onClick={() => { setShowReviewed(s => !s); setOpen(true); }}
+          >
+            {showReviewed ? 'Show pending' : 'Show approved'}
+          </Button>
+        </div>
 
         {open && (
           <div className="border-t">
+            {deletions.length === 0 && (
+              <div className="px-4 py-3 text-sm text-muted-foreground">
+                {showReviewed ? 'Nothing approved yet.' : 'Nothing waiting for review.'}
+              </div>
+            )}
+
             {deletions.map(d => {
               const counts = {
                 activities: d.activities_destroyed,
@@ -99,7 +165,7 @@ export function DeletedLeadsPanel() {
                   {/* Fieldwork lost is the part worth flagging: removing a
                       never-worked duplicate is routine, removing a lead with
                       knocks against it is not. */}
-                  {significant && (
+                  {significant && !d.reviewed_at && (
                     <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
                   )}
                   <div className="min-w-0 flex-1">
@@ -130,10 +196,41 @@ export function DeletedLeadsPanel() {
                         </>
                       )}
                     </div>
+                    {d.reviewed_at && (
+                      <div className="mt-0.5 text-xs text-muted-foreground">
+                        approved by {d.reviewed_by_name ?? 'unknown'}
+                        {' · '}
+                        {formatDistanceToNow(new Date(d.reviewed_at), { addSuffix: true })}
+                      </div>
+                    )}
                   </div>
+
+                  <Button
+                    variant={d.reviewed_at ? 'ghost' : 'outline'}
+                    size="sm"
+                    className="shrink-0"
+                    disabled={busy !== null}
+                    onClick={() => review(d.id, !!d.reviewed_at)}
+                  >
+                    {d.reviewed_at ? (
+                      <><Undo2 className="mr-1 h-3.5 w-3.5" />Undo</>
+                    ) : (
+                      <><Check className="mr-1 h-3.5 w-3.5" />Approve</>
+                    )}
+                  </Button>
                 </div>
               );
             })}
+
+            {!showReviewed && deletions.length > 1 && (
+              <div className="px-4 py-2">
+                <Button variant="ghost" size="sm" disabled={busy !== null} onClick={approveAll}>
+                  <Check className="mr-1 h-3.5 w-3.5" />
+                  Approve all {deletions.length}
+                </Button>
+              </div>
+            )}
+
             {total > deletions.length && (
               <div className="px-4 py-2 text-xs text-muted-foreground">
                 showing the {deletions.length} most recent of {total.toLocaleString()}
