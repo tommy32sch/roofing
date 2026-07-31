@@ -19,8 +19,17 @@ that feeds the leaderboard is worth more to an attacker here than in a generic C
 
 ## P0 — fix before more reps get accounts
 
-### 1. Any setter can award themselves leads, set deal value, and mark them sold
+### 1. ~~Any setter can award themselves leads, set deal value, and mark them sold~~ — FIXED (`5568a3b`)
 `src/app/api/admin/leads/route.ts:183` · attacker: setter or closer
+
+**Fixed 2026-07-31.** The whitelist and the setter status rules moved to
+`src/lib/leads/lead-fields.ts`, which both the create and update routes now import —
+one copy of the rule rather than two that drift. Create refuses `sold` from a setter with
+the same 403 as update, and drops `deal_value` / `assigned_*` / `market_id` for non-admins.
+15 unit tests cover the guard directly. Confirmed all 30 fields the lead form sends still
+survive the whitelist, so nothing silently stopped saving.
+
+The original finding, for the record:
 
 The POST handler destructures four fields and spreads the rest of the JSON body straight
 into a service-role insert:
