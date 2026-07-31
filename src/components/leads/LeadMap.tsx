@@ -497,6 +497,12 @@ interface LeadMapProps {
   onDrawPath?: (path: [number, number][]) => void;
   /** Commit on release. Selection mode only; territories keep Finish. */
   onDrawCommit?: (path: [number, number][]) => void;
+  /**
+   * Areas already committed this session. Kept on screen so a selection built
+   * from several loops is reviewable — previously the shape vanished on commit
+   * and left only a count.
+   */
+  lassoAreas?: { id: string; path: [number, number][] }[];
   /** Persisted canvassing boundaries for the selected market. */
   territories?: Territory[];
   territoryLeadCounts?: Record<string, number>;
@@ -524,6 +530,7 @@ export default function LeadMap({
   drawPoints = [],
   onDrawPath,
   onDrawCommit,
+  lassoAreas,
   territories = [],
   territoryLeadCounts = {},
   currentUserId = null,
@@ -916,6 +923,27 @@ export default function LeadMap({
 
       {/* The active draft is last so its handles stay visible. DrawLayer's
           carefully-tested pointer lifecycle remains untouched. */}
+      {/* Committed areas, beneath the active draft so the line being drawn
+          always reads on top. Filled rather than outlined: several of these
+          overlapping need to be distinguishable at a glance. */}
+      {drawing &&
+        (lassoAreas ?? []).map((area, i) => (
+          <Polygon
+            key={area.id}
+            positions={area.path}
+            pathOptions={{
+              color: '#2563eb',
+              weight: 2,
+              opacity: 0.9,
+              fillColor: '#2563eb',
+              fillOpacity: 0.12,
+            }}
+          >
+            <Tooltip permanent direction="center" className="territory-label">
+              {`Area ${i + 1}`}
+            </Tooltip>
+          </Polygon>
+        ))}
       {onDrawPath && (
         <DrawLayer drawing={drawing} points={drawPoints} onPath={onDrawPath} onCommit={onDrawCommit} />
       )}

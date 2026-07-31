@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
-import { BoxSelect, UserCheck, LocateFixed, CloudHail, Wind, Pencil, ChevronDown, Check, Hexagon, MapPinned } from 'lucide-react';
+import { BoxSelect, UserCheck, LocateFixed, CloudHail, Wind, Pencil, ChevronDown, Check, Hexagon, MapPinned, Undo2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { knockLabel } from '@/lib/leads/knocks';
 import { callLabel } from '@/lib/leads/calls';
@@ -49,6 +49,7 @@ import {
 import { LEAD_STATUS_OPTIONS, LEAD_PRIORITY_OPTIONS } from '@/types';
 import type { Territory, UserRole } from '@/types';
 import { LIMITS } from '@/lib/utils/validation';
+import { leadsAfterRemovingArea, totalLeadsInAreas, newLeadsFromArea, type LassoArea } from '@/lib/leads/lasso-areas';
 import { pointInPolygon } from '@/lib/leads/geo-polygon';
 import { mapDrawAvailability, type MapDrawPurpose } from '@/lib/leads/map-drawing';
 import { PageHeader } from '@/components/layout/page-header';
@@ -147,6 +148,15 @@ export default function MapPage() {
   const [mapInstance, setMapInstance] = useState<LeafletMap | null>(null);
   const [drawing, setDrawing] = useState(false);
   const [drawPurpose, setDrawPurpose] = useState<MapDrawPurpose | null>(null);
+  // Areas committed during this draw session. Kept so several loops are
+  // reviewable on the map and any one of them can be undone.
+  const [lassoAreas, setLassoAreas] = useState<LassoArea[]>([]);
+  // Mirror for reading inside event handlers: a setState updater runs after the
+  // handler returns, so counting against state there reports stale numbers.
+  const areasRef = useRef<LassoArea[]>([]);
+  useEffect(() => {
+    areasRef.current = lassoAreas;
+  }, [lassoAreas]);
   const [drawPoints, setDrawPoints] = useState<[number, number][]>([]);
   const [territories, setTerritories] = useState<Territory[]>([]);
   const [territoriesLoading, setTerritoriesLoading] = useState(false);
@@ -632,9 +642,16 @@ export default function MapPage() {
         toast.info('No leads inside that shape');
         return;
       }
-      // Counted against the ref so the number is known before the toast fires.
-      const current = selectionRef.current;
-      const added = inside.filter((lead) => !current.has(lead.id)).length;
+      // Counted against the areas already drawn, not the whole selection, so
+      // the number describes what THIS loop contributed.
+      const insideIds = inside.map((lead) => lead.id);
+      const added = newLeadsFromArea(areasRef.current, insideIds).length;
+      const area: LassoArea = {
+        id: `${areasRef.current.length + 1}-${insideIds.length}-${path.length}`,
+        path,
+        leadIds: insideIds,
+      };
+      setLassoAreas((prev) => [...prev, area]);
       setSelection((prev) => {
         const next = new Map(prev);
         for (const lead of inside) {
@@ -653,6 +670,29 @@ export default function MapPage() {
     },
     [effectiveLeads]
   );
+
+  /**
+   * Remove one area and the leads only it covered.
+   *
+   * Leads inside an overlapping area survive — dropping them would silently
+   * deselect houses the operator never chose to lose.
+   */
+  const undoLassoArea = useCallback((areaId: string) => {
+    const { remaining, dropped } = leadsAfterRemovingArea(areasRef.current, areaId);
+    setLassoAreas(remaining);
+    if (dropped.length > 0) {
+      setSelection((prev) => {
+        const next = new Map(prev);
+        for (const id of dropped) next.delete(id);
+        return next;
+      });
+    }
+    toast.info(
+      dropped.length > 0
+        ? `Area removed — ${dropped.length} lead${dropped.length !== 1 ? 's' : ''} deselected`
+        : 'Area removed — its leads are covered by another area'
+    );
+  }, []);
 
   function finishDraw() {
     if (drawPoints.length < 3) {
@@ -688,6 +728,7 @@ export default function MapPage() {
 
   function cancelDraw() {
     setDrawing(false);
+    setLassoAreas([]);
     setDrawPurpose(null);
     setDrawPoints([]);
     setEditingTerritory(null);
@@ -918,9 +959,31 @@ export default function MapPage() {
                     selection already exists. Territory still needs an explicit
                     Finish to reach its naming dialog. */}
                 {drawPurpose === 'selection' ? (
-                  <Button variant="default" size="sm" onClick={cancelDraw}>
-                    Done
-                  </Button>
+                  <>
+                    {/* What has been drawn so far. Without this the selection is
+                        just a number and there is no way to tell which parts of
+                        the map it came from. */}
+                    {lassoAreas.length > 0 && (
+                      <span className="text-xs text-muted-foreground whitespace-nowrap tabular-nums">
+                        {lassoAreas.length} area{lassoAreas.length !== 1 ? 's' : ''} ·{' '}
+                        {totalLeadsInAreas(lassoAreas)} lead
+                        {totalLeadsInAreas(lassoAreas) !== 1 ? 's' : ''}
+                      </span>
+                    )}
+                    {lassoAreas.length > 0 && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => undoLassoArea(lassoAreas[lassoAreas.length - 1].id)}
+                      >
+                        <Undo2 className="h-4 w-4 mr-1" />
+                        Undo area
+                      </Button>
+                    )}
+                    <Button variant="default" size="sm" onClick={cancelDraw}>
+                      Done
+                    </Button>
+                  </>
                 ) : (
                   <Button variant="default" size="sm" onClick={finishDraw} disabled={drawPoints.length < 3}>
                     Finish{drawPoints.length > 0 ? ` (${drawPoints.length})` : ''}
@@ -1071,8 +1134,9 @@ export default function MapPage() {
           {drawPurpose === 'selection' ? (
             <>
               <strong>Draw a loop</strong> around the leads you want and lift your
-              finger — everything inside is selected. Keep drawing to add more
-              areas, then press <strong>Done</strong>.
+              finger — everything inside is selected. Draw as many areas as you
+              like; each one stays on the map. <strong>Undo area</strong> removes
+              the last one, then press <strong>Done</strong> to assign them all.
             </>
           ) : (
             <>
@@ -1201,6 +1265,7 @@ export default function MapPage() {
             // drawing deliberately omits this and keeps Finish, because that
             // path opens a naming dialog.
             onDrawCommit={isAdmin && drawPurpose === 'selection' ? commitLassoSelection : undefined}
+            lassoAreas={drawPurpose === 'selection' ? lassoAreas : undefined}
             onMapReady={(map) => { mapRef.current = map; setMapInstance(map); }}
             onOpenResult={
               identityLoaded && currentUserId
