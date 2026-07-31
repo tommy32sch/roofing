@@ -63,8 +63,22 @@ Move that set to a shared module and build the POST insert from an allowlist ins
 `...rest`. Also force `status` through the setter-allowed list and derive `market_id`
 server-side.
 
-### 2. Lead activity feed skips authentication entirely, so revoked sessions still work
+### 2. ~~Lead activity feed skips authentication entirely, so revoked sessions still work~~ — FIXED
 `src/app/api/admin/leads/[leadId]/activities/route.ts:6` · attacker: any authenticated, incl. revoked
+
+**Fixed 2026-07-31.** The GET now calls `getAuthenticatedAdmin()` (which is what runs the
+`token_version` revocation check) and applies the lead detail route's closer rule via a new
+shared `canViewLead()` in `src/lib/leads/lead-visibility.ts`, with 5 tests.
+
+Two further gaps found while fixing it and closed in the same change:
+- The **POST** in that file authenticated but never checked visibility, so a closer could
+  append notes to a lead they cannot read. It already loaded the row; it now selects
+  `status` and applies the same rule.
+- `GET /api/admin/leads/sources` had no auth call at all. Only vendor names, so the data
+  is dull, but it was the same revocation bypass. A sweep of all 33 admin routes now
+  shows only `auth/login` and `auth/logout` without an auth call, which is correct.
+
+The original finding:
 
 `getAuthenticatedAdmin` is imported on line 3 and called in POST on line 38 — but the GET
 on line 6 never calls it.
@@ -177,8 +191,12 @@ is the difference between one future XSS being contained or not.
 
 ## Not vulnerabilities, but do them
 
-- **Rotate the Geocodio key** — it passed through a chat transcript. See
-  `tasks/todo.md`. No deploy needed.
+- ~~**Rotate the Geocodio key**~~ — **ACCEPTED RISK, closed 2026-07-31.** Three rotation
+  attempts each re-saved the same key (verified by SHA-256: the stored value stayed
+  byte-identical to the exposed one, while `updated_at` confirmed the writes were
+  landing). Owner decided not to pursue it further. The exposure is bounded: a free-tier
+  geocoding key that cannot reach leads, the database, or customers — the worst case is
+  a stranger consuming the monthly lookup quota. Do not re-raise.
 - **Check `CRON_SECRET` in Vercel** — both cron handlers 401 without it. If unset, storm
   alerts and appointment reminders have never fired. Undetectable from outside: the
   endpoint returns 401 whether the secret is missing or merely absent from the request.
