@@ -43,7 +43,8 @@ const STREET_TYPES = new Set(['range_interpolation', 'street_center', 'intersect
 
 export function classifyGeocodioPrecision(accuracyType: unknown): GeocodePrecision {
   const type = typeof accuracyType === 'string' ? accuracyType.toLowerCase() : '';
-  if (HOUSE_TYPES.has(type)) return 'house';
+  // Parcel/building points are the most specific answer available.
+  if (HOUSE_TYPES.has(type)) return 'rooftop';
   if (STREET_TYPES.has(type)) return 'street';
   // place / county / state / zip, and anything unrecognised. Defaulting to area
   // keeps an unknown future type from being mistaken for a rooftop hit.

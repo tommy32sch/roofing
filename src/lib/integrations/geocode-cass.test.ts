@@ -9,11 +9,11 @@ import {
 describe('classifyGeocodioPrecision', () => {
   // Captured from a live response for 5543 E Flowing Spg — the case this tier
   // was added for.
-  it('treats a rooftop or parcel hit as house-level', () => {
+  it('treats a rooftop or parcel hit as the most precise tier', () => {
     for (const t of ['rooftop', 'point', 'parcel_centroid', 'building_centroid']) {
-      expect(classifyGeocodioPrecision(t), t).toBe('house');
+      expect(classifyGeocodioPrecision(t), t).toBe('rooftop');
     }
-    expect(classifyGeocodioPrecision('ROOFTOP')).toBe('house');
+    expect(classifyGeocodioPrecision('ROOFTOP')).toBe('rooftop');
   });
 
   /**
@@ -60,7 +60,7 @@ describe('parseGeocodioResponse', () => {
     expect(parseGeocodioResponse(rooftop)).toEqual({
       latitude: 33.091784,
       longitude: -111.506668,
-      precision: 'house',
+      precision: 'rooftop',
       accuracyType: 'rooftop',
       source: 'Pinal',
     });
@@ -87,7 +87,7 @@ describe('parseGeocodioResponse', () => {
     const out = parseGeocodioResponse({
       results: [{ location: { lat: 33.09, lng: -111.5 }, accuracy: MIN_ACCURACY, accuracy_type: 'rooftop' }],
     });
-    expect(out?.precision).toBe('house');
+    expect(out?.precision).toBe('rooftop');
   });
 
   it('returns null when nothing matched', () => {

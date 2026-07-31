@@ -103,46 +103,48 @@ export async function geocodeAddressWithFallback(query: {
   state: string | null;
   zip: string | null;
 }): Promise<GeocodeResult | null> {
-  const primary = await geocodeAddress(query.street, query.city, query.state, query.zip);
+  const hasStreet = !!query.street?.trim();
 
-  // Nominatim returning SOMETHING is not the same as it finding the house. A
-  // road-level hit is the street's midpoint, which is exactly how eight
-  // distinct houses ended up on one pin. Ask Census whenever the answer is not
-  // house-level — not only when it is missing entirely.
-  const needsSecondOpinion = !primary || shouldSeekBetterPrecision(primary.precision ?? 'area');
-  if (!needsSecondOpinion) return primary;
-  if (!query.street?.trim()) return primary;
-
-  const census = await geocodeAddressCensus(query);
-  // Census only ever returns matched address points, so a hit is house-level.
-  let best = preferMorePrecise(
-    primary ? { value: primary, precision: primary.precision ?? 'area' } : null,
-    census
-      ? {
-          value: { latitude: census.latitude, longitude: census.longitude, precision: 'house' as const },
-          precision: 'house' as const,
-        }
-      : null
-  );
-
-  // Third tier: the only source with data independent of OpenStreetMap. Reached
-  // only when the two free ones failed to place the actual building, so it costs
-  // a request for a handful of addresses rather than for every lead.
-  if (!best || shouldSeekBetterPrecision(best.precision)) {
+  // Parcel data first when it is configured. It is the most accurate source —
+  // the building rather than an address node on the street line — and it has no
+  // 1-request-per-second courtesy limit, so it is also by far the fastest. The
+  // free tiers remain the fallback, which keeps the app fully functional with no
+  // key and lets it degrade rather than fail if the provider is down.
+  let best: { value: GeocodeResult; precision: GeocodePrecision } | null = null;
+  if (hasStreet) {
     const key = await getCassKey();
     if (key) {
       const cass = await geocodeAddressCass(query, key);
       if (cass) {
-        best = preferMorePrecise(best, {
+        best = {
           value: { latitude: cass.latitude, longitude: cass.longitude, precision: cass.precision },
           precision: cass.precision,
-        });
+        };
+        if (cass.precision === 'rooftop') return best.value;
       }
+    }
+  }
+
+  const primary = await geocodeAddress(query.street, query.city, query.state, query.zip);
+  if (primary) {
+    best = preferMorePrecise(best, { value: primary, precision: primary.precision ?? 'area' });
+    if (best?.precision === 'rooftop') return best.value;
+  }
+
+  // Census: free, US-only, and holds addresses OSM lacks entirely.
+  if (hasStreet && (!best || shouldSeekBetterPrecision(best.precision))) {
+    const census = await geocodeAddressCensus(query);
+    if (census) {
+      best = preferMorePrecise(best, {
+        value: { latitude: census.latitude, longitude: census.longitude, precision: 'house' },
+        precision: 'house',
+      });
     }
   }
 
   return best?.value ?? null;
 }
+
 
 /**
  * Read the default geocoding region (city/state) used to fill in leads that

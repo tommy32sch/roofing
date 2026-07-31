@@ -8,12 +8,22 @@ import {
 describe('classifyNominatimPrecision', () => {
   // Both shapes captured from live Nominatim responses for addresses on the
   // same street — one it knew the house for, one it only knew the road for.
-  it('recognises a real address point as house-level', () => {
+  // A real OSM building footprint is as good as a parcel point — measured
+  // within ~1.5m of Geocodio's rooftop for 3402 E Coronado Rd.
+  it('treats an OSM building footprint as rooftop', () => {
+    expect(classifyNominatimPrecision({ category: 'building', type: 'yes' })).toBe('rooftop');
+    expect(classifyNominatimPrecision({ addresstype: 'building' })).toBe('rooftop');
+  });
+
+  /**
+   * An OSM address NODE ranks below a parcel match. Nominatim labels these
+   * `place`/`house`, but many are TIGER imports sitting on the street
+   * centreline: 3401 E Coronado Rd came back as type=house yet was ~15m from
+   * the actual roof, which is exactly what "not on the house" looks like.
+   */
+  it('treats an OSM address node as house, below rooftop', () => {
     expect(
       classifyNominatimPrecision({ category: 'place', type: 'house', addresstype: 'place' })
-    ).toBe('house');
-    expect(
-      classifyNominatimPrecision({ category: 'building', type: 'house', addresstype: 'building' })
     ).toBe('house');
   });
 
@@ -40,17 +50,21 @@ describe('classifyNominatimPrecision', () => {
 });
 
 describe('shouldSeekBetterPrecision', () => {
-  it('does not re-query a house-level hit', () => {
-    expect(shouldSeekBetterPrecision('house')).toBe(false);
+  it('does not re-query a rooftop hit', () => {
+    expect(shouldSeekBetterPrecision('rooftop')).toBe(false);
   });
 
-  it('seeks a better answer for street and area hits', () => {
+  // An address node is worth a second opinion; a parcel source may put it on
+  // the actual building rather than the street line.
+  it('seeks a better answer for house, street and area hits', () => {
+    expect(shouldSeekBetterPrecision('house')).toBe(true);
     expect(shouldSeekBetterPrecision('street')).toBe(true);
     expect(shouldSeekBetterPrecision('area')).toBe(true);
   });
 });
 
 describe('preferMorePrecise', () => {
+  const roof = { value: 'R', precision: 'rooftop' as const };
   const house = { value: 'H', precision: 'house' as const };
   const street = { value: 'S', precision: 'street' as const };
   const area = { value: 'A', precision: 'area' as const };
@@ -76,5 +90,11 @@ describe('preferMorePrecise', () => {
 
   it('upgrades area to street', () => {
     expect(preferMorePrecise(area, street)).toBe(street);
+  });
+
+  // The Coronado case: a parcel rooftop beats an OSM address node.
+  it('upgrades an address node to a parcel rooftop', () => {
+    expect(preferMorePrecise(house, roof)).toBe(roof);
+    expect(preferMorePrecise(roof, house)).toBe(roof);
   });
 });

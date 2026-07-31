@@ -16,7 +16,18 @@
  * ask someone else" instead of accepting a pin that looks authoritative.
  */
 
-export type GeocodePrecision = 'house' | 'street' | 'area';
+/**
+ * Ranked from most to least specific.
+ *
+ * 'rooftop' is deliberately ABOVE 'house'. Nominatim labels an OSM address node
+ * `category=place, type=house`, but many of those are TIGER imports sitting on
+ * the street centreline — measured ~15m from the actual roof on E Coronado Rd,
+ * which is what "not on the house" looks like on a map. A county parcel point is
+ * the building itself. Where OSM has a real footprint (`category=building`) it
+ * agrees with the parcel to within about 1.5m, so only the address-node case is
+ * downgraded.
+ */
+export type GeocodePrecision = 'rooftop' | 'house' | 'street' | 'area';
 
 interface NominatimShape {
   category?: unknown;
@@ -37,9 +48,11 @@ export function classifyNominatimPrecision(result: NominatimShape | null | undef
   const type = typeof result.type === 'string' ? result.type : '';
   const addresstype = typeof result.addresstype === 'string' ? result.addresstype : '';
 
-  // A specific building or address point.
-  if (type === 'house' || category === 'building' || addresstype === 'building') return 'house';
-  if (category === 'place' && (addresstype === 'place' || type === 'house')) return 'house';
+  // A real building footprint in OSM is as good as a parcel point.
+  if (category === 'building' || addresstype === 'building') return 'rooftop';
+  // An address NODE. Usually right, but frequently a TIGER import aligned to the
+  // street rather than the roof, so it ranks below a parcel match.
+  if (type === 'house' || (category === 'place' && addresstype === 'place')) return 'house';
 
   // The road itself — a midpoint, not an address.
   if (category === 'highway' || addresstype === 'road') return 'street';
@@ -54,7 +67,7 @@ export function classifyNominatimPrecision(result: NominatimShape | null | undef
  * house-level hit would double every request for no gain.
  */
 export function shouldSeekBetterPrecision(precision: GeocodePrecision): boolean {
-  return precision !== 'house';
+  return precision !== 'rooftop';
 }
 
 /**
@@ -70,6 +83,6 @@ export function preferMorePrecise<T>(
 ): { value: T; precision: GeocodePrecision } | null {
   if (!primary) return fallback;
   if (!fallback) return primary;
-  const rank: Record<GeocodePrecision, number> = { house: 2, street: 1, area: 0 };
+  const rank: Record<GeocodePrecision, number> = { rooftop: 3, house: 2, street: 1, area: 0 };
   return rank[fallback.precision] > rank[primary.precision] ? fallback : primary;
 }
