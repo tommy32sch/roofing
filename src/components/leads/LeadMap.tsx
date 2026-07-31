@@ -570,22 +570,39 @@ export default function LeadMap({
       fadeAnimation={false}
       /* Zoom feel.
        *
-       * Leaflet defaults to zoomSnap 1, so every wheel notch doubles the scale
-       * and the view settles on a whole level. That is the clunkiness — and it
-       * also fights cursor-anchored zoom, because snapping back to an integer
-       * level shifts the point you were pointing at. Quarter steps keep the
-       * cursor where it belongs and make zooming feel continuous.
+       * Leaflet's wheel handler ends in
+       *   d4 = Math.ceil(d3 / zoomSnap) * zoomSnap
+       * so because of that ceil, zoomSnap is not just where the view settles —
+       * it is the FLOOR on every wheel step. Any scroll at all moves at least
+       * one snap unit.
        *
-       * zoomDelta is the +/- buttons: half a level is a gentler press than
-       * doubling the scale, while still making obvious progress.
+       * That makes the two options pull in opposite directions, and both need
+       * to be read together:
+       *   zoomSnap           - the smallest step, and how smooth it feels
+       *   wheelPxPerZoomLevel - how far a big gesture travels (lower = further)
        *
-       * wheelPxPerZoomLevel above the default of 60 slows a trackpad, which
-       * emits many small deltas and otherwise flies through several levels from
-       * one gesture.
+       * Leaflet's stock 1/60 means even a nudge doubles the scale: clunky, and
+       * snapping to a whole level drags the point you were pointing at out from
+       * under the cursor. But 0.25/100 overshot the other way — raising the px
+       * shrank the sigmoid so most gestures collapsed onto the 0.25 floor, and
+       * zooming crawled.
+       *
+       * 0.5/50 is the balance. Levels per gesture:
+       *   nudge 0.5 | flick 1.0 | mouse notch 1.0 | big swipe 2.5
+       * Half-level minimum keeps cursor anchoring honest, and a big swipe now
+       * covers more ground than stock Leaflet did (2.5 vs 2.0).
+       *
+       * zoomDelta 1 = a full level per +/- press. It must stay a multiple of
+       * zoomSnap, or _limitZoom re-snaps the result and the press lands
+       * somewhere other than where the arithmetic said.
+       *
+       * Half-levels do upscale raster tiles ~1.41x, so the basemap softens
+       * mid-zoom. FitBounds and the market recentre round down to a whole
+       * level, so every view you LAND on is crisp; only the transit is soft.
        */
-      zoomSnap={0.25}
-      zoomDelta={0.5}
-      wheelPxPerZoomLevel={100}
+      zoomSnap={0.5}
+      zoomDelta={1}
+      wheelPxPerZoomLevel={50}
       className="h-full w-full z-0 rounded-md"
     >
       <TileLayer
