@@ -7,6 +7,7 @@ import {
   summariseOutcomes,
   canRecordOutcome,
   APPOINTMENT_OUTCOMES,
+  canModifyAppointment,
 } from './appointment-outcomes';
 
 const NOW = '2026-07-29T12:00:00.000Z';
@@ -179,5 +180,59 @@ describe('canRecordOutcome', () => {
         existingOutcomeBy: 'someone-else',
       })
     ).toBe(true);
+  });
+});
+
+describe('canModifyAppointment', () => {
+  const base = {
+    role: 'setter',
+    userId: 'u1',
+    appointmentCreatedBy: null,
+    leadAssignedSetterId: null,
+    leadAssignedCloserId: null,
+  };
+
+  it('lets an admin cancel or reschedule anything', () => {
+    expect(canModifyAppointment({ ...base, role: 'admin' })).toBe(true);
+  });
+
+  it('lets the rep who booked it modify it', () => {
+    expect(canModifyAppointment({ ...base, appointmentCreatedBy: 'u1' })).toBe(true);
+  });
+
+  it('lets a rep the lead is assigned to modify it', () => {
+    expect(canModifyAppointment({ ...base, leadAssignedSetterId: 'u1' })).toBe(true);
+    expect(canModifyAppointment({ ...base, role: 'closer', leadAssignedCloserId: 'u1' })).toBe(true);
+  });
+
+  /**
+   * The hole this closes. Without it a rep refused permission to overwrite a
+   * colleague's outcome could simply delete the appointment instead, erasing
+   * the outcome and its contribution to the performance report.
+   */
+  it("refuses a rep with no connection to the appointment or lead", () => {
+    expect(
+      canModifyAppointment({
+        ...base,
+        appointmentCreatedBy: 'someone-else',
+        leadAssignedSetterId: 'someone-else',
+        leadAssignedCloserId: 'another',
+      })
+    ).toBe(false);
+  });
+
+  // An unassigned lead plus an unattributed appointment must not match a caller
+  // just because both sides are null.
+  it('does not let nulls match each other', () => {
+    expect(canModifyAppointment(base)).toBe(false);
+    expect(canModifyAppointment({ ...base, userId: '' })).toBe(false);
+  });
+
+  /**
+   * Deliberately unlike canRecordOutcome: a rep who already recorded an outcome
+   * must still be able to rebook. Cancelling is not overwriting a judgement.
+   */
+  it('ignores who recorded an outcome', () => {
+    expect(canModifyAppointment({ ...base, appointmentCreatedBy: 'u1' })).toBe(true);
   });
 });

@@ -7,8 +7,17 @@ import {
   isAppointmentOutcome,
   appointmentOutcomeLabel,
   canRecordOutcome,
+  canModifyAppointment,
 } from '@/lib/leads/appointment-outcomes';
 
+/**
+ * Load the appointment, scoped to its lead.
+ *
+ * Named for the lead relationship only — it establishes that this appointment
+ * belongs to this lead, NOT that the caller owns it. Callers must apply
+ * canModifyAppointment separately; the two were conflated once and cancelling
+ * ended up with no ownership test at all.
+ */
 async function getOwnedAppointment(leadId: string, appointmentId: string) {
   const supabase = db();
   const { data } = await supabase
@@ -18,6 +27,17 @@ async function getOwnedAppointment(leadId: string, appointmentId: string) {
     .eq('lead_id', leadId)
     .single();
   return data;
+}
+
+/** Who the lead is assigned to — the other half of the ownership question. */
+async function getLeadAssignment(leadId: string) {
+  const supabase = db();
+  const { data } = await supabase
+    .from('leads')
+    .select('assigned_setter_id, assigned_closer_id')
+    .eq('id', leadId)
+    .single();
+  return (data as { assigned_setter_id: string | null; assigned_closer_id: string | null } | null);
 }
 
 function typeLabel(type: string) {
@@ -45,6 +65,26 @@ export async function PATCH(
     }
 
     const body = await request.json();
+
+    // Moving or annotating someone else's booking is the same breach as
+    // deleting it, so it takes the same ownership test. The outcome branch
+    // below keeps its own stricter rule.
+    if (body.scheduled_at !== undefined || body.notes !== undefined) {
+      const assignedFor = await getLeadAssignment(leadId);
+      if (!canModifyAppointment({
+        role: admin.role,
+        userId: admin.sub,
+        appointmentCreatedBy: existing.created_by ?? null,
+        leadAssignedSetterId: assignedFor?.assigned_setter_id ?? null,
+        leadAssignedCloserId: assignedFor?.assigned_closer_id ?? null,
+      })) {
+        return NextResponse.json(
+          { success: false, error: 'You cannot change this appointment' },
+          { status: 403 }
+        );
+      }
+    }
+
     const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
     if (body.scheduled_at !== undefined) {
       if (typeof body.scheduled_at !== 'string' || Number.isNaN(Date.parse(body.scheduled_at))) {
@@ -67,13 +107,7 @@ export async function PATCH(
         return NextResponse.json({ success: false, error: 'Invalid outcome' }, { status: 400 });
       }
 
-      const { data: lead } = await supabase
-        .from('leads')
-        .select('assigned_setter_id, assigned_closer_id')
-        .eq('id', leadId)
-        .single();
-
-      const assigned = (lead as { assigned_setter_id: string | null; assigned_closer_id: string | null } | null);
+      const assigned = await getLeadAssignment(leadId);
       const allowed =
         canRecordOutcome({
           role: admin.role,
@@ -177,6 +211,23 @@ export async function DELETE(
     const existing = await getOwnedAppointment(leadId, appointmentId);
     if (!existing) {
       return NextResponse.json({ success: false, error: 'Appointment not found' }, { status: 404 });
+    }
+
+    // Cancelling had no ownership test, which made the outcome protection above
+    // hollow: a rep refused permission to overwrite a colleague's outcome could
+    // delete the appointment instead and take the outcome with it.
+    const assigned = await getLeadAssignment(leadId);
+    if (!canModifyAppointment({
+      role: admin.role,
+      userId: admin.sub,
+      appointmentCreatedBy: existing.created_by ?? null,
+      leadAssignedSetterId: assigned?.assigned_setter_id ?? null,
+      leadAssignedCloserId: assigned?.assigned_closer_id ?? null,
+    })) {
+      return NextResponse.json(
+        { success: false, error: 'You cannot cancel this appointment' },
+        { status: 403 }
+      );
     }
 
     const supabase = db();

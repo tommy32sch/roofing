@@ -96,8 +96,23 @@ parent route's closer rule.
 
 ## P1 — fix soon
 
-### 3. Any rep can delete or reschedule anyone's appointment
+### 3. ~~Any rep can delete or reschedule anyone's appointment~~ — FIXED
 `src/app/api/admin/leads/[leadId]/appointments/[appointmentId]/route.ts:183`
+
+**Fixed 2026-07-31.** New `canModifyAppointment()` in `appointment-outcomes.ts` (7 tests),
+applied to DELETE and to the reschedule/notes branch of PATCH: admin, the rep who booked
+it, or a rep the lead is assigned to. Deliberately omits `canRecordOutcome`'s
+`existingOutcomeBy` rule — that protects a recorded judgement from being rewritten, while
+rebooking your own visit after marking it a no-show is legitimate.
+
+`getOwnedAppointment` was renamed in spirit rather than fact: its doc comment now states
+it proves only the appointment-to-lead relationship, not caller ownership. Conflating
+those two is what left cancelling unguarded.
+
+Checked against live data before shipping: all 4 existing appointments have a `created_by`,
+so no rep is locked out of a booking they made.
+
+The original finding:
 
 DELETE removes the row unconditionally; PATCH moves `scheduled_at` for any caller. The
 helper named `getOwnedAppointment` only filters `id` + `lead_id` — despite the name it

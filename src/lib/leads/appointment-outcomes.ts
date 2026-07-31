@@ -151,3 +151,35 @@ export function canRecordOutcome(input: {
   // Unset, or previously set by themselves.
   return !input.existingOutcomeBy || input.existingOutcomeBy === input.userId;
 }
+
+/**
+ * Whether a user may cancel or reschedule this appointment.
+ *
+ * Same notion of ownership as canRecordOutcome — admin, the rep who booked it,
+ * or a rep the lead is assigned to — but deliberately WITHOUT the
+ * existingOutcomeBy rule. That rule protects a recorded judgement from being
+ * rewritten; moving your own booking to another time is not that, and a rep who
+ * marked their own visit "no show" must still be able to rebook it.
+ *
+ * This exists because cancelling had no ownership test at all, which made the
+ * outcome protection hollow: a rep refused permission to overwrite a
+ * colleague's outcome could delete the whole appointment instead, taking the
+ * outcome and its reporting contribution with it.
+ */
+export function canModifyAppointment(input: {
+  role: string;
+  userId: string;
+  appointmentCreatedBy: string | null;
+  leadAssignedSetterId: string | null;
+  leadAssignedCloserId: string | null;
+}): boolean {
+  if (input.role === 'admin') return true;
+  // Guard the null===null case: an unassigned lead must not match a caller
+  // whose id is somehow absent.
+  if (!input.userId) return false;
+  return (
+    input.appointmentCreatedBy === input.userId ||
+    input.leadAssignedSetterId === input.userId ||
+    input.leadAssignedCloserId === input.userId
+  );
+}
