@@ -126,8 +126,13 @@ contribution to the performance report.
 **Fix:** apply the same ownership predicate to DELETE and to the `scheduled_at` branch —
 admin, or creator, or assignee.
 
-### 4. Any rep can permanently delete any lead's photos
+### 4. ~~Any rep can permanently delete any lead's photos~~ — FIXED IN WORKTREE, NOT DEPLOYED
 `src/app/api/admin/leads/[leadId]/photos/[photoId]/route.ts:46`
+
+**Fixed locally 2026-08-02.** Permanent deletion now requires an admin or the
+account recorded in `lead_photos.created_by`. Legacy rows without an uploader
+fail closed to admin-only. The listing returns `can_delete`, so the UI does not
+offer an action the server will reject. Parent-lead visibility is checked first.
 
 No ownership or role check before deletion. Irreversible — these are damage-evidence
 photos.
@@ -196,31 +201,52 @@ accumulate regardless of source, and stop resetting the shared bucket on success
 
 ## P2 — real, low impact
 
-### 7. Closers can read knocks, calls and photos for leads they are walled off from
+### 7. ~~Closers can read knocks, calls and photos for leads they are walled off from~~ — FIXED IN WORKTREE, NOT DEPLOYED
 `src/app/api/admin/leads/[leadId]/knocks/route.ts:128` — the parent lead route enforces
 `closer && status !== 'sold'`, the child collections do not. Best fixed once as a shared
 `assertLeadVisible` helper so the rule cannot drift.
 
-### 8. `/api/admin/activity` exposes every lead's PII and every rep's trail
+**Fixed locally 2026-08-02.** `authorizeLeadAccess()` is now the shared parent
+guard for activity, knock, call, and photo reads and writes. Aggregate queries
+use the same policy through `applyLeadVisibilityFilter()`.
+
+### 8. ~~`/api/admin/activity` exposes every lead's PII and every rep's trail~~ — FIXED IN WORKTREE, NOT DEPLOYED
 `src/app/api/admin/activity/route.ts:28` — accepts an arbitrary `user_id` from any role,
 with no closer status filter. The sibling `contact-activity` route already does this
 correctly via `resolveContactActivityUser`; copy that.
 
-### 9. `/api/admin/stats` returns pre-appointment lead PII to closers
+**Fixed locally 2026-08-02.** Activity now reuses
+`resolveContactActivityUser()`, restricts non-admins to themselves, inner-joins
+the parent lead, and applies the shared closer visibility filter.
+
+### 9. ~~`/api/admin/stats` returns pre-appointment lead PII to closers~~ — FIXED IN WORKTREE, NOT DEPLOYED
 `src/app/api/admin/stats/route.ts:39` — the only read route with no identity logic at all.
 
-### 10. Webhook API key travels in the URL path and query string
+**Fixed locally 2026-08-02.** Both the lead list and overdue-follow-up count now
+pass through the same role policy used by lead detail and child resources.
+
+### 10. ~~Webhook API key travels in the URL path and query string~~ — FIXED IN WORKTREE, NOT DEPLOYED
 `src/app/api/webhooks/inbound/[apiKey]/route.ts:15` — a live lead-injection credential
 written into every proxy, CDN and analytics log. Keep the `x-api-key` header form; drop
 the path and `?api_key=` variants.
+
+**Fixed locally 2026-08-02.** The path route was removed and inbound/email
+webhooks now accept only the existing `x-api-key` header. Contract tests prevent
+either URL credential form from returning.
 
 *Contested:* the webhooks-dimension verifier refuted this while the secrets-dimension one
 confirmed it. I side with confirming — credentials in URLs is a well-established logging
 exposure regardless of whether a specific exploit was demonstrated.
 
-### 11. `/api/admin/import` has no rate limit and pages the whole leads table into memory
+### 11. ~~`/api/admin/import` has no rate limit and pages the whole leads table into memory~~ — FIXED IN WORKTREE, NOT DEPLOYED
 `src/app/api/admin/import/route.ts:81` — any setter can exhaust the function. Import is
 open to all roles deliberately, so this is the one place that decision costs something.
+
+**Fixed locally 2026-08-02.** Imports are limited to five per account per ten
+minutes before multipart parsing. Migration 029 adds a database-generated
+canonical address key and indexed, service-role-only candidate lookup, so import
+cost scales with the submitted file rather than the entire lead table. Full
+cross-instance throttling requires the currently unconfigured Upstash variables.
 
 ---
 
@@ -241,9 +267,19 @@ is the difference between one future XSS being contained or not.
   landing). Owner decided not to pursue it further. The exposure is bounded: a free-tier
   geocoding key that cannot reach leads, the database, or customers — the worst case is
   a stranger consuming the monthly lookup quota. Do not re-raise.
-- **Check `CRON_SECRET` in Vercel** — both cron handlers 401 without it. If unset, storm
-  alerts and appointment reminders have never fired. Undetectable from outside: the
+- ~~**Check `CRON_SECRET` in Vercel**~~ — **CONFIRMED 2026-08-02.** It exists as a
+  Sensitive Production variable, both schedules are enabled, and storm ingestion
+  succeeded for hail and wind today with zero consecutive failures. Appointment
+  deliveries were empty, which cannot distinguish a quiet run from no run; migration
+  028 adds a durable execution ledger before the cron route changes deploy. Previously: both
+  cron handlers 401 without it. If unset, storm alerts and appointment reminders have never fired. Undetectable from outside: the
   endpoint returns 401 whether the secret is missing or merely absent from the request.
+- **Mark existing production secrets Sensitive in Vercel** — the dashboard flags
+  `JWT_SECRET` and `SUPABASE_SERVICE_ROLE_KEY`. This changes how Vercel protects
+  the stored values, not their contents, but requires an external settings change.
+- **Configure Upstash in production** — the variables are absent, so authentication
+  and import rate limits plus cron locks currently use their per-instance memory
+  fallback. The fallback is useful defence but cannot coordinate serverless instances.
 
 ---
 

@@ -11,6 +11,10 @@ import {
   photoPath,
   pathBelongsToLead,
 } from '@/lib/leads/photos';
+import {
+  authorizeLeadAccess,
+  canDeleteLeadPhoto,
+} from '@/lib/leads/lead-visibility';
 
 /** List a lead's photos, each with a freshly signed, short-lived read URL. */
 export async function GET(
@@ -27,6 +31,14 @@ export async function GET(
     }
 
     const supabase = db();
+    const access = await authorizeLeadAccess(supabase, admin.role, leadId);
+    if (!access.ok) {
+      return NextResponse.json(
+        { success: false, error: access.error },
+        { status: access.status }
+      );
+    }
+
     const { data: rows, error } = await supabase
       .from('lead_photos')
       .select('*, admin_users(name)')
@@ -42,7 +54,11 @@ export async function GET(
 
     return NextResponse.json({
       success: true,
-      photos: (rows ?? []).map((r) => ({ ...r, url: urlByPath.get(r.storage_path) ?? null })),
+      photos: (rows ?? []).map((r) => ({
+        ...r,
+        url: urlByPath.get(r.storage_path) ?? null,
+        can_delete: canDeleteLeadPhoto(admin.role, admin.sub, r.created_by),
+      })),
     });
   } catch {
     return NextResponse.json({ success: false, error: 'Internal server error' }, { status: 500 });
@@ -71,8 +87,13 @@ export async function POST(
     }
 
     const supabase = db();
-    const { data: lead } = await supabase.from('leads').select('id').eq('id', leadId).single();
-    if (!lead) return NextResponse.json({ success: false, error: 'Lead not found' }, { status: 404 });
+    const access = await authorizeLeadAccess(supabase, admin.role, leadId);
+    if (!access.ok) {
+      return NextResponse.json(
+        { success: false, error: access.error },
+        { status: access.status }
+      );
+    }
 
     const body = await request.json();
 

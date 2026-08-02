@@ -166,19 +166,29 @@ applying a migration.
 This installation currently uses the live Supabase database for both the
 deployed application and local development. Treat `.env.local` as production
 unless you have positively verified otherwise. Before a risky production
-operation, take a real Supabase/database backup and optionally create the local
-JSON safety export:
+operation, confirm a real Supabase database backup exists and create the local
+application-data safety export:
 
 ```bash
 # Confirm APP_DB_ENV and the target URL before any write.
 npm run backup
 ```
 
-The backup command is read-only and writes a timestamped JSON export under the
-gitignored `backups/` directory. It exports every application table, but it is
-still **not a complete disaster-recovery backup** because it does not copy
-objects from Supabase Storage. The export contains homeowner PII, password
-hashes, and integration credentials; store it securely.
+The backup command is read-only against Supabase and writes a timestamped
+directory under the gitignored `backups/` directory. It exports every
+schema-created application table to `database.json`, downloads every object in
+the private `lead-photos` bucket to traversal-safe hashed paths, and records the
+original object keys and SHA-256 checksums in `manifest.json`. An incomplete run
+is named `*.incomplete` and exits non-zero. Backup directories and artifacts are
+created with owner-only filesystem permissions.
+
+This is an application-data safety export, not a transactionally consistent
+PostgreSQL snapshot or a complete Supabase project backup. It does not preserve
+database roles, Auth users, project configuration, or a single point-in-time
+view across PostgreSQL and Storage. Keep Supabase-managed database backups too.
+The local export contains homeowner PII, password hashes, integration
+credentials, and customer photos; encrypt it and store it securely. See
+[`docs/DATABASE_SETUP.md`](docs/DATABASE_SETUP.md) for the manual restore model.
 
 Several data-modifying scripts use a safety guard and refuse non-development
 targets unless `--allow-prod` is passed deliberately. Confirm each script before
@@ -205,7 +215,7 @@ not protected by that guard.
 | `npm run typecheck` | Check TypeScript without emitting files |
 | `npm run lint` | Run ESLint |
 | `npm run schema:build` | Rebuild `supabase/schema.sql` from migrations |
-| `npm run backup` | Export the script's configured tables to local JSON |
+| `npm run backup` | Export all application tables and private lead photos locally |
 | `npm run storms` | Upsert the default two-year NOAA storm window |
 | `npm run storms -- --days 7` | Refresh a shorter NOAA storm window |
 
@@ -239,10 +249,16 @@ build is serving.
 
 ### Scheduled storm alerts
 
-`vercel.json` invokes the protected storm-alert refresh once daily at 14:00 UTC
-(morning in Arizona). This schedule fits Vercel's free-plan cron limit. Set
-`CRON_SECRET` in Vercel before deployment; the route rejects requests when the
-secret is missing or does not match.
+`vercel.json` invokes the protected storm-alert and appointment-reminder routes
+once daily at 14:00 UTC (morning in Arizona). These schedules fit Vercel's
+free-plan cron limit. Set `CRON_SECRET` in Vercel before deployment; both routes
+reject requests when the secret is missing or does not match.
+
+Both scheduled routes append each authenticated invocation to
+`scheduled_job_runs` before acquiring their job-specific lock, then record a
+terminal success, failure, or skip with a bounded summary. A process timeout
+leaves a visible `running` row, so quiet jobs and failures remain auditable after
+the hosting log window expires.
 
 The job refreshes NOAA's current preliminary daily hail and wind reports plus
 the previous two days, then groups qualifying points into one event per market,

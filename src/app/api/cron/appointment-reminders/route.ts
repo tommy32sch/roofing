@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/supabase/server';
 import { acquireCronLock } from '@/lib/cron/lock';
+import { executeScheduledJob } from '@/lib/cron/run-ledger';
 import {
   planAppointmentReminders,
   deliverAppointmentReminders,
@@ -23,22 +24,19 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
   }
 
-  const lock = await acquireCronLock('appointment-reminder-cron');
-  if (!lock.acquired) {
-    return NextResponse.json({ success: true, skipped: true, reason: 'already_running' });
-  }
-
   try {
     const supabase = db();
-    const planned = await planAppointmentReminders(supabase);
-    const delivery = await deliverAppointmentReminders(supabase);
-    return NextResponse.json({
-      success: true,
-      skipped: false,
-      lock_backend: lock.backend,
-      planned,
-      delivery,
+    const result = await executeScheduledJob({
+      supabase,
+      jobName: 'appointment-reminders',
+      acquireLock: () => acquireCronLock('appointment-reminder-cron'),
+      work: async () => {
+        const planned = await planAppointmentReminders(supabase);
+        const delivery = await deliverAppointmentReminders(supabase);
+        return { planned, delivery };
+      },
     });
+    return NextResponse.json(result);
   } catch (error) {
     console.error('[appointment-reminder-cron]', error);
     return NextResponse.json(
@@ -48,7 +46,5 @@ export async function GET(request: NextRequest) {
       },
       { status: 500 }
     );
-  } finally {
-    await lock.release();
   }
 }

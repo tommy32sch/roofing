@@ -961,3 +961,75 @@ database or customers; worst case is a stranger consuming the monthly lookup quo
 Not urgent — the free tier has no billing attached, so the worst case is someone
 else consuming the daily quota. But it is a real credential and the fix is a
 two-minute job.
+
+## Stabilization sprint — data safety, access control, and scheduled jobs
+
+Goal: protect the production-only customer record before adding another major
+workflow. Build durable guardrails that future tables and routes inherit instead
+of repairing today's omissions one at a time.
+
+### Architecture and data safety
+
+- [x] Add the long-term architecture rule to the canonical agent instructions
+- [x] Make the database backup manifest cover every application table
+- [x] Add a schema-coverage test so a newly created table cannot be omitted silently
+- [x] Back up private lead-photo objects, with a manifest and safe local paths
+- [x] Align the backup and restore documentation with what the command actually preserves
+
+### Authorization
+
+- [x] Require admin or uploader ownership before permanently deleting a lead photo
+- [x] Centralize lead visibility enforcement for lead child resources
+- [x] Apply the shared policy to knocks, calls, photos, Activity, and Stats
+- [x] Add focused policy and route-contract regression tests
+
+### Operations and remaining hardening
+
+- [x] Verify `CRON_SECRET` is configured in Vercel without exposing its value
+- [ ] With owner confirmation, mark `JWT_SECRET` and `SUPABASE_SERVICE_ROLE_KEY`
+      as Sensitive in Vercel; the dashboard currently flags both
+- [ ] Provision Upstash and set `UPSTASH_REDIS_REST_URL` / `_TOKEN` in Vercel;
+      production currently falls back to per-instance rate limits and cron locks
+- [ ] Verify both scheduled jobs have current production execution evidence
+- [x] Add a shared append-only execution ledger so quiet, failed, skipped, and
+      timed-out cron runs remain auditable beyond Vercel's log window
+- [x] Apply migrations 028 and 029 before deploying the cron and ingress changes
+- [x] Replace webhook credentials in URLs with the existing header form without
+      leaving a second permanent authentication scheme
+- [x] Add bounded import rate limiting and remove whole-table duplicate loading
+
+### Verification and review
+
+- [x] Run the focused tests that prove backup coverage and access boundaries
+- [x] Run the project-wide typecheck/test gate once
+- [x] Record local versus production verification and any deployment prerequisites
+- [x] Review the final diff for a smaller or more durable design
+
+### Review — 2026-08-02
+
+- The canonical instruction now requires long-term architectural decisions;
+  `AGENTS.md` inherits it through the existing `CLAUDE.md` symlink.
+- Backup coverage is an explicit restore-ordered manifest checked against all
+  migration-created tables. The live read-only export completed at
+  `backups/backup-2026-08-02T21-04-43-662Z`: 29 manifest entries, 967 leads,
+  66,260 storm reports, one private Storage bucket, zero photo objects, and a
+  verified database checksum. The directory and artifacts are owner-only.
+- Lead visibility now has one pure policy plus shared point-resource and
+  aggregate-query enforcement. Photo deletion is admin/uploader-only and the UI
+  consumes the server's `can_delete` decision.
+- URL webhook credentials are removed. Imports are account-rate-limited before
+  parsing and use an indexed, database-owned canonical address key instead of
+  loading the whole leads table. The recheck path uses the same generated key.
+- Vercel confirms `CRON_SECRET` is a Sensitive Production variable and both
+  daily schedules are enabled. Today's hail/wind ingestion succeeded with no
+  failures. Appointment reminders had no delivery rows, so current execution is
+  not provable until the shared run ledger is deployed.
+- Local verification: 78 test files / 905 tests, TypeScript, changed-file ESLint,
+  schema generation, `git diff --check`, and a network-enabled production build
+  passed.
+- Migrations 028 and 029 are live. Read-only verification confirmed the
+  `scheduled_job_runs` table, generated `leads.address_dedupe_key` column, and
+  `find_lead_duplicate_context(JSONB)` RPC. The application changes are not yet
+  deployed. Vercel also lacks Upstash credentials, and its dashboard recommends
+  marking the JWT and Supabase service-role variables Sensitive. Those external
+  changes require owner approval.

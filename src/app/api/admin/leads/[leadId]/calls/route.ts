@@ -7,6 +7,7 @@ import {
   type ColdCallDisposition,
 } from '@/lib/leads/calls';
 import { resolveCalledAt } from '@/lib/leads/call-sync';
+import { authorizeLeadAccess } from '@/lib/leads/lead-visibility';
 
 interface CallRpcResult {
   success: boolean;
@@ -35,6 +36,15 @@ export async function POST(
     const { leadId } = await params;
     if (!isValidUUID(leadId)) {
       return NextResponse.json({ success: false, error: 'Invalid lead ID' }, { status: 400 });
+    }
+
+    const supabase = db();
+    const access = await authorizeLeadAccess(supabase, admin.role, leadId);
+    if (!access.ok) {
+      return NextResponse.json(
+        { success: false, error: access.error },
+        { status: access.status }
+      );
     }
 
     const body = await request.json();
@@ -78,7 +88,7 @@ export async function POST(
       );
     }
 
-    const { data, error } = await db().rpc('record_lead_call', {
+    const { data, error } = await supabase.rpc('record_lead_call', {
       p_lead_id: leadId,
       p_disposition: disposition,
       p_notes: notes,
@@ -134,7 +144,16 @@ export async function GET(
       return NextResponse.json({ success: false, error: 'Invalid lead ID' }, { status: 400 });
     }
 
-    const { data, error } = await db()
+    const supabase = db();
+    const access = await authorizeLeadAccess(supabase, admin.role, leadId);
+    if (!access.ok) {
+      return NextResponse.json(
+        { success: false, error: access.error },
+        { status: access.status }
+      );
+    }
+
+    const { data, error } = await supabase
       .from('lead_calls')
       .select('*, admin_users(name)')
       .eq('lead_id', leadId)

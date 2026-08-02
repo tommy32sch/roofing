@@ -9,6 +9,7 @@ import { getRoofPricePerSquare } from '@/lib/leads/roof-value.server';
 import { notifyAppointmentBooked } from '@/lib/notifications/notify-appointment';
 import { pickWritableLeadFields, statusDenialReason } from '@/lib/leads/lead-fields';
 import { buildLeadDeletionRecord, type DeletedLeadSnapshot } from '@/lib/leads/lead-deletion';
+import { canViewLead } from '@/lib/leads/lead-visibility';
 
 // The mass-assignment whitelist and the setter status rules are shared with the
 // create route — see src/lib/leads/lead-fields.ts for why they live there.
@@ -46,8 +47,7 @@ export async function GET(
       return NextResponse.json({ success: false, error: 'Lead not found' }, { status: 404 });
     }
 
-    // Closers can only view sold leads
-    if (admin.role === 'closer' && lead.status !== 'sold') {
+    if (!canViewLead(admin.role, lead.status)) {
       return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
     }
 

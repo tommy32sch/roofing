@@ -14,8 +14,10 @@ That is a known, accepted tradeoff. Two things mitigate it:
 npm run backup
 ```
 
-Read-only, takes seconds, writes a timestamped JSON of every table to
-`backups/` (gitignored — it contains PII, password hashes and API keys).
+Read-only against Supabase, writes a timestamped directory under `backups/`
+containing every application table plus every object in the private
+`lead-photos` Storage bucket. The directory is gitignored because it contains
+PII, password hashes, API keys, and customer photos.
 
 **Run it before:** bulk deletes, migrations, backfills, or any script run with
 `--allow-prod`. Production is the only copy of this data, so a backup is the
@@ -29,6 +31,63 @@ difference between "undo" and "gone".
 **What the guard does not cover:** ad-hoc one-off scripts and direct queries.
 Those hit whatever `.env.local` points at, which is production. The habit of
 running `npm run backup` first is what actually protects you there.
+
+## Local safety-export format
+
+Each successful `npm run backup` creates `backups/backup-<timestamp>/` with:
+
+- `manifest.json` — format version, completeness status, table counts, Storage
+  bucket settings, original object keys, local artifact paths, and SHA-256
+  checksums.
+- `database.json` — rows for every application table, in a deliberate
+  parent-first table order.
+- `storage/lead-photos/objects/` — downloaded private photo bytes. Local names
+  are hashes rather than untrusted Storage keys; `manifest.json` is the mapping
+  needed to restore each original key.
+
+The command applies owner-only permissions to the backup root, each backup
+directory, and every artifact. That protects against other local accounts; it
+does not replace full-disk encryption or secure off-device storage.
+
+Older single-file `backup-*.json` exports contain database rows only and predate
+lead-photo backup support.
+
+The table manifest is checked against every `CREATE TABLE` in the numbered
+migrations by the automated test suite. Adding a table without choosing its
+restore position makes the test fail. A run with any table or object error is
+renamed `*.incomplete`, records its errors in the manifest, and exits non-zero;
+do not treat it as restorable. An interrupted process may leave an
+`*.in-progress` directory, which is also not a usable backup.
+
+The export is intentionally not described as full disaster recovery. REST reads
+and Storage downloads cannot form one transaction, and the export does not
+capture database roles, Supabase Auth users, project configuration, or other
+buckets. Use Supabase-managed database backups for the PostgreSQL recovery
+point and this export for application rows and private lead-photo bytes.
+
+## Manual restore model
+
+There is deliberately no automatic restore command. A restore should be a
+reviewed recovery operation against a new or otherwise explicitly chosen
+project:
+
+1. Require `manifest.json` to say `"status": "complete"` and verify each
+   artifact's SHA-256 checksum before sending data anywhere.
+2. Recreate the schema from the numbered migrations (or the generated
+   `supabase/schema.sql`) before loading `database.json` in its manifest order.
+   Foreign keys, identity sequences, triggers, and conflicts must be handled by
+   a restore plan written for the target database. Omit database-generated
+   columns such as `leads.address_dedupe_key` from inserts; do not blindly replay
+   rows into a live project.
+3. Create `lead-photos` as a **private** bucket using the settings captured in
+   the manifest. For each Storage entry, upload `localPath` to its
+   `originalPath` only after verifying its checksum.
+4. Validate row counts and photo availability in the recovered application
+   before changing traffic or credentials.
+
+Because rows and objects can change while the read-only export is running, use
+the Supabase database recovery point closest to the export and reconcile photo
+metadata against the Storage manifest during a real recovery.
 
 ### When to revisit
 

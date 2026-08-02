@@ -31,6 +31,7 @@ export async function POST() {
       address_street: string | null;
       address_city: string | null;
       address_zip: string | null;
+      address_dedupe_key: string | null;
       is_flagged_duplicate: boolean;
       duplicate_of_id: string | null;
     };
@@ -38,7 +39,7 @@ export async function POST() {
     for (let from = 0; ; from += 1000) {
       const { data, error } = await supabase
         .from('leads')
-        .select('id, apn, address_street, address_city, address_zip, is_flagged_duplicate, duplicate_of_id')
+        .select('id, apn, address_street, address_city, address_zip, address_dedupe_key, is_flagged_duplicate, duplicate_of_id')
         .order('created_at', { ascending: true })
         .range(from, from + 999);
       if (error) {

@@ -118,4 +118,13 @@ describe('assignDuplicates', () => {
     expect(r.get('b')).toBeNull();
     expect(r.get('c')).toBeNull();
   });
+
+  it('uses database-normalized keys when an indexed lookup supplies them', () => {
+    const r = assignDuplicates([
+      { id: 'a', address_street: 'not-the-key', address_dedupe_key: '42 e palm ave' },
+      { id: 'b', address_street: 'also-not-the-key', address_dedupe_key: '42 e palm ave' },
+    ]);
+
+    expect(r.get('b')).toBe('a');
+  });
 });

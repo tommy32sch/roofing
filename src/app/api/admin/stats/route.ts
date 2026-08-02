@@ -3,6 +3,7 @@ import { db } from '@/lib/supabase/server';
 import { getAuthenticatedAdmin } from '@/lib/auth/jwt';
 import { marketFilterFor } from '@/lib/leads/market-context';
 import { applyMarketFilter } from '@/lib/leads/markets';
+import { applyLeadVisibilityFilter } from '@/lib/leads/lead-visibility';
 import { LEAD_STATUS_OPTIONS } from '@/types';
 import type { LeadStatus } from '@/types';
 import { startOfWeek, startOfMonth } from 'date-fns';
@@ -24,19 +25,33 @@ export async function GET(request: NextRequest) {
     const marketId = await marketFilterFor(admin.sub, new URL(request.url).searchParams.get('market_id'));
 
     // Overdue follow-ups count
-    const { count: overdueFollowUps } = await applyMarketFilter(supabase
-      .from('leads')
-      .select('id', { count: 'exact', head: true })
-      .lte('follow_up_date', today)
-      .not('follow_up_date', 'is', null)
-      .not('status', 'in', '("sold","lost")'), marketId);
+    const overdueQuery = applyLeadVisibilityFilter(
+      applyMarketFilter(
+        supabase
+          .from('leads')
+          .select('id', { count: 'exact', head: true })
+          .lte('follow_up_date', today)
+          .not('follow_up_date', 'is', null)
+          .not('status', 'in', '("sold","lost")'),
+        marketId
+      ),
+      admin.role
+    );
+    const { count: overdueFollowUps } = await overdueQuery;
 
     // Get all leads with source
-    const { data: leads, error } = await applyMarketFilter(supabase
-      .from('leads')
-      // address_street is required — street-only imports have no city/state, so
-      // without it the dashboard shows "No address" for most leads.
-      .select('id, first_name, last_name, address_street, address_city, address_state, status, priority, source_id, deal_value, estimated_roof_value, created_at, lead_sources(display_name)'), marketId)
+    const leadsQuery = applyLeadVisibilityFilter(
+      applyMarketFilter(
+        supabase
+          .from('leads')
+          // address_street is required — street-only imports have no city/state, so
+          // without it the dashboard shows "No address" for most leads.
+          .select('id, first_name, last_name, address_street, address_city, address_state, status, priority, source_id, deal_value, estimated_roof_value, created_at, lead_sources(display_name)'),
+        marketId
+      ),
+      admin.role
+    );
+    const { data: leads, error } = await leadsQuery
       .order('created_at', { ascending: false });
 
     if (error) {

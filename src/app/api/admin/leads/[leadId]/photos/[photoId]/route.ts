@@ -3,6 +3,10 @@ import { db } from '@/lib/supabase/server';
 import { getAuthenticatedAdmin } from '@/lib/auth/jwt';
 import { isValidUUID } from '@/lib/utils/validation';
 import { PHOTO_BUCKET, pathBelongsToLead } from '@/lib/leads/photos';
+import {
+  authorizeLeadAccess,
+  canDeleteLeadPhoto,
+} from '@/lib/leads/lead-visibility';
 
 /**
  * Delete a photo — the stored file as well as the row, so removing a photo
@@ -22,15 +26,26 @@ export async function DELETE(
     }
 
     const supabase = db();
+    const access = await authorizeLeadAccess(supabase, admin.role, leadId);
+    if (!access.ok) {
+      return NextResponse.json(
+        { success: false, error: access.error },
+        { status: access.status }
+      );
+    }
+
     const { data: photo } = await supabase
       .from('lead_photos')
-      .select('id, storage_path, lead_id')
+      .select('id, storage_path, lead_id, created_by')
       .eq('id', photoId)
       .single();
 
     // Scope by lead as well as id, so a photo can't be deleted via the wrong lead.
     if (!photo || photo.lead_id !== leadId) {
       return NextResponse.json({ success: false, error: 'Photo not found' }, { status: 404 });
+    }
+    if (!canDeleteLeadPhoto(admin.role, admin.sub, photo.created_by)) {
+      return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
     }
     if (!pathBelongsToLead(photo.storage_path, leadId)) {
       return NextResponse.json({ success: false, error: 'Invalid path' }, { status: 400 });

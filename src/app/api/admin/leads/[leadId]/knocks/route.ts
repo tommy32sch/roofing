@@ -7,6 +7,7 @@ import {
   type KnockDisposition,
 } from '@/lib/leads/knocks';
 import { resolveKnockedAt } from '@/lib/leads/knock-sync';
+import { authorizeLeadAccess } from '@/lib/leads/lead-visibility';
 
 interface KnockRpcResult {
   success: boolean;
@@ -36,6 +37,15 @@ export async function POST(
     const { leadId } = await params;
     if (!isValidUUID(leadId)) {
       return NextResponse.json({ success: false, error: 'Invalid lead ID' }, { status: 400 });
+    }
+
+    const supabase = db();
+    const access = await authorizeLeadAccess(supabase, admin.role, leadId);
+    if (!access.ok) {
+      return NextResponse.json(
+        { success: false, error: access.error },
+        { status: access.status }
+      );
     }
 
     const body = await request.json();
@@ -84,7 +94,7 @@ export async function POST(
     // The RPC holds a row lock and records the event, denormalised lead fields,
     // and timeline activities in one transaction. A replay can therefore never
     // find an inserted event whose derived state was only half-written.
-    const { data, error } = await db().rpc('record_lead_knock', {
+    const { data, error } = await supabase.rpc('record_lead_knock', {
       p_lead_id: leadId,
       p_disposition: disposition,
       p_notes: notes,
@@ -138,7 +148,17 @@ export async function GET(
     if (!isValidUUID(leadId)) {
       return NextResponse.json({ success: false, error: 'Invalid lead ID' }, { status: 400 });
     }
-    const { data, error } = await db()
+
+    const supabase = db();
+    const access = await authorizeLeadAccess(supabase, admin.role, leadId);
+    if (!access.ok) {
+      return NextResponse.json(
+        { success: false, error: access.error },
+        { status: access.status }
+      );
+    }
+
+    const { data, error } = await supabase
       .from('lead_knocks')
       .select('*, admin_users(name)')
       .eq('lead_id', leadId)

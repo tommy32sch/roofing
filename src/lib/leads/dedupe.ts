@@ -11,6 +11,8 @@
  * form rather than the raw string.
  */
 
+import type { SupabaseClient } from '@supabase/supabase-js';
+
 /** Street-type words → canonical abbreviation. */
 const STREET_TYPES: Record<string, string> = {
   street: 'st', st: 'st',
@@ -119,6 +121,8 @@ export interface DedupeRecord {
   address_street?: string | null;
   address_city?: string | null;
   address_zip?: string | null;
+  /** Database-owned canonical key, when records came from the indexed lookup. */
+  address_dedupe_key?: string | null;
 }
 
 /**
@@ -140,7 +144,9 @@ export function assignDuplicates(records: DedupeRecord[]): Map<string, string | 
 
   for (const r of records) {
     const apn = r.apn?.trim() || null;
-    const key = normalizeStreet(r.address_street);
+    const key = r.address_dedupe_key === undefined
+      ? normalizeStreet(r.address_street)
+      : r.address_dedupe_key;
     const scope = { city: r.address_city ?? null, zip: r.address_zip ?? null };
 
     // APN is an exact parcel id, so it outranks street text
@@ -162,4 +168,53 @@ export function assignDuplicates(records: DedupeRecord[]): Map<string, string | 
   }
 
   return result;
+}
+
+interface DuplicateContextRow extends DedupeRecord {
+  record_order: number | string;
+}
+
+/**
+ * Assign duplicates for an inbound batch without reading the entire leads
+ * table. PostgreSQL returns only indexed candidates plus database-normalized
+ * incoming rows; the shared policy above then assigns each duplicate parent.
+ *
+ * The lookup fails closed. Importing after a partial/failed candidate read could
+ * silently create duplicate originals, which is worse than rejecting one file.
+ */
+export async function assignImportDuplicates(
+  supabase: SupabaseClient,
+  records: DedupeRecord[]
+): Promise<Map<string, string | null>> {
+  if (records.length === 0) return new Map();
+
+  const inputIds = new Set(records.map((record) => record.id));
+  if (inputIds.size !== records.length) {
+    throw new Error('Duplicate lookup requires unique input IDs');
+  }
+
+  const { data, error } = await supabase.rpc('find_lead_duplicate_context', {
+    p_leads: records.map((record) => ({
+      id: record.id,
+      apn: record.apn ?? null,
+      address_street: record.address_street ?? null,
+      address_city: record.address_city ?? null,
+      address_zip: record.address_zip ?? null,
+    })),
+  });
+
+  if (error) throw new Error('Failed to load duplicate candidates');
+
+  const context = ((data || []) as DuplicateContextRow[])
+    .slice()
+    .sort((a, b) => Number(a.record_order) - Number(b.record_order));
+  const returnedIds = new Set(context.map((record) => record.id));
+
+  for (const id of inputIds) {
+    if (!returnedIds.has(id)) {
+      throw new Error('Duplicate lookup returned incomplete context');
+    }
+  }
+
+  return assignDuplicates(context);
 }

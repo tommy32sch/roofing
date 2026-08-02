@@ -15,6 +15,7 @@ interface Photo {
   caption: string | null;
   created_at: string;
   url: string | null;
+  can_delete: boolean;
   admin_users?: { name: string } | null;
 }
 
@@ -176,14 +177,16 @@ export function LeadPhotos({ leadId }: { leadId: string }) {
                     Unavailable
                   </div>
                 )}
-                <button
-                  type="button"
-                  onClick={() => remove(photo)}
-                  aria-label="Delete photo"
-                  className="absolute right-1 top-1 rounded bg-background/80 p-1 text-destructive opacity-0 transition-opacity group-hover:opacity-100 focus:opacity-100"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
+                {photo.can_delete && (
+                  <button
+                    type="button"
+                    onClick={() => remove(photo)}
+                    aria-label="Delete photo"
+                    className="absolute right-1 top-1 rounded bg-background/80 p-1 text-destructive opacity-0 transition-opacity group-hover:opacity-100 focus:opacity-100"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                )}
               </div>
             ))}
           </div>

@@ -73,6 +73,9 @@ These govern. Where anything below conflicts with this section, this section win
 ## Core Principles
 
 - **Simplicity First**: Make every change as simple as possible. Impact minimal code.
+- **Long-Term Architecture**: Make architectural decisions for the long term. Do not
+  accept a stopgap that only works for now and is meant to be replaced later unless
+  explicitly instructed to.
 - **No Laziness**: Find root causes. No temporary fixes. Senior developer standards.
 - **Minimal Impact**: Changes should only touch what's necessary. Avoid introducing bugs.
 

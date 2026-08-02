@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/supabase/server';
 import { getAuthenticatedAdmin } from '@/lib/auth/jwt';
 import { marketFilterFor } from '@/lib/leads/market-context';
+import { applyLeadVisibilityFilter } from '@/lib/leads/lead-visibility';
+import { resolveContactActivityUser } from '@/lib/leads/contact-activity';
 
 export async function GET(request: NextRequest) {
   try {
@@ -16,14 +18,21 @@ export async function GET(request: NextRequest) {
     const offset = (page - 1) * limit;
 
     const type = searchParams.get('type');
-    const userId = searchParams.get('user_id');
+    const user = resolveContactActivityUser(admin.role, admin.sub, searchParams.get('user_id'));
+    if (!user.ok) {
+      return NextResponse.json(
+        { success: false, error: user.error },
+        { status: user.status }
+      );
+    }
 
     const supabase = db();
 
-    // Office scoping runs through the activity's lead. Inner-joined only when a
-    // market is selected, so activities with no lead row aren't dropped.
+    // lead_id is non-null with ON DELETE CASCADE, so every surviving activity
+    // has a parent. The inner join lets market and role visibility constrain the
+    // parent row instead of merely nulling its embedded PII.
     const marketId = await marketFilterFor(admin.sub, searchParams.get('market_id'));
-    const leadEmbed = marketId != null ? 'leads!lead_id!inner' : 'leads!lead_id';
+    const leadEmbed = 'leads!lead_id!inner';
 
     let query = supabase
       .from('lead_activities')
@@ -36,8 +45,9 @@ export async function GET(request: NextRequest) {
       .order('created_at', { ascending: false });
 
     if (type) query = query.eq('activity_type', type);
-    if (userId) query = query.eq('created_by', userId);
+    if (user.userId) query = query.eq('created_by', user.userId);
     if (marketId != null) query = query.eq('leads.market_id', marketId);
+    query = applyLeadVisibilityFilter(query, admin.role, 'leads.status');
 
     query = query.range(offset, offset + limit - 1);
 

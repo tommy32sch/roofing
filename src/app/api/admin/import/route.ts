@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { randomUUID } from 'crypto';
 import { db } from '@/lib/supabase/server';
 import { getAuthenticatedAdmin } from '@/lib/auth/jwt';
 import { parseLeadCSV } from '@/lib/csv/parser';
-import { assignDuplicates } from '@/lib/leads/dedupe';
+import { assignImportDuplicates } from '@/lib/leads/dedupe';
+import { checkConfiguredRateLimit } from '@/lib/utils/rate-limit';
 import { LIMITS } from '@/lib/utils/validation';
 import * as XLSX from 'xlsx';
 
@@ -17,6 +19,19 @@ export async function POST(request: NextRequest) {
     const admin = await getAuthenticatedAdmin();
     if (!admin) {
       return NextResponse.json({ success: false, error: 'Not authenticated' }, { status: 401 });
+    }
+
+    // Parsing spreadsheets and normalizing up to 5,000 rows is intentionally
+    // available to every signed-in role, so bound that work per account before
+    // reading the multipart body. The existing limiter uses the application's
+    // shared Upstash budget and retains conservative protection if Redis fails.
+    const rateLimit = await checkConfiguredRateLimit(admin.sub, 'lead-import', 5, '10 m');
+    if (!rateLimit.success) {
+      const retryAfter = Math.max(1, Math.ceil((rateLimit.reset - Date.now()) / 1000));
+      return NextResponse.json(
+        { success: false, error: 'Import limit reached. Try again later.' },
+        { status: 429, headers: { 'Retry-After': String(retryAfter) } }
+      );
     }
 
     const formData = await request.formData();
@@ -73,34 +88,12 @@ export async function POST(request: NextRequest) {
     // Phone numbers are deliberately not a signal: skip-trace lists share numbers
     // across relatives, and DNC-scrubbed leads have no phone at all.
     //
-    // Existing leads are normalized in JS (the column stores raw text), so pull
-    // them oldest-first — that keeps the earliest lead at an address as the
-    // original — paging past the 1000-row cap, since a truncated read would
-    // silently miss duplicates.
-    const existing: { id: string; apn: string | null; address_street: string | null; address_city: string | null; address_zip: string | null }[] = [];
-    for (let from = 0; ; from += 1000) {
-      const { data, error } = await supabase
-        .from('leads')
-        .select('id, apn, address_street, address_city, address_zip')
-        .order('created_at', { ascending: true })
-        .range(from, from + 999);
-      if (error) throw error;
-      existing.push(...(data || []));
-      if (!data || data.length < 1000) break;
-    }
-
-    // Incoming rows have no id yet, so they get a temporary one; a match against
-    // another temp id means the duplicate is inside this same file.
-    const assigned = assignDuplicates([
-      ...existing,
-      ...leads.map((l, i) => ({
-        id: `new:${i}`,
-        apn: l.apn,
-        address_street: l.address_street,
-        address_city: l.address_city,
-        address_zip: l.address_zip,
-      })),
-    ]);
+    // IDs are assigned before duplicate resolution so two copies inside the same
+    // file can point to one real parent instead of leaving duplicate_of_id null.
+    // The database RPC reads only indexed address/APN candidates, then the shared
+    // rule handles APN precedence and city/ZIP conflicts in input order.
+    const leadsWithIds = leads.map((lead) => ({ ...lead, id: randomUUID() }));
+    const assigned = await assignImportDuplicates(supabase, leadsWithIds);
 
     // Record the upload itself before the leads, so every inserted row can point
     // at it. The uploader's name is snapshotted onto the batch and each lead —
@@ -120,8 +113,8 @@ export async function POST(request: NextRequest) {
       .single();
     const batchId = (importBatch as { id?: string } | null)?.id ?? null;
 
-    const annotatedLeads = leads.map((lead, idx) => {
-      const duplicateOfId = assigned.get(`new:${idx}`) ?? null;
+    const annotatedLeads = leadsWithIds.map((lead) => {
+      const duplicateOfId = assigned.get(lead.id) ?? null;
       return {
         ...lead,
         market_id: marketId,
@@ -129,8 +122,7 @@ export async function POST(request: NextRequest) {
         created_by_name: uploaderName,
         import_batch_id: batchId,
         is_flagged_duplicate: duplicateOfId !== null,
-        // Duplicates of another row in this same file have no real UUID yet
-        duplicate_of_id: duplicateOfId?.startsWith('new:') ? null : duplicateOfId,
+        duplicate_of_id: duplicateOfId,
       };
     });
 

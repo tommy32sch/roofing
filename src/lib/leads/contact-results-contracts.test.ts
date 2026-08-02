@@ -7,7 +7,7 @@ const read = (path: string) => readFileSync(join(process.cwd(), path), 'utf8');
 const migration = read('supabase/migrations/023_contact_results.sql');
 const callRoute = read('src/app/api/admin/leads/[leadId]/calls/route.ts');
 const knockRoute = read('src/app/api/admin/leads/[leadId]/knocks/route.ts');
-const backup = read('scripts/backup-db.ts');
+const backupManifest = read('scripts/lib/backup-manifest.ts');
 
 describe('structured contact result contracts', () => {
   it('extends knock values additively and preserves both legacy values', () => {
@@ -66,6 +66,6 @@ describe('structured contact result contracts', () => {
 
   it('retains the existing knock route and backs up structured calls', () => {
     expect(knockRoute).toContain(".rpc('record_lead_knock'");
-    expect(backup).toContain("'lead_calls'");
+    expect(backupManifest).toContain("'lead_calls'");
   });
 });

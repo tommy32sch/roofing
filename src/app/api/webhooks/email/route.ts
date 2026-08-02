@@ -3,10 +3,12 @@ import { db } from '@/lib/supabase/server';
 import { parseLeadCSV } from '@/lib/csv/parser';
 import { detectSource } from '@/lib/leads/source-detect';
 import { emailAttribution } from '@/lib/leads/attribution';
-import { normalizeStreet } from '@/lib/leads/dedupe';
+import { assignImportDuplicates } from '@/lib/leads/dedupe';
 import { enrichLead } from '@/lib/integrations/regrid';
 import { checkConfiguredRateLimit, getClientIP } from '@/lib/utils/rate-limit';
+import { getWebhookApiKey } from '@/lib/integrations/webhook-auth';
 import type { NormalizedLead } from '@/lib/leads/normalize';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import * as XLSX from 'xlsx';
 
 const MAX_LEADS_PER_IMPORT = 5000;
@@ -27,10 +29,10 @@ export async function POST(request: NextRequest) {
     const supabase = db();
 
     // Authenticate with API key (same as webhook inbound)
-    const apiKey = request.headers.get('x-api-key') || request.nextUrl.searchParams.get('api_key');
+    const apiKey = getWebhookApiKey(request.headers);
     if (!apiKey) {
       return NextResponse.json(
-        { success: false, error: 'Missing API key. Provide x-api-key header or api_key query param.' },
+        { success: false, error: 'Missing API key. Provide the x-api-key header.' },
         { status: 401 }
       );
     }
@@ -159,37 +161,25 @@ export async function POST(request: NextRequest) {
         csvHeaders,
       });
 
-      // Deduplicate against existing leads
+      // Deduplicate against indexed database candidates and earlier rows in this
+      // attachment. A lookup failure rejects the request rather than importing
+      // a batch whose duplicate state is known to be incomplete.
       const leadsToInsert: NormalizedLead[] = [];
       let duplicates = 0;
+      const lookupRecords = parsed.leads.map((lead, index) => ({
+        id: `new:${index}`,
+        apn: lead.apn,
+        address_street: lead.address_street,
+        address_city: lead.address_city,
+        address_zip: lead.address_zip,
+      }));
+      const assigned = await assignImportDuplicates(supabase, lookupRecords);
 
-      // Duplicates are matched on the canonical street address (see lib/leads/dedupe).
-      // Street-only lists are the norm, so we can't require a zip here.
-      const existingAddresses = new Set<string>();
-      if (parsed.leads.some(l => l.address_street)) {
-        for (let from = 0; ; from += 1000) {
-          const { data, error } = await supabase
-            .from('leads')
-            .select('address_street')
-            .not('address_street', 'is', null)
-            .range(from, from + 999);
-          if (error) break;
-          for (const row of data || []) {
-            const key = normalizeStreet(row.address_street);
-            if (key) existingAddresses.add(key);
-          }
-          if (!data || data.length < 1000) break;
-        }
-      }
-
-      for (const lead of parsed.leads) {
-        const key = normalizeStreet(lead.address_street);
-        if (key) {
-          if (existingAddresses.has(key)) {
-            duplicates++;
-            continue;
-          }
-          existingAddresses.add(key);
+      for (let index = 0; index < parsed.leads.length; index++) {
+        const lead = parsed.leads[index];
+        if (assigned.get(`new:${index}`)) {
+          duplicates++;
+          continue;
         }
         leadsToInsert.push(lead);
       }
@@ -253,9 +243,8 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function logEmailImport(
-  supabase: any,
+  supabase: SupabaseClient,
   senderEmail: string,
   subject: string | undefined,
   attachmentName: string | null,

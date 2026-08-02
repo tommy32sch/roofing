@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/supabase/server';
 import { getAuthenticatedAdmin } from '@/lib/auth/jwt';
 import { isValidUUID } from '@/lib/utils/validation';
-import { canViewLead } from '@/lib/leads/lead-visibility';
+import { authorizeLeadAccess } from '@/lib/leads/lead-visibility';
 
 export async function GET(
   request: NextRequest,
@@ -29,19 +29,12 @@ export async function GET(
 
     const supabase = db();
 
-    // A lead's activity is as sensitive as the lead, so it takes the same
-    // visibility rule the detail route applies rather than inventing its own.
-    const { data: lead } = await supabase
-      .from('leads')
-      .select('status')
-      .eq('id', leadId)
-      .single();
-
-    if (!lead) {
-      return NextResponse.json({ success: false, error: 'Lead not found' }, { status: 404 });
-    }
-    if (!canViewLead(admin.role, lead.status)) {
-      return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
+    const access = await authorizeLeadAccess(supabase, admin.role, leadId);
+    if (!access.ok) {
+      return NextResponse.json(
+        { success: false, error: access.error },
+        { status: access.status }
+      );
     }
 
     const { data: activities, error } = await supabase
@@ -87,21 +80,12 @@ export async function POST(
 
     const supabase = db();
 
-    // Verify the lead exists and that this role may touch it. Writing a note
-    // onto a lead you are not allowed to read is the same breach as reading it:
-    // the note lands in a history the author cannot see, and the act of writing
-    // confirms the lead exists.
-    const { data: lead } = await supabase
-      .from('leads')
-      .select('id, status')
-      .eq('id', leadId)
-      .single();
-
-    if (!lead) {
-      return NextResponse.json({ success: false, error: 'Lead not found' }, { status: 404 });
-    }
-    if (!canViewLead(admin.role, lead.status)) {
-      return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
+    const access = await authorizeLeadAccess(supabase, admin.role, leadId);
+    if (!access.ok) {
+      return NextResponse.json(
+        { success: false, error: access.error },
+        { status: access.status }
+      );
     }
 
     const { data: activity, error } = await supabase

@@ -4,15 +4,16 @@ import { normalizeLeadData, NormalizedLead } from '@/lib/leads/normalize';
 import { checkConfiguredRateLimit, getClientIP } from '@/lib/utils/rate-limit';
 import { enrichLead } from '@/lib/integrations/regrid';
 import { webhookAttribution } from '@/lib/leads/attribution';
+import { getWebhookApiKey } from '@/lib/integrations/webhook-auth';
+import { assignImportDuplicates } from '@/lib/leads/dedupe';
 
 export async function POST(request: NextRequest) {
   try {
-    // Extract API key from header or query param
-    const apiKey = request.headers.get('x-api-key') || request.nextUrl.searchParams.get('api_key');
+    const apiKey = getWebhookApiKey(request.headers);
 
     if (!apiKey) {
       return NextResponse.json(
-        { success: false, error: 'Missing API key. Provide x-api-key header or api_key query param.' },
+        { success: false, error: 'Missing API key. Provide the x-api-key header.' },
         { status: 401 }
       );
     }
@@ -120,40 +121,25 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    // Deduplicate by address against existing leads
+    // Resolve duplicates through the same database-owned canonical address key
+    // used by file and email imports. This also handles APNs, street-only lists,
+    // common address abbreviations, and duplicates inside one webhook payload.
     let duplicates = 0;
     const leadsToInsert: NormalizedLead[] = [];
+    const lookupRecords = normalizedLeads.map((lead, index) => ({
+      id: `new:${index}`,
+      apn: lead.apn,
+      address_street: lead.address_street,
+      address_city: lead.address_city,
+      address_zip: lead.address_zip,
+    }));
+    const assigned = await assignImportDuplicates(supabase, lookupRecords);
 
-    // Collect addresses for batch dedup check
-    const addressPairs = normalizedLeads
-      .filter(l => l.address_street && l.address_zip)
-      .map(l => ({ street: l.address_street!.toLowerCase(), zip: l.address_zip! }));
-
-    let existingAddresses = new Set<string>();
-    if (addressPairs.length > 0) {
-      // Get unique zip codes to narrow the query
-      const zips = [...new Set(addressPairs.map(a => a.zip))];
-      const { data: existing } = await supabase
-        .from('leads')
-        .select('address_street, address_zip')
-        .in('address_zip', zips);
-
-      if (existing) {
-        existingAddresses = new Set(
-          existing.map(e => `${(e.address_street || '').toLowerCase()}|${e.address_zip || ''}`)
-        );
-      }
-    }
-
-    for (const lead of normalizedLeads) {
-      if (lead.address_street && lead.address_zip) {
-        const key = `${lead.address_street.toLowerCase()}|${lead.address_zip}`;
-        if (existingAddresses.has(key)) {
-          duplicates++;
-          continue;
-        }
-        // Also prevent in-batch duplicates
-        existingAddresses.add(key);
+    for (let index = 0; index < normalizedLeads.length; index++) {
+      const lead = normalizedLeads[index];
+      if (assigned.get(`new:${index}`)) {
+        duplicates++;
+        continue;
       }
       leadsToInsert.push(lead);
     }
