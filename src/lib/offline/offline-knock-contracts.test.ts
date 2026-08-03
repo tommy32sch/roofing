@@ -55,7 +55,9 @@ describe('offline lead-result persistence contracts', () => {
 
   it('overlays both queued result types and surfaces failed work generically', () => {
     expect(mapPage).toContain('applyQueuedCalls(applyQueuedKnocks(leads, queuedKnocks), queuedCalls)');
-    expect(mapPage).toContain('leads={effectiveLeads}');
+    expect(mapPage).toContain("const displayedLeads: GeoLead[] = execution.active");
+    expect(mapPage).toContain(': effectiveLeads;');
+    expect(mapPage).toContain('leads={displayedLeads}');
     expect(mapPage).toContain('resultOutbox.failed > 0');
     expect(mapPage).toContain('resultOutbox.retryFailed()');
     expect(mapPage).toContain('resultOutbox.flush(true)');

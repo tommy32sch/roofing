@@ -1033,3 +1033,83 @@ of repairing today's omissions one at a time.
   deployed. Vercel also lacks Upstash credentials, and its dashboard recommends
   marking the JWT and Supabase service-role variables Sensitive. Those external
   changes require owner approval.
+
+## Territory Execution Mode
+
+Goal: turn a saved territory into the focused daily canvassing workflow without
+creating a second territory-membership or lead-assignment system.
+
+Architectural decisions:
+- Progress is derived from current lead coordinates, contact summaries, and
+  appointment facts. It is not stored on the territory, so new and newly
+  geocoded leads enter automatically and boundary edits cannot leave stale join
+  rows behind.
+- The five exclusive progress states use one shared precedence:
+  Appointment > Follow-up > Contacted > Knocked > Unworked. Safety and terminal
+  conditions remain separate eligibility flags instead of distorting progress.
+- Territory ownership stays descriptive, matching the saved-territory design.
+  Admins and setters may cover any active territory; closers cannot enter the
+  door-knocking execution workflow. Admin-only presentation owns team/stalled
+  management signals.
+- Server snapshots and manager summaries use unfiltered, paginated lead data;
+  current map status/priority filters never change canonical progress.
+- The browser chooses the nearest eligible house with device geolocation.
+  Location is requested only inside execution mode and is never persisted or
+  transmitted. A deterministic manual queue remains available when permission
+  is denied or GPS is unavailable.
+- Revisit-due and stalled rules are shared domain logic: explicit follow-ups due
+  on/before the caller's local date, undated callbacks needing scheduling, stale
+  not-home knocks after 14 days, and active territories with actionable work but
+  no field activity for seven days.
+
+### Domain and API
+
+- [x] Add shared progress, revisit, stalled, eligibility, and nearest-house logic
+- [x] Add server-owned territory execution snapshots with exact polygon membership
+- [x] Add a batched progress endpoint for territory cards and manager coverage
+- [x] Apply role, archive, duplicate, market, and lead-visibility boundaries
+- [x] Use real appointment evidence and overlay offline work on the client
+
+### Rep workflow
+
+- [x] Add Start/Resume actions to active territory cards
+- [x] Replace the normal map toolbar with a focused execution toolbar while active
+- [x] Show only the territory work set, progress, revisit markers, and current door
+- [x] Add nearest-unworked selection using on-device geolocation plus manual fallback
+- [x] Open durable one-tap knock results without visiting the full lead page
+- [x] Preserve appointment, won-lead, follow-up, DNC/DNK, and offline-sync workflows
+
+### Manager view
+
+- [x] Show accurate five-state coverage, revisit counts, and last activity
+- [x] Identify not-started, active, stalled, and complete territories for admins
+- [x] Keep overlapping territory totals independent and avoid company-wide double counts
+
+### Verification
+
+- [x] Cover state precedence, due dates, stall thresholds, nearest-house ties, and exclusions
+- [x] Cover route authorization, exact membership, unfiltered counts, and pagination
+- [x] Cover execution-mode UI wiring, location failure, safety styling, and offline advancement
+- [x] Run focused/full tests, TypeScript, changed-file lint, build, and diff review
+
+### Review — 2026-08-02
+
+- Territory membership and progress remain derived from the saved polygon and
+  current lead facts. No execution table, territory-lead join, or migration was
+  added. Exact server membership is independent of map filters and row caps.
+- Admins and setters can start or resume any active territory; ownership remains
+  descriptive. Closers are denied by both the UI capability and server route.
+- Execution mode narrows the map to the canonical territory snapshot, keeps
+  DNC/DNK strokes intact, marks due revisits and the active door, requests GPS
+  only after the nearest-door action, and retains a deterministic manual queue.
+- One-tap results use the existing owner-scoped IndexedDB outbox. Optimistic
+  overlays advance to the next door before sync; callback/revisit promises stay
+  selected until a follow-up is scheduled. Existing appointment and won-lead
+  follow-on flows are reused.
+- Verification passed: 85 test files / 946 tests, TypeScript, changed-file
+  ESLint, focused route/domain/UI tests, and `git diff --check`. The production
+  build reached compilation but the sandbox could not download Google Geist
+  fonts; the offline mock build and local browser server were unavailable under
+  the current approval/usage limit. Browser interaction is therefore unverified.
+- These changes are local only: no migration, commit, push, or deployment was
+  performed.

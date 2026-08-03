@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { MapContainer, TileLayer, CircleMarker, Pane, Popup, Polygon, Polyline, Tooltip, useMap } from 'react-leaflet';
 import type { Map as LeafletMap } from 'leaflet';
@@ -17,10 +17,12 @@ import { classifyDrawGestureEnd, isDrag, shouldCapture, simplifyPath, isDelibera
 import { STATUS_COLORS, DNC_RING_COLOR, DO_NOT_KNOCK_RING_COLOR, isLeadAddressDetailZoom, leadMarkerAppearance, shouldPromptForFollowUp, stormColor, stormRadius, stormLabel, sortStormsForDrawing, stormAgeBucket, stormZoneStyle, stormAgeShort, type GeoLead, type StormReport } from './map-constants';
 import { buildStormZones } from '@/lib/storm/zones';
 import type { Territory } from '@/types';
+import type { TerritoryUserLocation } from '@/lib/territories/geolocation';
 
 // Phoenix metro — sensible default for an empty map until leads load
 const DEFAULT_CENTER: [number, number] = [33.4, -111.9];
 const DEFAULT_ZOOM = 10;
+const EMPTY_LEAD_IDS: ReadonlySet<string> = new Set();
 
 /** Freehand smoothing, in screen pixels — converted to degrees at draw time. */
 const SIMPLIFY_TOLERANCE_PX = 4;
@@ -488,6 +490,12 @@ function DrawLayer({
 interface LeadMapProps {
   leads: GeoLead[];
   selectedIds: Set<string>;
+  /** Door currently being worked. Emphasized without replacing safety rings. */
+  activeLeadId?: string | null;
+  /** Doors whose revisit is due. Rendered as a secondary, non-interactive halo. */
+  revisitDueIds?: ReadonlySet<string>;
+  /** Ephemeral device position. It is never persisted or transmitted by the map. */
+  userLocation?: TerritoryUserLocation | null;
   /** Present for admins only — enables the Select button in popups */
   onToggleSelect?: (lead: GeoLead) => void;
   onMapReady?: (map: LeafletMap) => void;
@@ -552,6 +560,9 @@ interface LeadMapProps {
 export default function LeadMap({
   leads,
   selectedIds,
+  activeLeadId = null,
+  revisitDueIds = EMPTY_LEAD_IDS,
+  userLocation = null,
   onToggleSelect,
   onMapReady,
   stormReports = [],
@@ -869,6 +880,74 @@ export default function LeadMap({
               </div>
             </Popup>
           </CircleMarker>
+        );
+      })}
+
+      {/* Device position stays in this shared canvas pane. It draws beneath
+          lead pins so standing on a door never hides that door or its safety
+          ring, and it is non-interactive so it cannot steal the popup tap. */}
+      {userLocation && (
+        <CircleMarker
+          center={[userLocation.lat, userLocation.lng]}
+          radius={7}
+          interactive={false}
+          pathOptions={{
+            color: '#ffffff',
+            weight: 3,
+            fillColor: '#2563eb',
+            fillOpacity: 1,
+          }}
+        />
+      )}
+
+      {/* Execution emphasis is a separate, non-interactive underlay. The real
+          pin still owns selection/DNK/DNC strokes, so workflow emphasis can
+          never erase a safety signal. All halos render before all lead pins to
+          keep a later halo from painting over a neighboring door. */}
+      {leads.map((lead) => {
+        const active = lead.id === activeLeadId;
+        const revisitDue = revisitDueIds.has(lead.id);
+        if (!active && !revisitDue) return null;
+
+        const marker = leadMarkerAppearance({
+          addressDetail,
+          statusColor: STATUS_COLORS[lead.status] ?? STATUS_COLORS.new,
+          selected: selectedIds.has(lead.id),
+          recentlyKnocked: knockRecency(lead.last_knock_at) === 'recent',
+          doNotKnock: lead.do_not_knock,
+          isDnc: lead.is_dnc,
+        });
+
+        return (
+          <Fragment key={`execution-${lead.id}`}>
+            {revisitDue && (
+              <CircleMarker
+                center={[lead.latitude, lead.longitude]}
+                radius={marker.radius + (active ? 8 : 6)}
+                interactive={false}
+                pathOptions={{
+                  color: '#f59e0b',
+                  weight: 3,
+                  opacity: 0.95,
+                  fill: false,
+                  dashArray: '4 3',
+                }}
+              />
+            )}
+            {active && (
+              <CircleMarker
+                center={[lead.latitude, lead.longitude]}
+                radius={marker.radius + 4}
+                interactive={false}
+                pathOptions={{
+                  color: '#f97316',
+                  weight: 4,
+                  opacity: 1,
+                  fill: false,
+                }}
+              />
+            )}
+          </Fragment>
         );
       })}
 

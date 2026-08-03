@@ -8,6 +8,7 @@ import { knockLabel } from '@/lib/leads/knocks';
 import { callLabel } from '@/lib/leads/calls';
 import { applyQueuedKnocks } from '@/lib/leads/knock-sync';
 import { applyQueuedCalls } from '@/lib/leads/call-sync';
+import { localDayBounds } from '@/lib/leads/today';
 import {
   isColdCallResultEntry,
   isKnockResultEntry,
@@ -57,7 +58,13 @@ import { PageHeader } from '@/components/layout/page-header';
 import { MarketFilter } from '@/components/markets/market-filter';
 import { useMarkets, ALL_MARKETS } from '@/components/markets/use-markets';
 import { TerritoryDialog } from '@/components/territories/TerritoryDialog';
+import { TerritoryExecutionPanel } from '@/components/territories/TerritoryExecutionPanel';
 import { TerritorySheet } from '@/components/territories/TerritorySheet';
+import {
+  canExecuteTerritories,
+  type TerritoryExecutionSummary,
+} from '@/lib/territories/execution';
+import { useTerritoryExecution } from '@/lib/territories/use-territory-execution';
 import {
   LeadResultSheet,
   type LeadResultChannel,
@@ -165,6 +172,10 @@ export default function MapPage() {
   const [drawPoints, setDrawPoints] = useState<[number, number][]>([]);
   const [territories, setTerritories] = useState<Territory[]>([]);
   const [territoriesLoading, setTerritoriesLoading] = useState(false);
+  const [territoryProgress, setTerritoryProgress] = useState<
+    Record<string, TerritoryExecutionSummary>
+  >({});
+  const [territoryProgressLoading, setTerritoryProgressLoading] = useState(false);
   const [territorySheetOpen, setTerritorySheetOpen] = useState(false);
   const [territoryDialogOpen, setTerritoryDialogOpen] = useState(false);
   const [editingTerritory, setEditingTerritory] = useState<Territory | null>(null);
@@ -177,7 +188,18 @@ export default function MapPage() {
   } | null>(null);
   const mapRef = useRef<LeafletMap | null>(null);
   const territoryFetchIdRef = useRef(0);
+  const territoryProgressFetchIdRef = useRef(0);
   const territoryArchivePendingRef = useRef(false);
+  const executionRefreshRef = useRef<() => void>(() => undefined);
+  const territoryProgressRefreshRef = useRef<() => void>(() => undefined);
+  const browseMapStateRef = useRef<{
+    market: string;
+    status: string;
+    priority: string;
+    stormTypes: StormType[];
+  } | null>(null);
+  const currentMapStateRef = useRef({ market, status, priority, stormTypes });
+  currentMapStateRef.current = { market, status, priority, stormTypes };
   const isAdmin = userRole === 'admin';
 
   const fetchLeads = useCallback(async () => {
@@ -203,7 +225,11 @@ export default function MapPage() {
 
   const resultOutbox = useLeadResultOutbox({
     ownerId: identityLoaded ? currentUserId : null,
-    onSettled: fetchLeads,
+    onSettled: () => {
+      void fetchLeads();
+      executionRefreshRef.current();
+      territoryProgressRefreshRef.current();
+    },
   });
   const queuedKnocks = useMemo(
     () => resultOutbox.entries.filter(isKnockResultEntry),
@@ -217,6 +243,14 @@ export default function MapPage() {
     () => applyQueuedCalls(applyQueuedKnocks(leads, queuedKnocks), queuedCalls),
     [leads, queuedCalls, queuedKnocks]
   );
+  const territoryExecutionAllowed =
+    identityLoaded && canExecuteTerritories(userRole);
+  const execution = useTerritoryExecution({
+    enabled: territoryExecutionAllowed,
+    queuedKnocks,
+    queuedCalls,
+  });
+  const refreshTerritoryExecution = execution.refresh;
 
   useEffect(() => {
     fetchLeads();
@@ -305,6 +339,121 @@ export default function MapPage() {
     fetchTerritories();
   }, [fetchTerritories]);
 
+  const fetchTerritoryProgress = useCallback(async () => {
+    const requestId = ++territoryProgressFetchIdRef.current;
+    if (marketsLoading || !territoryExecutionAllowed) {
+      setTerritoryProgress({});
+      setTerritoryProgressLoading(false);
+      return;
+    }
+
+    setTerritoryProgressLoading(true);
+    setTerritoryProgress({});
+    try {
+      const summaries: TerritoryExecutionSummary[] = [];
+      const date = localDayBounds(new Date()).date;
+      let page = 1;
+      let totalPages = 1;
+
+      while (page <= totalPages) {
+        const params = new URLSearchParams({
+          date,
+          market_id: marketValue,
+          page: String(page),
+          limit: '100',
+        });
+        const response = await fetch(`/api/admin/territories/progress?${params}`, {
+          cache: 'no-store',
+        });
+        const body = await response.json().catch(() => null);
+        if (!response.ok || !body?.success || !Array.isArray(body.summaries)) {
+          throw new Error(body?.error || 'Failed to load territory progress');
+        }
+        if (requestId !== territoryProgressFetchIdRef.current) return;
+
+        summaries.push(...(body.summaries as TerritoryExecutionSummary[]));
+        totalPages = Math.max(0, Number(body.total_pages) || 0);
+        page += 1;
+      }
+
+      if (requestId === territoryProgressFetchIdRef.current) {
+        setTerritoryProgress(
+          Object.fromEntries(summaries.map((summary) => [summary.territory_id, summary]))
+        );
+      }
+    } catch (cause) {
+      if (requestId === territoryProgressFetchIdRef.current) {
+        toast.error(
+          cause instanceof Error ? cause.message : 'Failed to load territory progress'
+        );
+      }
+    } finally {
+      if (requestId === territoryProgressFetchIdRef.current) {
+        setTerritoryProgressLoading(false);
+      }
+    }
+  }, [marketValue, marketsLoading, territoryExecutionAllowed]);
+
+  useEffect(() => {
+    void fetchTerritoryProgress();
+  }, [fetchTerritoryProgress]);
+
+  useEffect(() => {
+    executionRefreshRef.current = () => void refreshTerritoryExecution();
+  }, [refreshTerritoryExecution]);
+
+  useEffect(() => {
+    territoryProgressRefreshRef.current = () => void fetchTerritoryProgress();
+  }, [fetchTerritoryProgress]);
+
+  useEffect(() => {
+    const territory = execution.territory;
+    if (!territory) return;
+
+    if (!browseMapStateRef.current) {
+      browseMapStateRef.current = currentMapStateRef.current;
+    }
+    setDrawing(false);
+    setDrawPurpose(null);
+    setDrawPoints([]);
+    setLassoAreas([]);
+    setEditingTerritory(null);
+    setEditingBoundary(false);
+    setTerritoryDialogOpen(false);
+    setAddingHouse(false);
+    setPendingHouse(null);
+    setStatus('');
+    setPriority('');
+    setStormTypes([]);
+    setMarket(String(territory.market_id));
+  }, [execution.territory]);
+
+  useEffect(() => {
+    if (execution.error) toast.error(execution.error);
+  }, [execution.error]);
+
+  async function resumeTerritoryWork(territory: Territory) {
+    const loaded = await execution.start(territory.id);
+    if (!loaded) setTerritorySheetOpen(true);
+  }
+
+  function exitTerritoryWork() {
+    const previous = browseMapStateRef.current;
+    execution.exit();
+    browseMapStateRef.current = null;
+    if (!previous) return;
+    setMarket(previous.market);
+    setStatus(previous.status);
+    setPriority(previous.priority);
+    setStormTypes(previous.stormTypes);
+  }
+
+  const refreshLeadViews = useCallback(() => {
+    void fetchLeads();
+    void refreshTerritoryExecution();
+    void fetchTerritoryProgress();
+  }, [fetchLeads, fetchTerritoryProgress, refreshTerritoryExecution]);
+
   const toggleSelect = useCallback((lead: GeoLead) => {
     setSelection((prev) => {
       const next = new Map(prev);
@@ -369,8 +518,8 @@ export default function MapPage() {
    * commits to IndexedDB so cancelling a form or losing data cannot erase what
    * the rep already did.
    */
-  async function logLeadResult(result: LeadResultSelection) {
-    const lead = resultTarget?.lead;
+  async function logLeadResult(result: LeadResultSelection, leadOverride?: GeoLead) {
+    const lead = leadOverride ?? resultTarget?.lead;
     if (!lead) return;
 
     setSavingResult(true);
@@ -583,6 +732,26 @@ export default function MapPage() {
     return counts;
   }, [effectiveLeads, territories]);
 
+  const displayedLeads: GeoLead[] = execution.active
+    ? execution.leads
+    : effectiveLeads;
+  const displayedTerritories = execution.territory
+    ? [execution.territory]
+    : mapTerritories;
+  const displayedTerritoryLeadCounts = execution.summary
+    ? { [execution.summary.territory_id]: execution.summary.total_leads }
+    : territoryLeadCounts;
+  const displayedFocus = execution.currentLead
+    ? {
+        key: `territory-door-${execution.currentLead.id}`,
+        lat: execution.currentLead.latitude,
+        lng: execution.currentLead.longitude,
+        zoom: 18,
+      }
+    : execution.active
+      ? null
+      : alertFocus;
+
   function leadsInsideTerritory(territory: Pick<Territory, 'market_id' | 'boundary'>) {
     return effectiveLeads.filter(
       (lead) =>
@@ -779,6 +948,7 @@ export default function MapPage() {
     setDrawPoints([]);
     setEditingTerritory(null);
     setEditingBoundary(false);
+    territoryProgressRefreshRef.current();
   }
 
   async function changeTerritoryArchived(
@@ -807,6 +977,7 @@ export default function MapPage() {
       setTerritories((prev) =>
         prev.map((item) => (item.id === territory.id ? data.territory : item))
       );
+      territoryProgressRefreshRef.current();
       setRestoreConflict(null);
       toast.success(archived ? 'Territory archived' : 'Territory restored');
     } catch {
@@ -872,8 +1043,12 @@ export default function MapPage() {
   return (
     <div className="flex min-h-[420px] flex-col gap-3 h-[calc(100dvh-13rem)] md:h-[calc(100dvh-7.5rem)]">
       <PageHeader
-        title="Map"
-        description="Lead locations, saved territories and storm overlays"
+        title={execution.territory?.name ?? 'Map'}
+        description={
+          execution.active
+            ? 'Focused territory canvassing'
+            : 'Lead locations, saved territories and storm overlays'
+        }
         actions={
           <>
             <Button
@@ -917,6 +1092,8 @@ export default function MapPage() {
               </button>
             )}
 
+            {!execution.active && (
+              <>
             {isAdmin && (
               <Button
                 variant={allVisibleSelected ? 'default' : 'outline'}
@@ -1143,6 +1320,8 @@ export default function MapPage() {
                 ))}
               </SelectContent>
             </Select>
+              </>
+            )}
           </>
         }
       />
@@ -1166,7 +1345,7 @@ export default function MapPage() {
         </div>
       )}
 
-      {(missingCoords > 0 || geocoding) && (
+      {!execution.active && (missingCoords > 0 || geocoding) && (
         <div className="flex items-center justify-between gap-3 rounded-md border bg-muted/40 px-3 py-2 text-xs flex-wrap">
           <span className="text-muted-foreground">
             {geocoding
@@ -1184,6 +1363,8 @@ export default function MapPage() {
 
       {/* Legend — collapsed by default on mobile, where it otherwise consumed
           ~130px of a 812px screen before the map even started. */}
+      {!execution.active && (
+        <>
       <button
         type="button"
         className="sm:hidden self-start text-xs text-muted-foreground underline underline-offset-2"
@@ -1257,47 +1438,79 @@ export default function MapPage() {
           </>
         )}
       </div>
+        </>
+      )}
 
-      <div className="flex-1 min-h-0 isolate">
+      <div className="relative flex-1 min-h-0 isolate">
         {!hasLoadedOnce ? (
           <Skeleton className="h-full w-full rounded-md" />
         ) : (
           <LeadMap
-            addingHouse={addingHouse}
-            pendingHouse={pendingHouse}
+            addingHouse={!execution.active && addingHouse}
+            pendingHouse={execution.active ? null : pendingHouse}
             onPlaceHouse={(latitude, longitude) => setPendingHouse({ latitude, longitude })}
-            leads={effectiveLeads}
-            selectedIds={new Set(selection.keys())}
-            onToggleSelect={isAdmin ? toggleSelect : undefined}
-            stormReports={stormReports}
+            leads={displayedLeads}
+            selectedIds={execution.active ? new Set<string>() : new Set(selection.keys())}
+            activeLeadId={execution.currentLead?.id ?? null}
+            revisitDueIds={execution.revisitDueIds}
+            userLocation={execution.location}
+            onToggleSelect={isAdmin && !execution.active ? toggleSelect : undefined}
+            stormReports={execution.active ? [] : stormReports}
             stormNow={stormFetchedAt}
-            stormZones={stormZones}
-            territories={mapTerritories}
-            territoryLeadCounts={territoryLeadCounts}
+            stormZones={!execution.active && stormZones}
+            territories={displayedTerritories}
+            territoryLeadCounts={displayedTerritoryLeadCounts}
             currentUserId={currentUserId}
-            onSelectTerritoryLeads={isAdmin ? addTerritoryLeadsToSelection : undefined}
-            onEditTerritory={isAdmin ? editTerritoryDetails : undefined}
-            drawing={drawing}
+            onSelectTerritoryLeads={
+              isAdmin && !execution.active ? addTerritoryLeadsToSelection : undefined
+            }
+            onEditTerritory={isAdmin && !execution.active ? editTerritoryDetails : undefined}
+            drawing={!execution.active && drawing}
             drawPoints={drawPoints}
             // A freehand trace is one shape, so it replaces rather than appends.
-            onDrawPath={isAdmin ? (path) => setDrawPoints(path) : undefined}
+            onDrawPath={isAdmin && !execution.active ? (path) => setDrawPoints(path) : undefined}
             // Selection commits the moment the finger lifts — the polygon is
             // implicitly closed, so releasing IS closing the loop. Territory
             // drawing deliberately omits this and keeps Finish, because that
             // path opens a naming dialog.
-            onDrawCommit={isAdmin && drawPurpose === 'selection' ? commitLassoSelection : undefined}
-            lassoAreas={drawPurpose === 'selection' ? lassoAreas : undefined}
+            onDrawCommit={
+              isAdmin && !execution.active && drawPurpose === 'selection'
+                ? commitLassoSelection
+                : undefined
+            }
+            lassoAreas={!execution.active && drawPurpose === 'selection' ? lassoAreas : undefined}
             onMapReady={(map) => { mapRef.current = map; setMapInstance(map); }}
             onOpenResult={
               identityLoaded && currentUserId
                 ? (lead, channel) => setResultTarget({ lead, channel })
                 : undefined
             }
-            onFollowUpChange={fetchLeads}
-            marketId={selectedMarket?.id ?? null}
+            onFollowUpChange={refreshLeadViews}
+            marketId={execution.territory?.market_id ?? selectedMarket?.id ?? null}
             marketCenter={marketCenter}
             marketLoading={loading}
-            focus={alertFocus}
+            focus={displayedFocus}
+          />
+        )}
+
+        {execution.active && execution.summary && (
+          <TerritoryExecutionPanel
+            territoryName={execution.territory?.name ?? 'Territory'}
+            summary={execution.summary}
+            currentLead={execution.currentLead}
+            queue={execution.manualQueue}
+            pendingOfflineCount={resultOutbox.pending + resultOutbox.failed}
+            locationError={execution.locationError}
+            locating={execution.locating}
+            recording={savingResult}
+            onFindNearest={() => void execution.findNearest()}
+            onSelectLead={execution.selectLead}
+            onRecordKnock={(lead, disposition) =>
+              logLeadResult({ channel: 'knock', disposition }, lead)
+            }
+            onFollowUpChange={refreshLeadViews}
+            onExit={exitTerritoryWork}
+            className="absolute inset-x-2 bottom-2 z-[500] max-h-[min(48dvh,30rem)] overflow-y-auto sm:right-auto sm:w-full"
           />
         )}
       </div>
@@ -1307,15 +1520,19 @@ export default function MapPage() {
         onOpenChange={setTerritorySheetOpen}
         territories={territories}
         leadCounts={territoryLeadCounts}
+        progressByTerritory={territoryProgress}
+        progressLoading={territoryProgressLoading}
         loading={territoriesLoading}
         isAdmin={isAdmin}
+        canExecute={territoryExecutionAllowed}
         currentUserId={currentUserId}
         showArchived={showArchivedTerritories}
         onShowArchivedChange={setShowArchivedTerritories}
-        onSelectLeads={isAdmin ? addTerritoryLeadsToSelection : undefined}
+        onSelectLeads={isAdmin && !execution.active ? addTerritoryLeadsToSelection : undefined}
         onEdit={editTerritoryDetails}
         onEditBoundary={editTerritoryBoundary}
         onArchiveChange={changeTerritoryArchived}
+        onResume={(territory) => void resumeTerritoryWork(territory)}
         pendingTerritoryId={territoryArchivePendingId}
       />
 
@@ -1343,7 +1560,7 @@ export default function MapPage() {
           onSuccess={() => {
             toast.success('Appointment set!');
             setAppointmentLeadId(null);
-            fetchLeads();
+            refreshLeadViews();
           }}
         />
       )}
@@ -1358,7 +1575,7 @@ export default function MapPage() {
           onSuccess={() => {
             toast.success('Lead marked as won!');
             setWonLeadId(null);
-            fetchLeads();
+            refreshLeadViews();
           }}
         />
       )}
@@ -1409,7 +1626,7 @@ export default function MapPage() {
       </Dialog>
 
       {/* Bulk selection action bar */}
-      {isAdmin && selection.size > 0 && (
+      {isAdmin && !execution.active && selection.size > 0 && (
         <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 rounded-lg border bg-background px-4 py-2.5 shadow-lg">
           <p className="text-sm whitespace-nowrap">
             <span className="font-medium">{selection.size}</span> selected
