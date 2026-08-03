@@ -1127,9 +1127,8 @@ export default function MapPage() {
                   onClick={startSelectionArea}
                   disabled={drawAvailability.selectionDisabled}
                   title={
-                    effectiveLeads.length === 0
-                      ? 'No mapped leads match the current filters'
-                      : 'Draw an area to select leads for assignment'
+                    drawAvailability.selectionBlockedReason ??
+                    'Draw an area to select leads for assignment'
                   }
                 >
                   <Pencil className="h-4 w-4 mr-1" />
@@ -1140,7 +1139,7 @@ export default function MapPage() {
                   size="sm"
                   onClick={startNewTerritory}
                   disabled={drawAvailability.territoryDisabled}
-                  title={!selectedMarket ? 'Choose one market to save a territory' : undefined}
+                  title={drawAvailability.territoryBlockedReason ?? undefined}
                 >
                   <MapPinned className="h-4 w-4 mr-1" />
                   New territory
@@ -1325,6 +1324,21 @@ export default function MapPage() {
           </>
         }
       />
+
+      {/* Why a drawing tool is greyed out.
+          The tooltip cannot be reached on a touchscreen and is easy to miss on a
+          mouse, so a disabled button with no visible explanation is a dead end —
+          "New territory" looks broken rather than waiting on a choice. */}
+      {isAdmin && !drawing && !addingHouse &&
+        (drawAvailability.territoryBlockedReason || drawAvailability.selectionBlockedReason) && (
+        <div className="rounded-md border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+          {[drawAvailability.territoryBlockedReason, drawAvailability.selectionBlockedReason]
+            .filter(Boolean)
+            .map((reason) => (
+              <p key={reason as string}>{reason}</p>
+            ))}
+        </div>
+      )}
 
       {drawing && (
         <div className="rounded-md border border-blue-300 bg-blue-50 dark:bg-blue-950/30 px-3 py-2 text-xs text-blue-700 dark:text-blue-300">
