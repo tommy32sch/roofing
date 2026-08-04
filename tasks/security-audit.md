@@ -252,7 +252,31 @@ cross-instance throttling requires the currently unconfigured Upstash variables.
 
 ## P3 — hardening
 
-### 12. CSP allows `unsafe-inline` for scripts
+### 12. ~~CSP allows `unsafe-inline` for scripts~~ — FIXED
+
+**Fixed 2026-08-04.** `script-src` is now `'nonce-<per-request>' 'strict-dynamic' 'self'`,
+built in `src/middleware.ts` so each request gets a fresh nonce. Next stamps that nonce
+onto its own inline hydration scripts by reading the CSP header off the request.
+
+This required `export const dynamic = 'force-dynamic'` in the root layout. A prerendered
+document is baked at build time with no nonce, so its inline scripts are all blocked —
+measured against a production build as 7 inline scripts, 0 nonced, React never attaching,
+and a blank page. With per-request rendering: 19 scripts, all carrying the current nonce,
+hydrated. The cost is small, since every page is an authenticated client component that
+fetches its own data and middleware already ran per request.
+
+CSP moved out of `next.config.ts` entirely. Browsers enforce every CSP header they
+receive, so leaving a second static policy there would have been intersected with the
+nonce policy and blocked Next's own scripts.
+
+`style-src` deliberately keeps `'unsafe-inline'`: React sets element styles directly and
+Leaflet writes inline transforms on every pan, neither has a nonce path, and injected CSS
+cannot execute.
+
+Verified against a production build: inline event handlers are refused, nonces are unique
+across requests, and the login page renders and hydrates.
+
+The original finding:
 `next.config.ts:8` — unconditional. The verifier refuted it as a vulnerability because no
 reachable XSS sink was found, which is fair. It stays on the list as defence-in-depth: it
 is the difference between one future XSS being contained or not.

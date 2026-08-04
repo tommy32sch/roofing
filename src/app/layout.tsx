@@ -19,6 +19,22 @@ export const metadata: Metadata = {
   description: "Roofing lead generation and management platform",
 };
 
+/**
+ * Render every page per request rather than prerendering it at build time.
+ *
+ * Required by the nonce-based CSP in src/middleware.ts. The nonce is generated
+ * per request, so Next can only stamp it onto its inline hydration scripts
+ * while rendering that request. A prerendered document is baked at build time
+ * with no nonce at all, and every one of its inline scripts is then blocked —
+ * measured as 7 inline scripts, 0 nonced, React never attaching, and a
+ * completely blank page.
+ *
+ * The cost is small here: every page is an authenticated client component that
+ * fetches its own data, so the prerendered output was only an empty shell, and
+ * middleware already ran per request on all of them.
+ */
+export const dynamic = 'force-dynamic';
+
 export default function RootLayout({
   children,
 }: Readonly<{

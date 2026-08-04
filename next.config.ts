@@ -2,11 +2,6 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   async headers() {
-    // Next/React production bundles don't use eval; keep 'unsafe-eval' only in
-    // dev (React Refresh / source maps need it). 'unsafe-inline' stays because
-    // Next injects inline hydration scripts without a nonce.
-    const isDev = process.env.NODE_ENV !== 'production';
-    const scriptSrc = `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ''}`;
     return [
       {
         source: '/(.*)',
@@ -18,21 +13,15 @@ const nextConfig: NextConfig = {
           // Territory execution requests location only after a rep taps the
           // nearest-door control. Keep every other origin blocked.
           { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=(self)' },
-          {
-            key: 'Content-Security-Policy',
-            value: [
-              "default-src 'self'",
-              scriptSrc,
-              "style-src 'self' 'unsafe-inline'",
-              "img-src 'self' data: blob: https://tile.openstreetmap.org https://*.tile.openstreetmap.org",
-              "font-src 'self'",
-              "connect-src 'self' https://*.supabase.co",
-              "object-src 'none'",
-              "frame-ancestors 'none'",
-              "base-uri 'self'",
-              "form-action 'self'",
-            ].join('; '),
-          },
+          /*
+           * Content-Security-Policy is NOT here — it moved to src/middleware.ts.
+           *
+           * The policy is now nonce-based, and a nonce has to be generated per
+           * request, which a static header table cannot do. Setting one here as
+           * well would not merely duplicate it: browsers enforce EVERY CSP
+           * header they receive, so a second static policy would be intersected
+           * with the nonce one and block Next's own scripts.
+           */
         ],
       },
       {
