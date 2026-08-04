@@ -988,9 +988,17 @@ of repairing today's omissions one at a time.
 - [x] Verify `CRON_SECRET` is configured in Vercel without exposing its value
 - [ ] With owner confirmation, mark `JWT_SECRET` and `SUPABASE_SERVICE_ROLE_KEY`
       as Sensitive in Vercel; the dashboard currently flags both
-- [ ] Provision Upstash and set `UPSTASH_REDIS_REST_URL` / `_TOKEN` in Vercel;
+- [ ] **URGENT** Provision Upstash and set `UPSTASH_REDIS_REST_URL` / `_TOKEN` in Vercel;
+      the currently configured host `fleet-wahoo-75781.upstash.io` returns NXDOMAIN — the
+      database no longer exists. checkConfiguredRateLimit catches the failure and falls
+      back to an in-memory counter, silently. On serverless that counter is per-instance
+      and resets on cold start, so login brute-force protection is effectively absent in
+      production and the per-account limit added for audit item #6 does not hold.
       production currently falls back to per-instance rate limits and cron locks
-- [ ] Verify both scheduled jobs have current production execution evidence
+- [x] Verify both scheduled jobs have current production execution evidence — confirmed
+      2026-08-04 from `scheduled_job_runs`: storm-alerts and appointment-reminders both
+      succeeded on 2026-08-03 and 2026-08-04. CRON_SECRET is set; the long-standing
+      "crons may have never fired" question is closed.
 - [x] Add a shared append-only execution ledger so quiet, failed, skipped, and
       timed-out cron runs remain auditable beyond Vercel's log window
 - [x] Apply migrations 028 and 029 before deploying the cron and ingress changes

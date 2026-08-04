@@ -126,7 +126,7 @@ contribution to the performance report.
 **Fix:** apply the same ownership predicate to DELETE and to the `scheduled_at` branch —
 admin, or creator, or assignee.
 
-### 4. ~~Any rep can permanently delete any lead's photos~~ — FIXED IN WORKTREE, NOT DEPLOYED
+### 4. ~~Any rep can permanently delete any lead's photos~~ — FIXED (`3e319e2`, deployed)
 `src/app/api/admin/leads/[leadId]/photos/[photoId]/route.ts:46`
 
 **Fixed locally 2026-08-02.** Permanent deletion now requires an admin or the
@@ -201,7 +201,7 @@ accumulate regardless of source, and stop resetting the shared bucket on success
 
 ## P2 — real, low impact
 
-### 7. ~~Closers can read knocks, calls and photos for leads they are walled off from~~ — FIXED IN WORKTREE, NOT DEPLOYED
+### 7. ~~Closers can read knocks, calls and photos for leads they are walled off from~~ — FIXED (`3e319e2`, deployed)
 `src/app/api/admin/leads/[leadId]/knocks/route.ts:128` — the parent lead route enforces
 `closer && status !== 'sold'`, the child collections do not. Best fixed once as a shared
 `assertLeadVisible` helper so the rule cannot drift.
@@ -210,7 +210,7 @@ accumulate regardless of source, and stop resetting the shared bucket on success
 guard for activity, knock, call, and photo reads and writes. Aggregate queries
 use the same policy through `applyLeadVisibilityFilter()`.
 
-### 8. ~~`/api/admin/activity` exposes every lead's PII and every rep's trail~~ — FIXED IN WORKTREE, NOT DEPLOYED
+### 8. ~~`/api/admin/activity` exposes every lead's PII and every rep's trail~~ — FIXED (`3e319e2`, deployed)
 `src/app/api/admin/activity/route.ts:28` — accepts an arbitrary `user_id` from any role,
 with no closer status filter. The sibling `contact-activity` route already does this
 correctly via `resolveContactActivityUser`; copy that.
@@ -219,13 +219,13 @@ correctly via `resolveContactActivityUser`; copy that.
 `resolveContactActivityUser()`, restricts non-admins to themselves, inner-joins
 the parent lead, and applies the shared closer visibility filter.
 
-### 9. ~~`/api/admin/stats` returns pre-appointment lead PII to closers~~ — FIXED IN WORKTREE, NOT DEPLOYED
+### 9. ~~`/api/admin/stats` returns pre-appointment lead PII to closers~~ — FIXED (`3e319e2`, deployed)
 `src/app/api/admin/stats/route.ts:39` — the only read route with no identity logic at all.
 
 **Fixed locally 2026-08-02.** Both the lead list and overdue-follow-up count now
 pass through the same role policy used by lead detail and child resources.
 
-### 10. ~~Webhook API key travels in the URL path and query string~~ — FIXED IN WORKTREE, NOT DEPLOYED
+### 10. ~~Webhook API key travels in the URL path and query string~~ — FIXED (`3e319e2`, deployed)
 `src/app/api/webhooks/inbound/[apiKey]/route.ts:15` — a live lead-injection credential
 written into every proxy, CDN and analytics log. Keep the `x-api-key` header form; drop
 the path and `?api_key=` variants.
@@ -238,7 +238,7 @@ either URL credential form from returning.
 confirmed it. I side with confirming — credentials in URLs is a well-established logging
 exposure regardless of whether a specific exploit was demonstrated.
 
-### 11. ~~`/api/admin/import` has no rate limit and pages the whole leads table into memory~~ — FIXED IN WORKTREE, NOT DEPLOYED
+### 11. ~~`/api/admin/import` has no rate limit and pages the whole leads table into memory~~ — FIXED (`3e319e2`, deployed)
 `src/app/api/admin/import/route.ts:81` — any setter can exhaust the function. Import is
 open to all roles deliberately, so this is the one place that decision costs something.
 
