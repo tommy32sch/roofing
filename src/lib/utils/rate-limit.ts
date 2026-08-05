@@ -1,5 +1,64 @@
 let hasWarnedNoUpstash = false;
 
+/**
+ * State of the durable rate-limit backend.
+ *
+ * This exists because the interesting failure is not "Upstash was never
+ * configured" — that path already warns. It is "Upstash IS configured and the
+ * database is gone", which looks healthy to every config check, throws inside
+ * the limiter call, and gets swallowed by the fallback. A free-tier database is
+ * reaped after inactivity, so this is the expected end state, not an edge case.
+ *
+ * Left unobserved, brute-force protection quietly becomes a per-instance
+ * counter that resets on every cold start while the app reports nothing.
+ */
+let backendFailures = 0;
+let lastBackendFailureAt = 0;
+let lastBackendErrorMessage: string | null = null;
+let lastBackendSuccessAt = 0;
+
+/** Re-warn at most once every ten minutes so logs stay readable under load. */
+const BACKEND_WARN_INTERVAL_MS = 10 * 60 * 1000;
+
+function noteBackendFailure(error: unknown): void {
+  backendFailures += 1;
+  lastBackendErrorMessage = error instanceof Error ? error.message : String(error);
+  const now = Date.now();
+  if (now - lastBackendFailureAt > BACKEND_WARN_INTERVAL_MS) {
+    lastBackendFailureAt = now;
+    console.error(
+      `[SECURITY] Rate-limit backend is configured but unreachable (${lastBackendErrorMessage}). ` +
+        `Falling back to per-instance in-memory counters, which reset on cold start — ` +
+        `brute-force protection is effectively absent. Failures so far: ${backendFailures}.`
+    );
+  }
+}
+
+/**
+ * Whether durable rate limiting is actually working right now.
+ *
+ * Reported rather than inferred: "the env vars are set" is exactly the check
+ * that was already passing while the backend was dead.
+ */
+export function rateLimitBackendStatus(): {
+  configured: boolean;
+  healthy: boolean;
+  failures: number;
+  lastError: string | null;
+  lastSuccessAt: number | null;
+} {
+  const configured = hasUpstashConfig();
+  return {
+    configured,
+    // Healthy means a real call has succeeded more recently than the last
+    // failure — not merely that credentials exist.
+    healthy: configured && lastBackendSuccessAt > lastBackendFailureAt,
+    failures: backendFailures,
+    lastError: lastBackendErrorMessage,
+    lastSuccessAt: lastBackendSuccessAt || null,
+  };
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const rateLimiters = new Map<string, any>();
 
@@ -96,10 +155,17 @@ export async function checkConfiguredRateLimit(
 ): Promise<RateLimitResult> {
   try {
     const limiter = await getLimiter(prefix, maxRequests, window);
+    // No limiter means Upstash was never configured, which getRedis already
+    // warned about. A configured-but-broken backend is the case handled below.
     if (!limiter) return inMemoryLimit(`${prefix}:${identifier}`, maxRequests, window);
     const result = await limiter.limit(identifier);
+    lastBackendSuccessAt = Date.now();
     return { success: result.success, limit: result.limit, remaining: result.remaining, reset: result.reset };
-  } catch {
+  } catch (error) {
+    // Still falls back rather than failing the request — refusing every login
+    // because Redis is down would be a worse outage than weaker limiting. But
+    // it is no longer silent.
+    noteBackendFailure(error);
     return inMemoryLimit(`${prefix}:${identifier}`, maxRequests, window);
   }
 }

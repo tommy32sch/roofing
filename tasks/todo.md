@@ -988,7 +988,19 @@ of repairing today's omissions one at a time.
 - [x] Verify `CRON_SECRET` is configured in Vercel without exposing its value
 - [ ] With owner confirmation, mark `JWT_SECRET` and `SUPABASE_SERVICE_ROLE_KEY`
       as Sensitive in Vercel; the dashboard currently flags both
-- [ ] **URGENT** Provision Upstash and set `UPSTASH_REDIS_REST_URL` / `_TOKEN` in Vercel;
+- [ ] **URGENT — owner action** Provision Upstash and set `UPSTASH_REDIS_REST_URL` /
+      `_TOKEN` in Vercel. Requires creating a database in the Upstash console and pasting
+      a token into Vercel, neither of which the assistant can do.
+      Steps: console.upstash.com -> Create Database (Redis, region nearest the Vercel
+      deployment) -> copy the REST URL and token -> Vercel -> Settings -> Environment
+      Variables (Production) -> redeploy.
+      Verify afterwards with `GET /api/admin/health/rate-limit` as an admin; it performs a
+      real limiter round trip and must report `healthy: true`.
+
+      Detection is now in place regardless: a configured-but-unreachable backend logs a
+      `[SECURITY]` error and reports `healthy: false`, instead of degrading silently.
+
+      Original note:
       the currently configured host `fleet-wahoo-75781.upstash.io` returns NXDOMAIN — the
       database no longer exists. checkConfiguredRateLimit catches the failure and falls
       back to an in-memory counter, silently. On serverless that counter is per-instance
