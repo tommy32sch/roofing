@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { ThemeProvider } from "@/components/providers/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
+import { ServiceWorkerRegistrar } from "@/components/providers/service-worker";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -17,6 +18,20 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Roof Leads CRM",
   description: "Roofing lead generation and management platform",
+  manifest: "/manifest.json",
+  appleWebApp: { capable: true, title: "Roof Leads", statusBarStyle: "black-translucent" },
+  icons: {
+    icon: [
+      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: "/apple-touch-icon.png",
+  },
+};
+
+/** Matches the manifest, so the installed app has no light-mode flash on launch. */
+export const viewport = {
+  themeColor: "#0a0a0a",
 };
 
 /**
@@ -47,6 +62,7 @@ export default function RootLayout({
       >
         <ThemeProvider>
           {children}
+          <ServiceWorkerRegistrar />
           <Toaster />
         </ThemeProvider>
       </body>
