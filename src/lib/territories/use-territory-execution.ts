@@ -1,6 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { readPackage } from '@/lib/offline/store';
+import { isUsablePackage } from '@/lib/offline/territory-package';
 import { applyQueuedCalls, type QueuedCall } from '@/lib/leads/call-sync';
 import { applyQueuedKnocks, type QueuedKnock } from '@/lib/leads/knock-sync';
 import { localDayBounds } from '@/lib/leads/today';
@@ -22,6 +24,13 @@ interface UseTerritoryExecutionOptions {
   enabled: boolean;
   queuedKnocks: QueuedKnock[];
   queuedCalls: QueuedCall[];
+  /**
+   * The signed-in rep, used to decide whether a downloaded package on this
+   * device belongs to them. Null disables the offline fallback entirely, which
+   * is the correct behaviour when nobody is identified — a shared phone must
+   * not show one rep's downloaded leads to the next person who opens it.
+   */
+  repId?: string | null;
 }
 
 function executionDate(): string {
@@ -53,10 +62,17 @@ export function useTerritoryExecution({
   enabled,
   queuedKnocks,
   queuedCalls,
+  repId = null,
 }: UseTerritoryExecutionOptions) {
   const [snapshot, setSnapshot] = useState<TerritoryExecutionSnapshot | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /**
+   * Set when the screen is showing a downloaded package instead of live data.
+   * Holds the download time, because "offline" alone is not actionable — a rep
+   * needs to know whether they are looking at this morning or last Tuesday.
+   */
+  const [offlineSince, setOfflineSince] = useState<string | null>(null);
   const [currentLeadId, setCurrentLeadId] = useState<string | null>(null);
   const [location, setLocation] = useState<TerritoryUserLocation | null>(null);
   const [locationError, setLocationError] = useState<string | null>(null);
@@ -83,17 +99,51 @@ export function useTerritoryExecution({
       if (requestId !== loadRequestIdRef.current) return null;
       const next = body.snapshot as TerritoryExecutionSnapshot;
       setSnapshot(next);
+      // Live data replaced the cached copy, so stop claiming to be offline.
+      setOfflineSince(null);
       if (updateUrl) updateExecutionQuery(next.territory.id);
       return next;
     } catch (cause) {
       if (requestId !== loadRequestIdRef.current) return null;
+
+      /*
+       * No signal: fall back to a territory the rep downloaded earlier.
+       *
+       * Only reached when the request itself failed, never when the server
+       * answered — a 403 or a deleted territory must surface as the error it
+       * is, not be papered over with stale local data.
+       *
+       * The stored snapshot is re-summarised against the CURRENT clock rather
+       * than reused as saved, because "due today" and "stalled" are answers
+       * about now. A package downloaded last night would otherwise still be
+       * describing last night's follow-ups.
+       */
+      const cached = repId ? await readPackage(territoryId) : null;
+      if (cached && repId && isUsablePackage(cached, repId)) {
+        const leads = cached.snapshot.leads;
+        const offlineSnapshot: TerritoryExecutionSnapshot = {
+          territory: cached.snapshot.territory,
+          leads,
+          summary: summarizeTerritoryExecution(
+            cached.snapshot.territory,
+            leads,
+            new Date().toISOString()
+          ),
+        };
+        setSnapshot(offlineSnapshot);
+        setOfflineSince(cached.downloadedAt);
+        setError(null);
+        if (updateUrl) updateExecutionQuery(offlineSnapshot.territory.id);
+        return offlineSnapshot;
+      }
+
       const message = cause instanceof Error ? cause.message : 'Failed to load territory work';
       setError(message);
       return null;
     } finally {
       if (requestId === loadRequestIdRef.current) setLoading(false);
     }
-  }, []);
+  }, [repId]);
 
   const start = useCallback(async (territoryId: string) => {
     locationRequestIdRef.current += 1;
@@ -113,6 +163,7 @@ export function useTerritoryExecution({
     loadRequestIdRef.current += 1;
     locationRequestIdRef.current += 1;
     setSnapshot(null);
+    setOfflineSince(null);
     setLoading(false);
     setError(null);
     setCurrentLeadId(null);
@@ -153,6 +204,18 @@ export function useTerritoryExecution({
       : null,
     [clock.now, leads, snapshot]
   );
+
+  /**
+   * Age of the cached copy, derived from the ticking clock rather than read at
+   * render time. Date.now() during render is impure — and this way the banner
+   * also counts up on its own as the session goes on.
+   */
+  const offlineAgeMs = useMemo(() => {
+    if (!offlineSince) return null;
+    const downloaded = Date.parse(offlineSince);
+    if (Number.isNaN(downloaded)) return null;
+    return Math.max(0, Date.parse(clock.now) - downloaded);
+  }, [clock.now, offlineSince]);
 
   const currentLead = useMemo(
     () => leads.find((lead) => lead.id === currentLeadId) ?? null,
@@ -251,6 +314,10 @@ export function useTerritoryExecution({
     locating,
     loading,
     error,
+    /** Download time when showing a cached package; null when live. */
+    offlineSince,
+    /** How old that cached copy is, ticking with the session clock. */
+    offlineAgeMs,
     manualQueue,
     revisitDueIds,
     start,

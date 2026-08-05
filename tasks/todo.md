@@ -737,13 +737,19 @@ Allow a rep to launch and canvass from a completely closed app without an
 internet connection. Offline content must be downloaded while online first;
 areas and leads that were never downloaded cannot be available offline.
 
-- [ ] Make the app installable and cache its shell with a service worker
-- [ ] Add a "Download territory for offline use" workflow
-- [ ] Store downloaded territory, lead and rep-identity data in IndexedDB
-- [ ] Replace the public OpenStreetMap tile endpoint for offline map packages
-- [ ] Show download size, last-updated time, storage usage and removal controls
-- [ ] Extend sync to any additional offline actions beyond knocks
-- [ ] Test cold launch, reconnect and storage limits on iOS and Android
+- [x] Make the app installable and cache its shell with a service worker
+- [x] Add a "Download territory for offline use" workflow
+- [x] Store downloaded territory, lead and rep-identity data in IndexedDB
+- [ ] Replace the public OpenStreetMap tile endpoint for offline map packages — DEFERRED
+      by owner decision 2026-08-04. Offline shows pins, territory outline and the rep's GPS
+      dot on a plain background; streets return with signal. Revisit only if reps report the
+      blank basemap is a problem, since the alternatives are a paid provider or self-hosting.
+- [x] Show download size, last-updated time, storage usage and removal controls
+- [ ] Extend sync to any additional offline actions beyond knocks — knock and call results
+      already queue; appointments and lead edits do not
+- [ ] Test cold launch, reconnect and storage limits on a real iOS and Android device —
+      verified in a desktop production build only (worker registers and activates, shell
+      cached, zero API responses cached)
 
 ## Future: create walk-up leads from the map
 

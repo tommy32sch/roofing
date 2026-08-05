@@ -8,10 +8,12 @@ import {
   Play,
   RotateCcw,
   ScanLine,
-  UserRound,
-} from 'lucide-react';
+  UserRound, Download, Check, Loader2 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
+import { useOfflineTerritories } from '@/lib/offline/useOfflineTerritories';
+import { OfflineStoragePanel } from './OfflineStoragePanel';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
   Sheet,
@@ -126,6 +128,7 @@ export function TerritorySheet({
     currentUserId,
     progressByTerritory
   );
+  const offline = useOfflineTerritories(currentUserId);
   const activeCount = territories.filter((territory) => !territory.archived_at).length;
 
   return (
@@ -138,6 +141,19 @@ export function TerritorySheet({
             the existing assignment workflow for shown leads.
           </SheetDescription>
         </SheetHeader>
+
+        {/* What is already on the device. Renders nothing until something is
+            downloaded, so it does not clutter the common case. */}
+        {canExecute && (
+          <OfflineStoragePanel
+            entries={offline.entries}
+            totalBytes={offline.totalBytes}
+            online={offline.online}
+            storageError={offline.storageError}
+            onRemove={(id) => void offline.remove(id)}
+            onRemoveAll={() => void offline.removeAll()}
+          />
+        )}
 
         {isAdmin && (
           <label className="flex cursor-pointer items-center gap-2 text-sm">
@@ -311,17 +327,52 @@ export function TerritorySheet({
                 )}
 
                 {!archived && canExecute && (
-                  <Button
-                    size="sm"
-                    className="mt-3 w-full"
-                    onClick={() => {
-                      onResume(territory);
-                      onOpenChange(false);
-                    }}
-                  >
-                    <Play className="mr-1 h-4 w-4" />
-                    {progress?.never_started ? 'Start Work' : 'Resume Work'}
-                  </Button>
+                  <div className="mt-3 flex gap-2">
+                    <Button
+                      size="sm"
+                      className="flex-1"
+                      onClick={() => {
+                        onResume(territory);
+                        onOpenChange(false);
+                      }}
+                    >
+                      <Play className="mr-1 h-4 w-4" />
+                      {progress?.never_started ? 'Start Work' : 'Resume Work'}
+                    </Button>
+                    {/* Downloading needs signal, so the control is disabled
+                        offline rather than hidden — a rep who forgot to
+                        download should see why, not wonder where it went. */}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={offline.downloading !== null || !offline.online}
+                      onClick={async () => {
+                        const result = await offline.download(territory.id);
+                        if (result.ok) toast.success(`${territory.name} saved for offline use`);
+                        else toast.error(result.error ?? 'Could not download this territory');
+                      }}
+                      title={
+                        !offline.online
+                          ? 'Downloading needs a connection'
+                          : offline.isDownloaded(territory.id)
+                            ? 'Downloaded — tap to refresh with the latest doors'
+                            : 'Save this territory for working without signal'
+                      }
+                      aria-label={
+                        offline.isDownloaded(territory.id)
+                          ? `Refresh ${territory.name} offline copy`
+                          : `Download ${territory.name} for offline use`
+                      }
+                    >
+                      {offline.downloading === territory.id ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : offline.isDownloaded(territory.id) ? (
+                        <Check className="h-4 w-4" />
+                      ) : (
+                        <Download className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </div>
                 )}
 
                 {!archived && onSelectLeads && (

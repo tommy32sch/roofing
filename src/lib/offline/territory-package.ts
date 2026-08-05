@@ -1,3 +1,6 @@
+import type { Territory } from '@/types';
+import type { TerritoryExecutionLead } from '@/lib/territories/execution';
+
 /**
  * A territory downloaded for offline canvassing.
  *
@@ -21,36 +24,32 @@
  * feeding a stale shape to the execution screen would show a rep the wrong
  * doors, which is the failure worth preventing.
  */
-export const PACKAGE_SCHEMA_VERSION = 1;
+export const PACKAGE_SCHEMA_VERSION = 2;
 
 /** Older than this and the package is shown as stale, though still usable. */
 export const STALE_AFTER_MS = 12 * 60 * 60 * 1000;
 
-export interface PackagedLead {
-  id: string;
-  first_name: string | null;
-  last_name: string | null;
-  address_street: string | null;
-  address_city: string | null;
-  latitude: number;
-  longitude: number;
-  status: string | null;
-  priority: string | null;
-  phone: string | null;
-  do_not_knock?: boolean | null;
-  is_dnc?: boolean | null;
-  last_knock_at?: string | null;
-  last_disposition?: string | null;
-  knock_count?: number | null;
-  follow_up_date?: string | null;
+/**
+ * The package stores the execution snapshot verbatim.
+ *
+ * An earlier version stored a trimmed lead shape to save space, which was
+ * wrong: the offline screen classifies progress, revisits and the next door
+ * with the same pure functions the online one uses, and those need the full
+ * lead facts. A package that cannot rebuild the execution screen does not do
+ * the one job it exists for, and a smaller download that shows different doors
+ * offline than online is a worse outcome than a slightly larger one.
+ */
+export interface PackagedSnapshot {
+  territory: Territory;
+  leads: TerritoryExecutionLead[];
 }
 
 export interface TerritoryPackage {
   schemaVersion: number;
+  /** The IndexedDB key, so it stays a top-level field. */
   territoryId: string;
   name: string;
-  boundary: [number, number][];
-  leads: PackagedLead[];
+  snapshot: PackagedSnapshot;
   /** Who downloaded it, so another rep signing in cannot read it. */
   repId: string;
   downloadedAt: string;
@@ -59,12 +58,16 @@ export interface TerritoryPackage {
 export function buildTerritoryPackage(input: {
   territoryId: string;
   name: string;
-  boundary: [number, number][];
-  leads: PackagedLead[];
+  snapshot: PackagedSnapshot;
   repId: string;
   downloadedAt: string;
 }): TerritoryPackage {
   return { schemaVersion: PACKAGE_SCHEMA_VERSION, ...input };
+}
+
+/** Doors in the package — what a rep sees on the storage screen. */
+export function packagedLeadCount(pkg: TerritoryPackage): number {
+  return pkg.snapshot?.leads?.length ?? 0;
 }
 
 /**
@@ -80,7 +83,8 @@ export function isUsablePackage(pkg: unknown, repId: string): pkg is TerritoryPa
   const p = pkg as Partial<TerritoryPackage>;
   if (p.schemaVersion !== PACKAGE_SCHEMA_VERSION) return false;
   if (typeof p.territoryId !== 'string' || !p.territoryId) return false;
-  if (!Array.isArray(p.leads) || !Array.isArray(p.boundary)) return false;
+  if (!p.snapshot || typeof p.snapshot !== 'object') return false;
+  if (!Array.isArray(p.snapshot.leads) || !p.snapshot.territory) return false;
   if (p.repId !== repId) return false;
   return true;
 }

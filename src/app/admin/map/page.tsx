@@ -249,6 +249,7 @@ export default function MapPage() {
     enabled: territoryExecutionAllowed,
     queuedKnocks,
     queuedCalls,
+    repId: currentUserId,
   });
   const refreshTerritoryExecution = execution.refresh;
 
@@ -1514,6 +1515,7 @@ export default function MapPage() {
             currentLead={execution.currentLead}
             queue={execution.manualQueue}
             pendingOfflineCount={resultOutbox.pending + resultOutbox.failed}
+            offlineAgeMs={execution.offlineAgeMs}
             locationError={execution.locationError}
             locating={execution.locating}
             recording={savingResult}

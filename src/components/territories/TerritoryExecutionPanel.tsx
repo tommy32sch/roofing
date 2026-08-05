@@ -13,6 +13,7 @@ import type {
   TerritoryExecutionLead,
   TerritoryExecutionSummary,
 } from '@/lib/territories/execution';
+import { formatAge } from '@/lib/offline/territory-package';
 import { cn } from '@/lib/utils';
 
 const STATE_LABELS: Record<TerritoryExecutionSummary['state'], string> = {
@@ -30,6 +31,15 @@ interface TerritoryExecutionPanelProps {
   /** Due revisits plus the deterministic manual fallback list. */
   queue?: TerritoryExecutionLead[];
   pendingOfflineCount?: number;
+  /**
+   * Age of the cached package when the screen is showing one rather than live
+   * data, or null when live. A rep deciding whether to knock a door needs to
+   * know the list might not include one a colleague worked this morning.
+   *
+   * Passed as an age rather than a timestamp so the panel never has to read the
+   * clock during render.
+   */
+  offlineAgeMs?: number | null;
   locationError?: string | null;
   locating?: boolean;
   recording?: boolean;
@@ -65,6 +75,7 @@ export function TerritoryExecutionPanel({
   currentLead,
   queue = [],
   pendingOfflineCount = 0,
+  offlineAgeMs = null,
   locationError = null,
   locating = false,
   recording = false,
@@ -86,6 +97,19 @@ export function TerritoryExecutionPanel({
         className
       )}
     >
+      {/* Offline is stated, never implied. A rep who cannot tell cached data from
+          live data will re-knock a door a colleague worked this morning, so the
+          banner carries the download time rather than just the word "offline". */}
+      {offlineAgeMs !== null && (
+        <div className="mb-2 flex items-center gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-1.5 text-xs text-amber-700 dark:text-amber-400">
+          <WifiOff className="h-3.5 w-3.5 shrink-0" />
+          <span className="min-w-0">
+            Offline — showing the copy you downloaded{' '}
+            {formatAge(offlineAgeMs)}. Results are saved and will sync.
+          </span>
+        </div>
+      )}
+
       <div className="flex items-start gap-2">
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 items-center gap-2">

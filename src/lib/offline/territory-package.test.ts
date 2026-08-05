@@ -7,33 +7,49 @@ import {
   formatBytes,
   packageFreshness,
   formatAge,
+  packagedLeadCount,
   PACKAGE_SCHEMA_VERSION,
   STALE_AFTER_MS,
-  type PackagedLead,
 } from './territory-package';
+import type { Territory } from '@/types';
+import type { TerritoryExecutionLead } from '@/lib/territories/execution';
 
 const REP = 'rep-1';
 const NOW = Date.parse('2026-08-04T12:00:00.000Z');
 
-const lead = (id: string): PackagedLead => ({
+/*
+ * The package stores execution leads verbatim, so the fixture is one too —
+ * anything narrower would stop proving that a package can rebuild the screen,
+ * which is the reason the format changed.
+ */
+const lead = (id: string) => ({
   id,
+  market_id: 1,
   first_name: 'Jane',
   last_name: 'Smith',
-  address_street: '1421 E Palm Ln',
-  address_city: 'Phoenix',
   latitude: 33.46,
   longitude: -112.0,
   status: 'new',
   priority: 'high',
-  phone: '555-0100',
-});
+  address_street: '1421 E Palm Ln',
+  address_city: 'Phoenix',
+  is_dnc: false,
+  do_not_knock: false,
+  last_knock_at: null,
+  last_disposition: null,
+  knock_count: 0,
+  follow_up_date: null,
+  progress_state: 'unworked',
+  revisit_state: 'none',
+} as unknown as TerritoryExecutionLead);
+
+const territory = { id: 't-1', name: 'Coronado North', boundary: [[33.46, -112.0]] } as unknown as Territory;
 
 const pkg = (over: Partial<ReturnType<typeof buildTerritoryPackage>> = {}) => ({
   ...buildTerritoryPackage({
     territoryId: 't-1',
     name: 'Coronado North',
-    boundary: [[33.46, -112.0], [33.47, -112.0], [33.47, -111.99]],
-    leads: [lead('a'), lead('b')],
+    snapshot: { territory, leads: [lead('a'), lead('b')] },
     repId: REP,
     downloadedAt: new Date(NOW).toISOString(),
   }),
@@ -45,11 +61,15 @@ describe('buildTerritoryPackage', () => {
     expect(pkg().schemaVersion).toBe(PACKAGE_SCHEMA_VERSION);
   });
 
-  it('keeps everything needed to work the territory with no network', () => {
+  it('keeps everything needed to rebuild the execution screen offline', () => {
     const p = pkg();
-    expect(p.boundary).toHaveLength(3);
-    expect(p.leads).toHaveLength(2);
-    expect(p.name).toBe('Coronado North');
+    expect(p.snapshot.territory).toBeTruthy();
+    expect(p.snapshot.leads).toHaveLength(2);
+    // Full execution leads, not a trimmed shape — the offline screen runs the
+    // same classifiers as the online one and needs these facts.
+    expect(p.snapshot.leads[0]).toHaveProperty('knock_count');
+    expect(p.snapshot.leads[0]).toHaveProperty('do_not_knock');
+    expect(packagedLeadCount(p)).toBe(2);
     expect(p.repId).toBe(REP);
   });
 });
@@ -84,21 +104,23 @@ describe('isUsablePackage', () => {
     expect(isUsablePackage(undefined, REP)).toBe(false);
     expect(isUsablePackage('nope', REP)).toBe(false);
     expect(isUsablePackage({}, REP)).toBe(false);
-    expect(isUsablePackage(pkg({ leads: undefined as never }), REP)).toBe(false);
-    expect(isUsablePackage(pkg({ boundary: undefined as never }), REP)).toBe(false);
+    expect(isUsablePackage(pkg({ snapshot: undefined as never }), REP)).toBe(false);
+    expect(isUsablePackage(pkg({ snapshot: { leads: [] } as never }), REP)).toBe(false);
     expect(isUsablePackage(pkg({ territoryId: '' }), REP)).toBe(false);
   });
 
   // An empty territory is legitimate — every door in it may be worked.
   it('accepts a package with no leads left', () => {
-    expect(isUsablePackage(pkg({ leads: [] }), REP)).toBe(true);
+    expect(isUsablePackage(pkg({ snapshot: { territory, leads: [] } }), REP)).toBe(true);
   });
 });
 
 describe('estimatePackageBytes', () => {
   it('grows with the number of leads', () => {
-    const small = estimatePackageBytes(pkg({ leads: [lead('a')] }));
-    const large = estimatePackageBytes(pkg({ leads: Array.from({ length: 50 }, (_, i) => lead(`l${i}`)) }));
+    const small = estimatePackageBytes(pkg({ snapshot: { territory, leads: [lead('a')] } }));
+    const large = estimatePackageBytes(
+      pkg({ snapshot: { territory, leads: Array.from({ length: 50 }, (_, i) => lead(`l${i}`)) } })
+    );
     expect(large).toBeGreaterThan(small * 10);
   });
 
