@@ -141,39 +141,13 @@ export function TerritoryExecutionPanel({
         </Button>
       </div>
 
-      <Progress value={coverage} className="mt-3 gap-1.5" aria-label="Territory coverage">
-        <ProgressLabel className="text-xs">Coverage</ProgressLabel>
-        <span className="ml-auto text-xs tabular-nums text-muted-foreground">
-          {Math.round(coverage)}%
-        </span>
-      </Progress>
+      {/* The work comes before the stats, deliberately.
 
-      <dl className="mt-3 grid grid-cols-5 gap-1 rounded-lg bg-muted/45 p-2 text-center">
-        {COUNT_ITEMS.map(([key, label]) => (
-          <div key={key} className="min-w-0">
-            <dt className="truncate text-[10px] text-muted-foreground">{label}</dt>
-            <dd className="font-semibold tabular-nums">{summary.progress[key]}</dd>
-          </div>
-        ))}
-      </dl>
-
-      {(pendingOfflineCount > 0 || locationError) && (
-        <div className="mt-2 space-y-1" aria-live="polite">
-          {pendingOfflineCount > 0 && (
-            <p className="flex items-center gap-1.5 text-xs font-medium text-status-offline">
-              <WifiOff className="h-3.5 w-3.5" />
-              {pendingOfflineCount} result{pendingOfflineCount === 1 ? '' : 's'} waiting to sync
-            </p>
-          )}
-          {locationError && (
-            <p className="flex items-start gap-1.5 text-xs text-destructive">
-              <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-              {locationError}
-            </p>
-          )}
-        </div>
-      )}
-
+          This panel is bottom-docked but capped at 48dvh with internal scroll,
+          so content order IS reach order: whatever sits lower has to be
+          scrolled to. The disposition buttons are tapped dozens of times an
+          hour and the coverage bar is glanced at twice a shift, so the stats
+          used to sit between the rep and the only control they actually need. */}
       <div className="mt-3 rounded-lg border p-2.5">
         <div className="flex items-start gap-2">
           <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
@@ -244,6 +218,41 @@ export function TerritoryExecutionPanel({
           </div>
         )}
       </div>
+
+      {/* Glanceable status, below the work for the reason above. */}
+      <Progress value={coverage} className="mt-3 gap-1.5" aria-label="Territory coverage">
+        <ProgressLabel className="text-xs">Coverage</ProgressLabel>
+        <span className="ml-auto text-xs tabular-nums text-muted-foreground">
+          {Math.round(coverage)}%
+        </span>
+      </Progress>
+
+      <dl className="mt-3 grid grid-cols-5 gap-1 rounded-lg bg-muted/45 p-2 text-center">
+        {COUNT_ITEMS.map(([key, label]) => (
+          <div key={key} className="min-w-0">
+            <dt className="truncate text-[10px] text-muted-foreground">{label}</dt>
+            <dd className="font-semibold tabular-nums">{summary.progress[key]}</dd>
+          </div>
+        ))}
+      </dl>
+
+      {(pendingOfflineCount > 0 || locationError) && (
+        <div className="mt-2 space-y-1" aria-live="polite">
+          {pendingOfflineCount > 0 && (
+            <p className="flex items-center gap-1.5 text-xs font-medium text-status-offline">
+              <WifiOff className="h-3.5 w-3.5" />
+              {pendingOfflineCount} result{pendingOfflineCount === 1 ? '' : 's'} waiting to sync
+            </p>
+          )}
+          {locationError && (
+            <p className="flex items-start gap-1.5 text-xs text-destructive">
+              <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              {locationError}
+            </p>
+          )}
+        </div>
+      )}
+
 
       {queue.length > 0 && (
         <div className="mt-3">
