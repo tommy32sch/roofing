@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
-import { BoxSelect, UserCheck, LocateFixed, CloudHail, Wind, Pencil, ChevronDown, Check, Hexagon, MapPinned, Undo2, HousePlus, X } from 'lucide-react';
+import { BoxSelect, UserCheck, LocateFixed, CloudHail, Wind, Pencil, ChevronDown, Check, Hexagon, MapPinned, Undo2, HousePlus, X, SlidersHorizontal } from 'lucide-react';
 import { toast } from 'sonner';
 import { knockLabel } from '@/lib/leads/knocks';
 import { callLabel } from '@/lib/leads/calls';
@@ -158,6 +158,7 @@ export default function MapPage() {
   // and a rep who thinks they are lassoing while placing a pin gets neither.
   const [addingHouse, setAddingHouse] = useState(false);
   const [pendingHouse, setPendingHouse] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [mapToolsOpen, setMapToolsOpen] = useState(false);
   const [drawing, setDrawing] = useState(false);
   const [drawPurpose, setDrawPurpose] = useState<MapDrawPurpose | null>(null);
   // Areas committed during this draw session. Kept so several loops are
@@ -1052,6 +1053,26 @@ export default function MapPage() {
         }
         actions={
           <>
+            {/* On a phone this toolbar consumed 252px and left the map 178px of
+                an 812px screen — 22%, for the one element the page exists to
+                show. Collapsed behind a toggle at phone size, unchanged on
+                desktop, matching the Filters pattern the leads page already
+                uses. Not execution mode: that toolbar is the focused one. */}
+            {!execution.active && (
+              <Button
+                variant={mapToolsOpen ? 'default' : 'outline'}
+                size="sm"
+                className="sm:hidden"
+                aria-expanded={mapToolsOpen}
+                onClick={() => setMapToolsOpen((o) => !o)}
+              >
+                <SlidersHorizontal className="h-4 w-4 mr-1" />
+                {mapToolsOpen ? 'Hide tools' : 'Tools'}
+              </Button>
+            )}
+            <div
+              className={`${mapToolsOpen || execution.active ? 'flex' : 'hidden'} sm:flex flex-wrap items-center gap-2`}
+            >
             <Button
               variant="outline"
               size="sm"
@@ -1322,6 +1343,7 @@ export default function MapPage() {
             </Select>
               </>
             )}
+            </div>
           </>
         }
       />
