@@ -12,7 +12,7 @@ import type { LeadPriority } from '@/types';
 const PRIORITY_CONFIG: Record<LeadPriority, { label: string; className: string; icon?: boolean }> = {
   low: { label: 'Low', className: 'text-muted-foreground/70' },
   medium: { label: 'Medium', className: 'text-muted-foreground' },
-  high: { label: 'High', className: 'text-amber-600 dark:text-amber-400 font-medium' },
+  high: { label: 'High', className: 'text-status-stale dark:text-status-offline font-medium' },
   hot: { label: 'Hot', className: 'text-red-600 dark:text-red-400 font-semibold', icon: true },
 };
 

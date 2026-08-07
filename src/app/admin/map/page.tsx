@@ -1077,7 +1077,7 @@ export default function MapPage() {
                 className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium ${
                   resultSyncNeedsAttention
                     ? 'border-destructive/40 bg-destructive/10 text-destructive'
-                    : 'border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-400'
+                    : 'border-status-offline/40 bg-status-offline/10 text-status-stale dark:text-status-offline'
                 }`}
               >
                 <span

@@ -101,7 +101,7 @@ export function TerritoryExecutionPanel({
           live data will re-knock a door a colleague worked this morning, so the
           banner carries the download time rather than just the word "offline". */}
       {offlineAgeMs !== null && (
-        <div className="mb-2 flex items-center gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-1.5 text-xs text-amber-700 dark:text-amber-400">
+        <div className="mb-2 flex items-center gap-2 rounded-md border border-status-offline/40 bg-status-offline/10 px-2 py-1.5 text-xs text-status-offline">
           <WifiOff className="h-3.5 w-3.5 shrink-0" />
           <span className="min-w-0">
             Offline — showing the copy you downloaded{' '}
@@ -120,7 +120,7 @@ export function TerritoryExecutionPanel({
                 summary.state === 'stalled'
                   ? 'bg-destructive/10 text-destructive'
                   : summary.state === 'complete'
-                    ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400'
+                    ? 'bg-status-complete/10 text-status-complete'
                     : 'bg-primary/10 text-primary'
               )}
             >
@@ -160,7 +160,7 @@ export function TerritoryExecutionPanel({
       {(pendingOfflineCount > 0 || locationError) && (
         <div className="mt-2 space-y-1" aria-live="polite">
           {pendingOfflineCount > 0 && (
-            <p className="flex items-center gap-1.5 text-xs font-medium text-amber-700 dark:text-amber-400">
+            <p className="flex items-center gap-1.5 text-xs font-medium text-status-offline">
               <WifiOff className="h-3.5 w-3.5" />
               {pendingOfflineCount} result{pendingOfflineCount === 1 ? '' : 's'} waiting to sync
             </p>

@@ -233,7 +233,7 @@ export function StormAlertsCard() {
                   <span
                     className={
                       testEmailResult.success
-                        ? 'text-xs text-emerald-700 dark:text-emerald-400'
+                        ? 'text-xs text-status-complete'
                         : 'text-xs text-destructive'
                     }
                     role="status"

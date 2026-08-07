@@ -666,13 +666,13 @@ function LeadsListContent() {
                             DNC
                           </span>
                         )}
-                        {lead.enriched_at && <span title="Enriched"><Sparkles className="h-3 w-3 text-amber-500" /></span>}
+                        {lead.enriched_at && <span title="Enriched"><Sparkles className="h-3 w-3 text-status-stale" /></span>}
                         {lead.follow_up_date && (() => {
                           const d = new Date(lead.follow_up_date + 'T00:00:00');
                           const overdue = isPast(d) && !isToday(d);
                           return (
                             <span title={`Follow-up: ${lead.follow_up_date}`}>
-                              <CalendarClock className={`h-3 w-3 ${overdue ? 'text-destructive' : 'text-amber-500'}`} />
+                              <CalendarClock className={`h-3 w-3 ${overdue ? 'text-destructive' : 'text-status-stale'}`} />
                             </span>
                           );
                         })()}

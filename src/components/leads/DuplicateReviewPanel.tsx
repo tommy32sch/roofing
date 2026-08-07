@@ -102,9 +102,9 @@ export function DuplicateReviewPanel() {
       <Card className="border-amber-200 dark:border-amber-800">
         <CardHeader className="pb-3">
           <CardTitle className="text-lg flex items-center gap-2">
-            <AlertTriangle className="h-4 w-4 text-amber-500" />
+            <AlertTriangle className="h-4 w-4 text-status-stale" />
             Duplicate Review
-            <Badge variant="outline" className="ml-1 text-amber-600 border-amber-400">
+            <Badge variant="outline" className="ml-1 text-status-stale border-amber-400">
               {flaggedLeads.length}
             </Badge>
           </CardTitle>
@@ -119,7 +119,7 @@ export function DuplicateReviewPanel() {
                       {lead.first_name} {lead.last_name}
                       <ExternalLink className="h-3 w-3" />
                     </Link>
-                    <Badge variant="outline" className="text-amber-600 border-amber-400 text-xs">Flagged</Badge>
+                    <Badge variant="outline" className="text-status-stale border-amber-400 text-xs">Flagged</Badge>
                   </div>
                   <p className="text-xs text-muted-foreground">
                     {[lead.address_street, lead.address_city, lead.address_state].filter(Boolean).join(', ')}

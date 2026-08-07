@@ -68,8 +68,8 @@ export function AppointmentConflictWarning({ value, excludeAppointmentId, onConf
   if (conflicts.length === 0) return null;
 
   return (
-    <div className="flex gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-2.5">
-      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
+    <div className="flex gap-2 rounded-md border border-status-offline/40 bg-status-offline/10 p-2.5">
+      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-status-stale" />
       <div className="space-y-1 text-xs">
         <p className="font-medium text-foreground">
           {conflictSummary(conflicts, (iso) => format(new Date(iso), 'h:mm a'))}

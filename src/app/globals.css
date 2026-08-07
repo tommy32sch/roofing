@@ -44,6 +44,10 @@
   --radius-2xl: calc(var(--radius) + 8px);
 
   /* Pipeline status colors */
+  --color-status-offline: var(--status-offline);
+  --color-status-stale: var(--status-stale);
+  --color-status-complete: var(--status-complete);
+  --color-status-attention: var(--status-attention);
   --color-pipeline-new: var(--pipeline-new);
   --color-pipeline-contacted: var(--pipeline-contacted);
   --color-pipeline-appointment: var(--pipeline-appointment);
@@ -110,6 +114,19 @@
   --pipeline-proposal: oklch(0.52 0.16 275);
   --pipeline-sold: oklch(0.56 0.16 150);
   --pipeline-lost: oklch(0.55 0.16 25);
+
+  /* Field/system state — the SAME rule as pipeline status above: held outside
+     the 40-70 brand-orange band so "something needs your attention" can never
+     be mistaken for "tap this". That distinction matters most in sunlight,
+     where a rep is reading colour before shape.
+
+     These replace ~30 hand-picked amber/emerald values that carried state
+     meaning outside the token system, where every component chose its own
+     shade and offline looked like a primary action. */
+  --status-offline: oklch(0.70 0.15 95);
+  --status-stale: oklch(0.68 0.11 95);
+  --status-complete: oklch(0.56 0.16 150);
+  --status-attention: oklch(0.55 0.16 25);
 }
 
 .dark {
@@ -162,6 +179,13 @@
   --pipeline-proposal: oklch(0.66 0.15 275);
   --pipeline-sold: oklch(0.70 0.16 150);
   --pipeline-lost: oklch(0.68 0.19 22);
+
+  /* Field/system state, lifted for the dark surface — same hues, more
+     luminance, because these are read outdoors on a phone at arm's length. */
+  --status-offline: oklch(0.80 0.16 95);
+  --status-stale: oklch(0.75 0.11 95);
+  --status-complete: oklch(0.72 0.17 150);
+  --status-attention: oklch(0.68 0.19 25);
 }
 
 /* ---------------------------------------------------------------------------
@@ -434,4 +458,60 @@
 }
 .leaflet-tooltip.territory-label::before {
   display: none;
+}
+
+/* ---------------------------------------------------------------------------
+   Field sizing: interactive targets on touch devices.
+
+   Measured problem: every interactive primitive rendered 32px tall (h-8), and
+   the primary user is a rep working one-handed, walking, in sunlight. Apple's
+   44px floor assumes a stationary hand and a steady gaze; this user has
+   neither.
+
+   Keyed on `pointer: coarse` rather than a width breakpoint, deliberately. The
+   question is "is this being driven by a finger", not "is the screen small" —
+   a tablet gets the larger targets, a desktop window dragged narrow does not,
+   and the dense admin layout survives on the machines that use a mouse.
+
+   Applied via data-slot so it is a SYSTEM rule rather than per-screen patches:
+   every shadcn primitive already carries one, so components added later
+   inherit this without anyone remembering to.
+
+   Left UNLAYERED on purpose. Tailwind v4 puts utilities in a real cascade
+   layer, and unlayered rules beat every layer regardless of specificity, so
+   this reliably overrides an inline h-8 without !important.
+--------------------------------------------------------------------------- */
+@media (pointer: coarse) {
+  [data-slot='button'],
+  [data-slot='input'],
+  [data-slot='select-trigger'] {
+    min-height: 2.75rem; /* 44px */
+  }
+
+  /* Square controls need width too, or a 44px-tall icon button stays a
+     narrow sliver that is just as easy to miss. */
+  [data-slot='button']:where(.size-6, .size-7, .size-8, .size-9) {
+    min-width: 2.75rem;
+  }
+
+  /* Checkbox and switch are small by design; growing the control would look
+     wrong, so the HIT AREA grows instead and the visual stays put. */
+  [data-slot='checkbox'],
+  [data-slot='switch'] {
+    position: relative;
+  }
+  [data-slot='checkbox']::after,
+  [data-slot='switch']::after {
+    content: '';
+    position: absolute;
+    inset: 50% auto auto 50%;
+    translate: -50% -50%;
+    min-width: 2.75rem;
+    min-height: 2.75rem;
+  }
+
+  /* Rows in an open dropdown are tapped mid-stride too. */
+  [data-slot='select-item'] {
+    min-height: 2.5rem;
+  }
 }

@@ -59,7 +59,7 @@ export function OfflineStoragePanel({
         </span>
         <span className="text-xs text-muted-foreground">{formatBytes(totalBytes)}</span>
         {!online && (
-          <span className="ml-auto flex items-center gap-1 text-xs text-amber-600 dark:text-amber-500">
+          <span className="ml-auto flex items-center gap-1 text-xs text-status-offline">
             <WifiOff className="h-3.5 w-3.5" />
             offline
           </span>
@@ -74,7 +74,7 @@ export function OfflineStoragePanel({
               {packagedLeadCount(pkg)} door{packagedLeadCount(pkg) === 1 ? '' : 's'} · {formatBytes(bytes)} ·{' '}
               {/* Stale is a prompt, not a block: the houses are still right,
                   what may be missing is a door a colleague knocked this morning. */}
-              <span className={stale ? 'text-amber-600 dark:text-amber-500' : undefined}>
+              <span className={stale ? 'text-status-offline' : undefined}>
                 {formatAge(ageMs)}
                 {stale ? ' — refresh when you have signal' : ''}
               </span>
