@@ -981,11 +981,9 @@ export default function LeadMap({
                 <p className="text-xs">
                   {[lead.address_street, lead.address_city].filter(Boolean).join(', ') || 'No address'}
                 </p>
-                <p className="text-xs">
-                  {STATUS_LABELS[lead.status] ?? lead.status}
-                  {lead.estimated_roof_value != null &&
-                    ` · ~$${Number(lead.estimated_roof_value).toLocaleString()}`}
-                </p>
+                {/* The two Do Not warnings stay above the buttons because they
+                    DISABLE them — a rep must see why a control is dead before
+                    reaching for it. Everything else is reference and sits below. */}
                 {lead.is_dnc && (
                   <p className="text-xs font-semibold" style={{ color: DNC_RING_COLOR }}>
                     Do Not Call
@@ -994,22 +992,6 @@ export default function LeadMap({
                 {lead.do_not_knock && (
                   <p className="text-xs font-semibold" style={{ color: DO_NOT_KNOCK_RING_COLOR }}>
                     Do not knock — homeowner asked
-                  </p>
-                )}
-                {lead.last_knock_at && (
-                  <p className="text-xs text-muted-foreground">
-                    Knocked {formatDistanceToNow(new Date(lead.last_knock_at), { addSuffix: true })}
-                    {lead.last_disposition ? ` · ${knockLabel(lead.last_disposition)}` : ''}
-                    {lead.knock_count > 1 ? ` · ${lead.knock_count}×` : ''}
-                  </p>
-                )}
-                {lead.last_call_at && (
-                  <p className="text-xs text-muted-foreground">
-                    Cold called {formatDistanceToNow(new Date(lead.last_call_at), { addSuffix: true })}
-                    {lead.last_call_disposition
-                      ? ` · ${callLabel(lead.last_call_disposition)}`
-                      : ''}
-                    {lead.call_count > 1 ? ` · ${lead.call_count}×` : ''}
                   </p>
                 )}
 
@@ -1077,6 +1059,31 @@ export default function LeadMap({
                   </div>
                 )}
 
+
+                {/* Reference detail: real information, but not what the popup
+                    was opened for, so it does not stand between the rep and
+                    the buttons. */}
+                <p className="text-xs">
+                  {STATUS_LABELS[lead.status] ?? lead.status}
+                  {lead.estimated_roof_value != null &&
+                    ` · ~$${Number(lead.estimated_roof_value).toLocaleString()}`}
+                </p>
+                {lead.last_knock_at && (
+                  <p className="text-xs text-muted-foreground">
+                    Knocked {formatDistanceToNow(new Date(lead.last_knock_at), { addSuffix: true })}
+                    {lead.last_disposition ? ` · ${knockLabel(lead.last_disposition)}` : ''}
+                    {lead.knock_count > 1 ? ` · ${lead.knock_count}×` : ''}
+                  </p>
+                )}
+                {lead.last_call_at && (
+                  <p className="text-xs text-muted-foreground">
+                    Cold called {formatDistanceToNow(new Date(lead.last_call_at), { addSuffix: true })}
+                    {lead.last_call_disposition
+                      ? ` · ${callLabel(lead.last_call_disposition)}`
+                      : ''}
+                    {lead.call_count > 1 ? ` · ${lead.call_count}×` : ''}
+                  </p>
+                )}
                 <div className="flex items-center gap-2 pt-1">
                   <Link href={`/admin/leads/${lead.id}`} className="text-xs underline">
                     View lead →
