@@ -25,6 +25,7 @@ import { EmptyState } from '@/components/layout/empty-state';
 
 export default function IntegrationsPage() {
   const [keys, setKeys] = useState<IntegrationApiKey[]>([]);
+  const [revokeTarget, setRevokeTarget] = useState<IntegrationApiKey | null>(null);
   const [logs, setLogs] = useState<WebhookLog[]>([]);
   const [sources, setSources] = useState<LeadSource[]>([]);
   const [loading, setLoading] = useState(true);
@@ -97,14 +98,23 @@ export default function IntegrationsPage() {
     }
   }
 
+  /**
+   * Confirmed in the app's own dialog rather than a native confirm().
+   *
+   * It was the only native one left among five styled dialogs, and the app is
+   * now installed to home screens — a browser alert inside a standalone window
+   * reads as a system error rather than part of the product. The consistency
+   * also matters for the decision itself: this is the one destructive action
+   * whose damage is invisible, since the vendor's feed simply stops and nothing
+   * in the app announces it.
+   */
   async function deleteKey(keyId: string) {
-    if (!confirm('Deactivate this API key? Any webhooks using it will stop working.')) return;
-
     try {
       const res = await fetch(`/api/admin/integrations/${keyId}`, { method: 'DELETE' });
       const data = await res.json();
       if (data.success) {
         toast.success('API key deactivated');
+        setRevokeTarget(null);
         loadData();
       } else {
         toast.error(data.error || 'Failed to deactivate key');
@@ -285,7 +295,12 @@ export default function IntegrationsPage() {
                     </div>
                   </div>
                   {key.is_active && (
-                    <Button variant="ghost" size="sm" onClick={() => deleteKey(key.id)}>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      aria-label={`Deactivate ${key.name}`}
+                      onClick={() => setRevokeTarget(key)}
+                    >
                       <Trash2 className="h-4 w-4 text-destructive" />
                     </Button>
                   )}
@@ -378,6 +393,28 @@ export default function IntegrationsPage() {
           </div>
         </CardContent>
       </Card>
+
+      <Dialog open={revokeTarget !== null} onOpenChange={(o) => { if (!o) setRevokeTarget(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Deactivate {revokeTarget?.name}?</DialogTitle>
+          </DialogHeader>
+          {/* Names the consequence rather than the operation. Nothing in the app
+              announces a dead feed — leads just quietly stop arriving — so the
+              dialog is the only place this can be said. */}
+          <p className="text-sm text-muted-foreground">
+            Any webhook still sending with this key stops being accepted
+            immediately. Leads from that source will stop arriving, and nothing
+            will report it — you would notice only when the volume drops.
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRevokeTarget(null)}>Keep active</Button>
+            <Button variant="destructive" onClick={() => revokeTarget && deleteKey(revokeTarget.id)}>
+              Deactivate key
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

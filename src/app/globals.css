@@ -520,4 +520,13 @@
   [data-slot='select-item'] {
     min-height: 2.5rem;
   }
+
+  /* A control revealed on hover does not exist on a touch screen — there is no
+     hover state to enter, so the affordance is simply invisible. Anything
+     marked data-hover-reveal is shown unconditionally here. Marked rather than
+     matched on opacity-0, because plenty of things are transparent on purpose
+     and only the author knows which ones were waiting for a mouse. */
+  [data-hover-reveal] {
+    opacity: 1 !important;
+  }
 }

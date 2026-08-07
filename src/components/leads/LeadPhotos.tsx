@@ -6,6 +6,13 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { EmptyState } from '@/components/layout/empty-state';
 import { downscaleImage } from '@/lib/leads/downscale';
 import { MAX_PHOTO_BYTES } from '@/lib/leads/photos';
@@ -30,6 +37,7 @@ export function LeadPhotos({ leadId }: { leadId: string }) {
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(0);
+  const [deleteTarget, setDeleteTarget] = useState<Photo | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
@@ -103,12 +111,18 @@ export function LeadPhotos({ leadId }: { leadId: string }) {
     if (fileRef.current) fileRef.current.value = '';
   }
 
+  /**
+   * Confirmed because the file is gone for good and cannot be re-created from
+   * anything on screen — these are damage photos taken at a door the rep is no
+   * longer standing at. Same reversibility rule as cancelling an appointment.
+   */
   async function remove(photo: Photo) {
     try {
       const res = await fetch(`/api/admin/leads/${leadId}/photos/${photo.id}`, { method: 'DELETE' });
       const data = await res.json();
       if (data.success) {
         setPhotos((p) => p.filter((x) => x.id !== photo.id));
+        setDeleteTarget(null);
         toast.success('Photo deleted');
       } else {
         toast.error(data.error || 'Failed to delete photo');
@@ -180,8 +194,9 @@ export function LeadPhotos({ leadId }: { leadId: string }) {
                 {photo.can_delete && (
                   <button
                     type="button"
-                    onClick={() => remove(photo)}
+                    onClick={() => setDeleteTarget(photo)}
                     aria-label="Delete photo"
+                    data-hover-reveal
                     className="absolute right-1 top-1 rounded bg-background/80 p-1 text-destructive opacity-0 transition-opacity group-hover:opacity-100 focus:opacity-100"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
@@ -192,6 +207,24 @@ export function LeadPhotos({ leadId }: { leadId: string }) {
           </div>
         )}
       </CardContent>
+
+      <Dialog open={deleteTarget !== null} onOpenChange={(o) => { if (!o) setDeleteTarget(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete this photo?</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            The file is removed for good. Damage photos are taken at a door the
+            rep is no longer standing at, so this cannot be retaken.
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteTarget(null)}>Keep photo</Button>
+            <Button variant="destructive" onClick={() => deleteTarget && remove(deleteTarget)}>
+              Delete photo
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }
