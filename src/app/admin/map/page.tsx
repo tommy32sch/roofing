@@ -159,6 +159,19 @@ export default function MapPage() {
   const [addingHouse, setAddingHouse] = useState(false);
   const [pendingHouse, setPendingHouse] = useState<{ latitude: number; longitude: number } | null>(null);
   const [mapToolsOpen, setMapToolsOpen] = useState(false);
+  /**
+   * Tracks the sm breakpoint the Tools toggle uses, so the draw hint appears
+   * exactly when the controls it explains do. Matching on the same query rather
+   * than a second hardcoded number keeps the two from drifting apart.
+   */
+  const [isNarrow, setIsNarrow] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 639px)');
+    const sync = () => setIsNarrow(mq.matches);
+    sync();
+    mq.addEventListener('change', sync);
+    return () => mq.removeEventListener('change', sync);
+  }, []);
   const [drawing, setDrawing] = useState(false);
   const [drawPurpose, setDrawPurpose] = useState<MapDrawPurpose | null>(null);
   // Areas committed during this draw session. Kept so several loops are
@@ -1352,7 +1365,10 @@ export default function MapPage() {
           The tooltip cannot be reached on a touchscreen and is easy to miss on a
           mouse, so a disabled button with no visible explanation is a dead end —
           "New territory" looks broken rather than waiting on a choice. */}
-      {isAdmin && !drawing && !addingHouse &&
+      {/* Only alongside the controls it explains. On a phone the tools are
+          collapsed behind the Tools toggle, so this was describing a disabled
+          button that was not on screen — and costing 100px of map to do it. */}
+      {isAdmin && !drawing && !addingHouse && (mapToolsOpen || !isNarrow) &&
         (drawAvailability.territoryBlockedReason || drawAvailability.selectionBlockedReason) && (
         <div className="rounded-md border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
           {[drawAvailability.territoryBlockedReason, drawAvailability.selectionBlockedReason]
