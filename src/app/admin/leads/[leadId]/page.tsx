@@ -96,6 +96,7 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
   const [lead, setLead] = useState<LeadWithActivities | null>(null);
   const [loading, setLoading] = useState(true);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [cancelTarget, setCancelTarget] = useState<LeadAppointment | null>(null);
   const [userRole, setUserRole] = useState<UserRole>('admin');
   const [wonModalOpen, setWonModalOpen] = useState(false);
   const [apptModalOpen, setApptModalOpen] = useState(false);
@@ -306,12 +307,24 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
     }
   }
 
+  /**
+   * Cancelling an appointment is confirmed because it is not reversible in the
+   * way it looks. Deleting the row also destroys any outcome recorded against
+   * it and that outcome's contribution to the performance report — and the
+   * control sits directly beside Edit at icon size, so a mis-tap is a normal
+   * thing to do rather than a careless one.
+   *
+   * The rule this follows: confirm when the action destroys work that cannot be
+   * recreated from what is on screen. Not "is it a delete" — removing an
+   * offline download is a delete and needs no dialog, because it re-downloads.
+   */
   async function handleDeleteAppointment(appt: LeadAppointment) {
     try {
       const res = await fetch(`/api/admin/leads/${leadId}/appointments/${appt.id}`, { method: 'DELETE' });
       const data = await res.json();
       if (data.success) {
         toast.success('Appointment canceled');
+        setCancelTarget(null);
         fetchLead();
       } else {
         toast.error(data.error || 'Failed to cancel appointment');
@@ -935,7 +948,8 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
                               variant="ghost"
                               size="sm"
                               className="h-7 w-7 p-0 text-destructive"
-                              onClick={() => handleDeleteAppointment(appt)}
+                              aria-label="Cancel appointment"
+                              onClick={() => setCancelTarget(appt)}
                             >
                               <Trash2 className="h-3.5 w-3.5" />
                             </Button>
@@ -1228,6 +1242,37 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
                   : editingApptId
                     ? 'Save Changes'
                     : 'Add Appointment'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Cancelling destroys any recorded outcome along with the booking, and
+          the control is an icon beside Edit — so this asks first. */}
+      <Dialog open={cancelTarget !== null} onOpenChange={(o) => { if (!o) setCancelTarget(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Cancel this appointment?</DialogTitle>
+          </DialogHeader>
+          {/* One message rather than branching on whether a result was
+              recorded: the client's LeadAppointment type predates the outcome
+              column, so it cannot actually tell. Stating the worst case that is
+              always true beats guessing and being wrong in the direction that
+              makes the action look safer than it is. */}
+          <p className="text-sm text-muted-foreground">
+            This deletes the booking and any result recorded against it,
+            including its contribution to the performance report. It cannot be
+            undone.
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCancelTarget(null)}>
+              Keep appointment
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => cancelTarget && handleDeleteAppointment(cancelTarget)}
+            >
+              Cancel appointment
             </Button>
           </DialogFooter>
         </DialogContent>

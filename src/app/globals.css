@@ -488,9 +488,15 @@
     min-height: 2.75rem; /* 44px */
   }
 
-  /* Square controls need width too, or a 44px-tall icon button stays a
-     narrow sliver that is just as easy to miss. */
-  [data-slot='button']:where(.size-6, .size-7, .size-8, .size-9) {
+  /* Width too, or a 44px-tall icon button is a narrow sliver — worse than
+     before, because it looks bigger without being easier to hit.
+     
+     Applied to EVERY button rather than a list of size classes. The first
+     version matched .size-7 and missed a button written `h-7 w-7`: identical
+     result, different spelling, no match. A rule that can be evaded by how
+     someone happens to write the size is not a rule. Text buttons already
+     exceed 44px wide, so this only ever affects icon-only ones. */
+  [data-slot='button'] {
     min-width: 2.75rem;
   }
 
