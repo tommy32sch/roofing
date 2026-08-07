@@ -991,12 +991,6 @@ export default function LeadMap({
                     Do Not Call
                   </p>
                 )}
-                {lead.hail_size_inches != null && (
-                  <p className="text-xs font-medium text-blue-600">
-                    {Number(lead.hail_size_inches).toFixed(2)}&quot; hail
-                    {lead.hail_date ? ` · ${lead.hail_date}` : ''}
-                  </p>
-                )}
                 {lead.do_not_knock && (
                   <p className="text-xs font-semibold" style={{ color: DO_NOT_KNOCK_RING_COLOR }}>
                     Do not knock — homeowner asked
@@ -1019,6 +1013,11 @@ export default function LeadMap({
                   </p>
                 )}
 
+
+                {/* The action sits above the reference detail: a rep taps a pin to
+                    knock the house, and hail size and estimated value do not change
+                    that decision at the door. What DOES change it — the two Do Not
+                    warnings and when the house was last contacted — stays above. */}
                 {/* Identify the activity here, then choose the outcome in a
                     phone-sized sheet outside Leaflet. Each restriction blocks
                     only its own channel: DNC leads can still be knocked and
@@ -1052,6 +1051,14 @@ export default function LeadMap({
                       </Button>
                     </div>
                   </div>
+                )}
+
+                {/* Reference detail, below the action. */}
+                {lead.hail_size_inches != null && (
+                  <p className="text-xs font-medium text-blue-600">
+                    {Number(lead.hail_size_inches).toFixed(2)}&quot; hail
+                    {lead.hail_date ? ` · ${lead.hail_date}` : ''}
+                  </p>
                 )}
 
                 {/* Go Back and Call Back are promises to follow up. Without
