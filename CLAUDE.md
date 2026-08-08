@@ -2,6 +2,7 @@
 
 These govern. Where anything below conflicts with this section, this section wins.
 
+- Always use ASD-STE100 Simplified Technical English.
 - Keep responses focused and concise.
 - Understand the larger goal and why the task matters before acting.
 - Complete the task at the requested scope.
