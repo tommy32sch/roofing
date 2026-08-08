@@ -7,6 +7,7 @@ import { applyLeadVisibilityFilter } from '@/lib/leads/lead-visibility';
 import { LEAD_STATUS_OPTIONS } from '@/types';
 import type { LeadStatus } from '@/types';
 import { startOfWeek, startOfMonth } from 'date-fns';
+import { previousPeriod } from '@/lib/leads/metric-delta';
 
 export async function GET(request: NextRequest) {
   try {
@@ -112,10 +113,65 @@ export async function GET(request: NextRequest) {
       .filter((l) => ACTIVE_STATUSES.has(l.status) && l.estimated_roof_value)
       .reduce((sum, l) => sum + Number(l.estimated_roof_value), 0);
 
+    /*
+     * Compare the last 30 days with the 30 days before them.
+     *
+     * Computed here from leads already in memory. No extra query is needed.
+     *
+     * Only counts that can be honestly dated are compared. A lead has
+     * created_at but no sold_at, so "won" means a lead that ARRIVED in the
+     * window and has since sold. It does not mean a sale closed in the window.
+     * The dashboard labels it that way.
+     */
+    const WINDOW_DAYS = 30;
+    const windowEnd = now;
+    const windowStart = new Date(now.getTime() - WINDOW_DAYS * 86_400_000);
+    const prior = previousPeriod(windowStart, windowEnd);
+
+    const createdBetween = (from: Date, to: Date) =>
+      allLeads.filter((l) => {
+        const t = new Date(l.created_at).getTime();
+        return t >= from.getTime() && t < to.getTime();
+      });
+
+    const currentWindow = createdBetween(windowStart, windowEnd);
+    const priorWindow = createdBetween(prior.start, prior.end);
+
+    const windowSummary = (rows: typeof allLeads) => ({
+      newLeads: rows.length,
+      hot: rows.filter((l) => l.priority === 'hot').length,
+      won: rows.filter((l) => l.status === 'sold').length,
+      wonValue: rows
+        .filter((l) => l.status === 'sold' && l.deal_value)
+        .reduce((sum, l) => sum + Number(l.deal_value), 0),
+    });
+
+    /*
+     * One point per day, oldest first. Days with no leads are kept as zero.
+     * If the gaps were dropped, a quiet week would compress and the line would
+     * show growth that did not happen.
+     */
+    const dailyCounts = new Map<string, number>();
+    for (let i = WINDOW_DAYS - 1; i >= 0; i--) {
+      const day = new Date(now.getTime() - i * 86_400_000).toISOString().slice(0, 10);
+      dailyCounts.set(day, 0);
+    }
+    for (const l of currentWindow) {
+      const day = new Date(l.created_at).toISOString().slice(0, 10);
+      if (dailyCounts.has(day)) dailyCounts.set(day, (dailyCounts.get(day) ?? 0) + 1);
+    }
+    const leadTrend = [...dailyCounts.entries()].map(([date, value]) => ({ date, value }));
+
     return NextResponse.json({
       success: true,
       stats: {
         totalLeads,
+        period: {
+          days: WINDOW_DAYS,
+          current: windowSummary(currentWindow),
+          previous: windowSummary(priorWindow),
+        },
+        leadTrend,
         leadsThisWeek,
         leadsThisMonth,
         hotLeads,

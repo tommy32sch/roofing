@@ -368,6 +368,27 @@ export interface DashboardStats {
   totalWonValue: number;
   totalEstimatedRoofValue: number;
   overdueFollowUps: number;
+  /**
+   * The last 30 days against the 30 before them.
+   *
+   * `won` counts leads that ARRIVED in the window and have since sold. A lead
+   * has no sold_at column, so this cannot mean "closed in the window". The
+   * dashboard labels it accordingly.
+   */
+  period?: {
+    days: number;
+    current: PeriodSummary;
+    previous: PeriodSummary;
+  };
+  /** One point per day, oldest first. Quiet days are kept as zero. */
+  leadTrend?: { date: string; value: number }[];
+}
+
+export interface PeriodSummary {
+  newLeads: number;
+  hot: number;
+  won: number;
+  wonValue: number;
 }
 
 export interface CSVImportResult {

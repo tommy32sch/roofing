@@ -18,6 +18,9 @@ import { format, formatDistanceToNow } from 'date-fns';
 import { formatAddress } from '@/lib/utils/format';
 import { LeadStatusBadge } from '@/components/leads/lead-status-badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { MetricCard } from '@/components/layout/metric-card';
+import { TrendChart } from '@/components/layout/trend-chart';
+import { metricDelta } from '@/lib/leads/metric-delta';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
@@ -272,29 +275,75 @@ export default function DashboardPage() {
 
       {/* Stat cards — label small and quiet, number large and tabular so the
           figures line up and read as data rather than as body copy. */}
+      {/* Every number carries what it did and what it is compared with. A
+          count on its own cannot be read as good or bad. `higherIsBetter` is
+          set per metric because direction and goodness differ: more hot leads
+          is good, and the same arrow on a backlog would not be. */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
-        {[
-          { icon: Users, label: 'Total Leads', value: (stats?.totalLeads ?? 0).toLocaleString(), accent: 'text-muted-foreground' },
-          { icon: CalendarDays, label: 'This Week', value: (stats?.leadsThisWeek ?? 0).toLocaleString(), accent: 'text-muted-foreground' },
-          { icon: TrendingUp, label: 'Conversion', value: `${stats?.conversionRate ?? 0}%`, accent: 'text-muted-foreground' },
-          {
-            icon: Flame,
-            label: 'Hot Leads',
-            value: (stats?.hotLeads ?? 0).toLocaleString(),
-            accent: (stats?.hotLeads ?? 0) > 0 ? 'text-red-500' : 'text-muted-foreground',
-          },
-        ].map(({ icon: Icon, label, value, accent }) => (
-          <Card key={label} className="transition-colors hover:border-foreground/20">
-            <CardContent className="p-4">
-              <div className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                <Icon className={`h-3.5 w-3.5 ${accent}`} />
-                {label}
-              </div>
-              <p className="mt-2 text-3xl font-semibold tabular-nums tracking-tight">{value}</p>
-            </CardContent>
-          </Card>
-        ))}
+        {(() => {
+          const p = stats?.period;
+          const d = (cur: number, prev: number) => (p ? metricDelta(cur, prev) : null);
+          return [
+            {
+              icon: Users,
+              label: `New leads · ${p?.days ?? 30}d`,
+              value: (p?.current.newLeads ?? stats?.totalLeads ?? 0).toLocaleString(),
+              delta: d(p?.current.newLeads ?? 0, p?.previous.newLeads ?? 0),
+              higherIsBetter: true,
+            },
+            {
+              icon: Flame,
+              label: 'Hot leads',
+              value: (p?.current.hot ?? stats?.hotLeads ?? 0).toLocaleString(),
+              delta: d(p?.current.hot ?? 0, p?.previous.hot ?? 0),
+              higherIsBetter: true,
+            },
+            {
+              icon: TrendingUp,
+              label: 'Won from these leads',
+              value: (p?.current.won ?? 0).toLocaleString(),
+              delta: d(p?.current.won ?? 0, p?.previous.won ?? 0),
+              higherIsBetter: true,
+            },
+            {
+              icon: CalendarDays,
+              label: 'Overdue follow-ups',
+              value: (stats?.overdueFollowUps ?? 0).toLocaleString(),
+              // No previous figure exists for this one, so it shows the count
+              // alone rather than an empty delta slot.
+              delta: null,
+              higherIsBetter: false,
+            },
+          ].map((m) => (
+            <MetricCard
+              key={m.label}
+              icon={m.icon}
+              label={m.label}
+              value={m.value}
+              delta={m.delta}
+              higherIsBetter={m.higherIsBetter}
+            />
+          ));
+        })()}
       </div>
+
+      {/* Leads over time. Shown only with real data, so an empty account gets
+          a clean dashboard rather than a flat line at zero. */}
+      {stats?.leadTrend && stats.leadTrend.some((pt) => pt.value > 0) && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Leads over time
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <TrendChart
+              points={stats.leadTrend}
+              label="New leads per day"
+            />
+          </CardContent>
+        </Card>
+      )}
 
       {/* Revenue cards — same treatment as the stat cards above, and coloured
           from the pipeline tokens rather than raw greens/blues so they follow
