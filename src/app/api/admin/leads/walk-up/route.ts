@@ -81,7 +81,7 @@ export async function POST(request: NextRequest) {
         status: 'new',
         source_id: DOOR_KNOCK_SOURCE_ID,
         source_notes: 'Added from the map while canvassing',
-        market_id: await marketFilterFor(admin.sub, body.market_id != null ? String(body.market_id) : null),
+        market_id: await marketFilterFor(admin.marketId, body.market_id != null ? String(body.market_id) : null),
         created_by: admin.sub,
         created_by_name: admin.name?.trim() || admin.email,
       })

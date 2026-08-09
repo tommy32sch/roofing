@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
     if (priority) query = query.eq('priority', priority);
 
     // Office scoping: explicit ?market_id, else the caller's home market.
-    query = applyMarketFilter(query, await marketFilterFor(admin.sub, searchParams.get('market_id')));
+    query = applyMarketFilter(query, await marketFilterFor(admin.marketId, searchParams.get('market_id')));
 
     const { data: leads, error } = await query;
     if (error) {

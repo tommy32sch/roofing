@@ -44,11 +44,9 @@ function LoginForm() {
         return;
       }
 
-      // A full document load, not router.push. The admin layout is shared with
-      // this page, so a client-side navigation leaves it mounted and holding
-      // the PREVIOUS user's name, role and company — a setter would land on the
-      // admin's name in the header and the admin's sidebar. Same reason the
-      // impersonate and restore flows already hard-navigate.
+      // A full document load, not router.push. It creates the protected server
+      // shell from the new session and cannot reuse another account's provider
+      // or offline ownership. Impersonate and restore use the same boundary.
       //
       // Deliberately stays in the loading state: the navigation is async, and
       // re-enabling the button would let a second login fire while the new page

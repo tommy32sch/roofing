@@ -5,9 +5,9 @@ import { join } from 'path';
 const read = (path: string) => readFileSync(join(process.cwd(), path), 'utf8');
 const map = read('src/components/leads/LeadMap.tsx');
 const sheet = read('src/components/leads/LeadResultSheet.tsx');
-const page = read('src/app/admin/map/page.tsx');
+const page = read('src/app/admin/(app)/map/page.tsx');
 const geoRoute = read('src/app/api/admin/leads/geo/route.ts');
-const detail = read('src/app/admin/leads/[leadId]/page.tsx');
+const detail = read('src/app/admin/(app)/leads/[leadId]/page.tsx');
 
 describe('map lead-result UI contracts', () => {
   it('opens a bottom sheet with large targets and both exact option sources', () => {
@@ -35,7 +35,7 @@ describe('map lead-result UI contracts', () => {
       page.indexOf('onOpenResult={'),
       page.indexOf('onFollowUpChange=')
     );
-    expect(callbackBlock).toContain('identityLoaded && currentUserId');
+    expect(callbackBlock).toContain('(lead, channel) => setResultTarget');
     expect(callbackBlock).not.toContain('isAdmin');
   });
 

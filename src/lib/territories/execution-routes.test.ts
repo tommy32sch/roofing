@@ -33,6 +33,7 @@ const USER = {
   email: 'setter@example.com',
   name: 'Setter',
   role: 'setter' as const,
+  marketId: 2,
   iat: 0,
   exp: 0,
 };
@@ -92,7 +93,7 @@ describe('territory execution route boundaries', () => {
     );
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({ success: true, page: 2, limit: 100 });
-    expect(marketFilterMock).toHaveBeenCalledWith(USER.sub, '2');
+    expect(marketFilterMock).toHaveBeenCalledWith(USER.marketId, '2');
     expect(progressMock).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ role: 'setter', marketId: 2, page: 2, limit: 100 })

@@ -8,7 +8,7 @@ const migration = read('supabase/migrations/022_offline_knocks.sql');
 const schema = read('supabase/schema.sql');
 const route = read('src/app/api/admin/leads/[leadId]/knocks/route.ts');
 const hook = read('src/lib/offline/useLeadResultOutbox.ts');
-const mapPage = read('src/app/admin/map/page.tsx');
+const mapPage = read('src/app/admin/(app)/map/page.tsx');
 const store = read('src/lib/offline/store.ts');
 
 describe('offline lead-result persistence contracts', () => {

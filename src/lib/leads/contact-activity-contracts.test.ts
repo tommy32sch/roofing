@@ -4,10 +4,10 @@ import { describe, expect, it } from 'vitest';
 
 const read = (path: string) => readFileSync(join(process.cwd(), path), 'utf8');
 
-const dashboard = read('src/app/admin/page.tsx');
+const dashboard = read('src/app/admin/(app)/page.tsx');
 const activityRoute = read('src/app/api/admin/contact-activity/route.ts');
 const leadRoute = read('src/app/api/admin/leads/[leadId]/route.ts');
-const leadDetail = read('src/app/admin/leads/[leadId]/page.tsx');
+const leadDetail = read('src/app/admin/(app)/leads/[leadId]/page.tsx');
 
 describe('contact activity tracking contracts', () => {
   it('counts both structured channels inside a bounded reporting window', () => {

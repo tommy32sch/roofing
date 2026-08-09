@@ -49,7 +49,7 @@ export async function GET(request: NextRequest) {
 
     const mine = searchParams.get('scope') !== 'all';
     const supabase = db();
-    const marketId = await marketFilterFor(admin.sub, searchParams.get('market_id'));
+    const marketId = await marketFilterFor(admin.marketId, searchParams.get('market_id'));
     const isCloser = admin.role === 'closer';
 
     // Assignment scoping. Both columns matter: a lead can be worked by a setter

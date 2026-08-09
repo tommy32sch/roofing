@@ -10,7 +10,7 @@ import { join } from 'path';
  * set they did not ask for. Neither shows up as an error.
  */
 const route = readFileSync(join(process.cwd(), 'src/app/api/admin/leads/route.ts'), 'utf8');
-const page = readFileSync(join(process.cwd(), 'src/app/admin/leads/page.tsx'), 'utf8');
+const page = readFileSync(join(process.cwd(), 'src/app/admin/(app)/leads/page.tsx'), 'utf8');
 
 describe('lead assignment route contract', () => {
   // Two embeds of admin_users are ambiguous to PostgREST without explicit

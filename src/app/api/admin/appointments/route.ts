@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
     // Office scoping runs through the appointment's lead. The embed is only
     // made inner when a market is actually selected — forcing it always would
     // silently drop any appointment whose lead row is missing.
-    const marketId = await marketFilterFor(admin.sub, searchParams.get('market_id'));
+    const marketId = await marketFilterFor(admin.marketId, searchParams.get('market_id'));
     const leadEmbed = marketId != null ? 'leads!lead_id!inner' : 'leads!lead_id';
 
     let apptQuery = supabase

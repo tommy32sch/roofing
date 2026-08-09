@@ -74,7 +74,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Office scoping: who buys in Phoenix is a different profile than Minnesota.
-    const marketId = await marketFilterFor(admin.sub, searchParams.get('market_id'));
+    const marketId = await marketFilterFor(admin.marketId, searchParams.get('market_id'));
 
     let dbQuery = applyMarketFilter(supabase
       .from('leads')

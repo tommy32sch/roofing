@@ -1139,3 +1139,55 @@ Architectural decisions:
   the current approval/usage limit. Browser interaction is therefore unverified.
 - These changes are local only: no migration, commit, push, or deployment was
   performed.
+
+## Trusted application shell
+
+Goal: load session identity, company, markets, connection state, and broad UI
+permissions once before any protected page renders. Navigation must never flash
+the wrong role, and a failed bootstrap must never look like valid empty data.
+
+### Architecture
+
+- [x] Separate the public login route from a server-loaded protected route group
+- [x] Add a typed session resolver that distinguishes invalid sessions from service failures
+- [x] Add one server bootstrap for identity, company, markets, impersonation, and permissions
+- [x] Add one client provider for bootstrap data, connection state, and shell refresh
+
+### Migration
+
+- [x] Move the existing navigation and account controls into the shared shell
+- [x] Replace repeated identity requests in Dashboard, Leads, Map, Today,
+      Performance, Users, and Lead Detail
+- [x] Make the market hook and market settings read the shared market list
+- [x] Remove duplicate browser connection listeners from offline workflows
+- [x] Show clear shell and resource errors instead of false empty or zero states
+
+### Verification
+
+- [x] Add focused session, permissions, and shell contract tests
+- [x] Update route-path contract tests after the protected route-group move
+- [x] Run the focused tests, full test suite, TypeScript, lint, build, and diff review
+- [x] Record the delivered behavior and verification limits
+
+### Review — 2026-08-09
+
+- Public login now sits outside `admin/(app)`. The protected server layout
+  resolves the live database account before it renders navigation or a page, so
+  no client can start with an admin fallback or flash another role.
+- One request-scoped bootstrap supplies company, markets, impersonation, broad
+  UI permissions, and home market. Client identity and market-list requests are
+  removed. Market-filtered APIs reuse the authenticated home market instead of
+  reading the account row twice.
+- One provider owns online/offline state. A service outage, degraded company or
+  market read, page-data failure, and valid empty result now have separate UI.
+  Import and edit screens stay blocked when their required source data is not
+  trustworthy.
+- Verification passed: 91 test files / 1,004 tests, TypeScript, changed-file
+  ESLint, production build, route generation, and whitespace review. A local
+  browser confirmed that login mounts without the protected shell, `/admin`
+  redirects to login with its return path, and the browser console stays clean.
+  An authenticated interactive pass was not run because no local sign-in
+  credential was supplied; the authenticated shell is covered by loader,
+  session, permission, and source-contract tests.
+- These changes are local only. No migration, commit, push, or deployment was
+  performed.

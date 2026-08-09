@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { toast } from 'sonner';
 import { Building2, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import type { Market } from '@/types';
+import { useAppShell } from '@/components/providers/app-shell-provider';
 
 /**
  * Manage offices from Settings.
@@ -17,24 +18,21 @@ import type { Market } from '@/types';
  * Minnesota address resolves into Arizona.
  */
 export function MarketsCard() {
-  const [markets, setMarkets] = useState<Market[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { hasIssue, markets: shellMarkets, refresh } = useAppShell();
+  const [drafts, setDrafts] = useState<Record<number, Partial<Market>>>({});
+  const markets = shellMarkets.map((market) => ({ ...market, ...drafts[market.id] }));
+  const marketLoadFailed = hasIssue('markets_unavailable');
   const [savingId, setSavingId] = useState<number | null>(null);
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState('');
   const [newCity, setNewCity] = useState('');
   const [newState, setNewState] = useState('');
 
-  useEffect(() => {
-    fetch('/api/admin/markets')
-      .then((r) => r.json())
-      .then((d) => { if (d.success) setMarkets(d.markets ?? []); })
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, []);
-
   function edit(id: number, patch: Partial<Market>) {
-    setMarkets((prev) => prev.map((m) => (m.id === id ? { ...m, ...patch } : m)));
+    setDrafts((current) => ({
+      ...current,
+      [id]: { ...current[id], ...patch },
+    }));
   }
 
   async function save(market: Market) {
@@ -52,7 +50,8 @@ export function MarketsCard() {
       const data = await res.json();
       if (data.success) {
         toast.success(`${data.market.name} saved`);
-        setMarkets((prev) => prev.map((m) => (m.id === data.market.id ? data.market : m)));
+        setDrafts((current) => ({ ...current, [data.market.id]: data.market }));
+        refresh();
       } else {
         toast.error(data.error || 'Failed to save market');
       }
@@ -79,8 +78,8 @@ export function MarketsCard() {
       const data = await res.json();
       if (data.success) {
         toast.success(`${data.market.name} added`);
-        setMarkets((prev) => [...prev, data.market]);
         setNewName(''); setNewCity(''); setNewState('');
+        refresh();
       } else {
         toast.error(data.error || 'Failed to add market');
       }
@@ -106,8 +105,10 @@ export function MarketsCard() {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        {loading ? (
-          <p className="text-sm text-muted-foreground">Loading…</p>
+        {marketLoadFailed ? (
+          <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-sm">
+            Offices could not be loaded. Try again from the workspace notice above.
+          </div>
         ) : markets.length === 0 ? (
           <p className="text-sm text-muted-foreground">
             No markets yet — add your first office below.
@@ -180,7 +181,7 @@ export function MarketsCard() {
               onChange={(e) => setNewState(e.target.value)}
             />
           </div>
-          <Button onClick={add} disabled={adding || !newName.trim()}>
+          <Button onClick={add} disabled={marketLoadFailed || adding || !newName.trim()}>
             <Plus className="h-4 w-4 mr-1" />
             {adding ? 'Adding…' : 'Add'}
           </Button>

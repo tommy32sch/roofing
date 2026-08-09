@@ -1,37 +1,36 @@
 import { NextResponse } from 'next/server';
-import { getAuthenticatedAdmin } from '@/lib/auth/jwt';
-import { db } from '@/lib/supabase/server';
+import { loadAppShell } from '@/lib/app-shell/server';
 
 export async function GET() {
-  const admin = await getAuthenticatedAdmin();
-  if (!admin) {
+  const result = await loadAppShell();
+  if (result.status === 'unauthenticated') {
     return NextResponse.json(
       { success: false, error: 'Not authenticated' },
       { status: 401 }
     );
   }
+  if (result.status === 'unavailable') {
+    return NextResponse.json(
+      { success: false, error: 'Workspace is temporarily unavailable' },
+      { status: 503 }
+    );
+  }
 
-  const supabase = db();
-  const isImpersonating = !!admin.impersonatedBy;
-
-  const [{ data: settings }, { data: user }] = await Promise.all([
-    supabase.from('app_settings').select('company_name').eq('id', 'default').single(),
-    supabase.from('admin_users').select('role, market_id').eq('id', admin.sub).single(),
-  ]);
+  const shell = result.data;
 
   return NextResponse.json({
     success: true,
     admin: {
-      id: admin.sub,
-      email: admin.email,
-      name: admin.name,
-      role: user?.role ?? admin.role,
-      // Home office. Drives the default market filter across the app; null
-      // until an admin assigns one (and before the markets migration runs),
-      // which means "all markets".
-      market_id: (user as { market_id?: number | null } | null)?.market_id ?? null,
+      id: shell.user.id,
+      email: shell.user.email,
+      name: shell.user.name,
+      role: shell.user.role,
+      market_id: shell.user.homeMarketId,
     },
-    companyName: settings?.company_name || 'Roof Leads',
-    isImpersonating,
+    companyName: shell.company.name,
+    markets: shell.markets,
+    permissions: shell.permissions,
+    isImpersonating: shell.session.isImpersonating,
+    issues: shell.issues,
   });
 }

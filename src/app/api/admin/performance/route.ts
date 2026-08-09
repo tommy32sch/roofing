@@ -60,7 +60,7 @@ export async function GET(request: NextRequest) {
     const userIds = users.map((u) => u.id);
 
     // Office scoping: a blended close rate across two offices describes neither.
-    const marketId = await marketFilterFor(admin.sub, params.get('market_id'));
+    const marketId = await marketFilterFor(admin.marketId, params.get('market_id'));
 
     const { data: leadRows } = await applyMarketFilter(
       supabase

@@ -47,7 +47,7 @@ export async function GET(request: NextRequest) {
       );
 
     // Office scoping: explicit ?market_id, else the caller's home market.
-    query = applyMarketFilter(query, await marketFilterFor(admin.sub, searchParams.get('market_id')));
+    query = applyMarketFilter(query, await marketFilterFor(admin.marketId, searchParams.get('market_id')));
 
     // "Show me what this person uploaded." A malformed id narrows to nothing
     // rather than widening to every lead.

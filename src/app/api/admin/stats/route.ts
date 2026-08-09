@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
     // Office scoping: explicit ?market_id, else the caller's home market. The
     // dashboard blends both offices into one total otherwise, which describes
     // neither of them.
-    const marketId = await marketFilterFor(admin.sub, new URL(request.url).searchParams.get('market_id'));
+    const marketId = await marketFilterFor(admin.marketId, new URL(request.url).searchParams.get('market_id'));
 
     // Overdue follow-ups count
     const overdueQuery = applyLeadVisibilityFilter(

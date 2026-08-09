@@ -28,10 +28,9 @@ const nextConfig: NextConfig = {
         // Every authenticated API response is scoped to one user, and none of
         // them carry cache directives of their own — which makes a plain 200
         // heuristically cacheable and, without Vary: Cookie, reusable across
-        // sessions. /api/admin/auth/me is the sharp edge: the layout reads it
-        // on every page load to decide whose name and navigation to render, so
-        // a cached copy shows the PREVIOUS user's identity to the person who
-        // just signed in.
+        // sessions. /api/admin/auth/me remains the sharpest example because it
+        // exposes session identity and must never be reused for another user,
+        // even though the protected UI now loads that identity on the server.
         source: '/api/admin/:path*',
         headers: [
           { key: 'Cache-Control', value: 'no-store, no-cache, must-revalidate, private' },

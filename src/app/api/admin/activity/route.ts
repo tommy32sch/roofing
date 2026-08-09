@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
     // lead_id is non-null with ON DELETE CASCADE, so every surviving activity
     // has a parent. The inner join lets market and role visibility constrain the
     // parent row instead of merely nulling its embedded PII.
-    const marketId = await marketFilterFor(admin.sub, searchParams.get('market_id'));
+    const marketId = await marketFilterFor(admin.marketId, searchParams.get('market_id'));
     const leadEmbed = 'leads!lead_id!inner';
 
     let query = supabase

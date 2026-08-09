@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
 
     const supabase = db();
     let query = supabase.from('territories').select(TERRITORY_DB_FIELDS);
-    query = applyMarketFilter(query, await marketFilterFor(admin.sub, searchParams.get('market_id')));
+    query = applyMarketFilter(query, await marketFilterFor(admin.marketId, searchParams.get('market_id')));
     if (!includeArchived) query = query.is('archived_at', null);
     query = query.order('created_at', { ascending: false });
 

@@ -14,6 +14,7 @@ import {
   packageFreshness,
   type TerritoryPackage,
 } from './territory-package';
+import { useAppShell } from '@/components/providers/app-shell-provider';
 
 /**
  * Territories a rep has taken offline.
@@ -36,10 +37,10 @@ export interface OfflineTerritoryEntry {
 }
 
 export function useOfflineTerritories(repId: string | null) {
+  const { connection } = useAppShell();
   const [entries, setEntries] = useState<OfflineTerritoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [downloading, setDownloading] = useState<string | null>(null);
-  const [online, setOnline] = useState(true);
   const [storageError, setStorageError] = useState(false);
 
   const refresh = useCallback(async () => {
@@ -75,18 +76,6 @@ export function useOfflineTerritories(repId: string | null) {
   useEffect(() => {
     void refresh();
   }, [refresh]);
-
-  useEffect(() => {
-    if (typeof navigator !== 'undefined') setOnline(navigator.onLine);
-    const up = () => setOnline(true);
-    const down = () => setOnline(false);
-    window.addEventListener('online', up);
-    window.addEventListener('offline', down);
-    return () => {
-      window.removeEventListener('online', up);
-      window.removeEventListener('offline', down);
-    };
-  }, []);
 
   /**
    * Fetch a territory's work set and store it.
@@ -148,7 +137,7 @@ export function useOfflineTerritories(repId: string | null) {
     entries,
     loading,
     downloading,
-    online,
+    online: connection.online,
     storageError,
     totalBytes: totalStorageBytes(entries.map((e) => e.pkg)),
     download,

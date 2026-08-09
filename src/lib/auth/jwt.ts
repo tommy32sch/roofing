@@ -1,6 +1,7 @@
 import { SignJWT, jwtVerify } from 'jose';
 import { cookies } from 'next/headers';
 import { db } from '@/lib/supabase/server';
+import type { UserRole } from '@/types';
 
 const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET);
 const COOKIE_NAME = 'admin_token';
@@ -27,6 +28,22 @@ export interface JWTPayload {
   iat: number;
   exp: number;
 }
+
+export interface AuthenticatedAdmin extends JWTPayload {
+  /** The current database value, not the value captured when the JWT was issued. */
+  email: string;
+  name: string;
+  role: UserRole;
+  marketId: number | null;
+}
+
+export type AdminSessionResult =
+  | { status: 'authenticated'; admin: AuthenticatedAdmin }
+  | {
+      status: 'unauthenticated';
+      reason: 'missing' | 'invalid' | 'deleted' | 'revoked';
+    }
+  | { status: 'unavailable' };
 
 export async function createToken(user: {
   id: string;
@@ -117,28 +134,73 @@ export async function refreshTokenIfNeeded(payload: JWTPayload): Promise<string 
   return null;
 }
 
-export async function getAuthenticatedAdmin(): Promise<JWTPayload | null> {
+function isUserRole(value: unknown): value is UserRole {
+  return value === 'admin' || value === 'setter' || value === 'closer';
+}
+
+interface SessionUserRecord {
+  email?: string | null;
+  name?: string | null;
+  role?: unknown;
+  market_id?: number | null;
+  token_version?: number | null;
+}
+
+/** Pure session classification after signature verification and the user read. */
+export function sessionFromUserRecord(
+  payload: JWTPayload,
+  user: SessionUserRecord | null
+): AdminSessionResult {
+  if (!user) return { status: 'unauthenticated', reason: 'deleted' };
+  if ((user.token_version ?? 0) !== (payload.tv ?? 0)) {
+    return { status: 'unauthenticated', reason: 'revoked' };
+  }
+  if (!isUserRole(user.role)) return { status: 'unavailable' };
+
+  return {
+    status: 'authenticated',
+    admin: {
+      ...payload,
+      email: user.email || payload.email,
+      name: user.name || payload.name,
+      role: user.role,
+      marketId: typeof user.market_id === 'number' ? user.market_id : null,
+    },
+  };
+}
+
+/**
+ * Resolve the current session without confusing an invalid credential with a
+ * database outage. Protected pages use the distinction to show a retry state
+ * for service failures instead of sending a valid user back to sign-in.
+ */
+export async function resolveAdminSession(): Promise<AdminSessionResult> {
   const token = await getAuthCookie();
-  if (!token) return null;
+  if (!token) return { status: 'unauthenticated', reason: 'missing' };
 
   const payload = await verifyToken(token); // signature + expiry
-  if (!payload) return null;
+  if (!payload) return { status: 'unauthenticated', reason: 'invalid' };
 
   // Session revocation: the token's version must still match the user's current
   // token_version. Bumping it (role/password change, "log out everywhere") or
   // deleting the user invalidates every outstanding token immediately. Fail
   // closed — a lookup error rejects rather than trusting a stale token.
   try {
-    const { data: user } = await db()
+    const { data: user, error } = await db()
       .from('admin_users')
-      .select('token_version')
+      .select('email, name, role, market_id, token_version')
       .eq('id', payload.sub)
-      .single();
-    if (!user) return null; // user deleted
-    if ((user.token_version ?? 0) !== (payload.tv ?? 0)) return null; // revoked
-  } catch {
-    return null;
-  }
+      .maybeSingle();
 
-  return payload;
+    if (error) return { status: 'unavailable' };
+    return sessionFromUserRecord(payload, user);
+  } catch {
+    return { status: 'unavailable' };
+  }
+}
+
+/** Compatibility boundary for API handlers that only need allow or deny. */
+export async function getAuthenticatedAdmin(): Promise<AuthenticatedAdmin | null> {
+  const session = await resolveAdminSession();
+  return session.status === 'authenticated' ? session.admin : null;
 }

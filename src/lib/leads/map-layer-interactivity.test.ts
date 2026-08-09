@@ -7,7 +7,7 @@ const source = readFileSync(
   'utf8'
 );
 const pageSource = readFileSync(
-  join(process.cwd(), 'src/app/admin/map/page.tsx'),
+  join(process.cwd(), 'src/app/admin/(app)/map/page.tsx'),
   'utf8'
 );
 

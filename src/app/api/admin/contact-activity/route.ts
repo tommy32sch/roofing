@@ -72,7 +72,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const marketId = await marketFilterFor(admin.sub, params.get('market_id'));
+    const marketId = await marketFilterFor(admin.marketId, params.get('market_id'));
     const supabase = db();
     const select =
       'id, lead_id, disposition, created_by, leads!inner(id, first_name, last_name, address_street, address_city, address_state), admin_users(name)';

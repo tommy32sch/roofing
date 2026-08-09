@@ -12,6 +12,7 @@ import {
 import { readAll, put, remove } from './store';
 import type { KnockDisposition } from '@/lib/leads/knocks';
 import type { ColdCallDisposition } from '@/lib/leads/calls';
+import { useAppShell } from '@/components/providers/app-shell-provider';
 
 interface ResultPayloadBase {
   leadId: string;
@@ -92,8 +93,8 @@ export function useLeadResultOutbox(options: {
   ownerId: string | null;
   onSettled?: () => void;
 }) {
+  const { connection } = useAppShell();
   const [entries, setEntries] = useState<LeadResultOutboxEntry[]>([]);
-  const [online, setOnline] = useState(true);
   const [storageError, setStorageError] = useState(false);
   const flushing = useRef(false);
   const onSettled = useRef(options.onSettled);
@@ -136,18 +137,6 @@ export function useLeadResultOutbox(options: {
       cancelled = true;
     };
   }, [options.ownerId, ownedResults]);
-
-  useEffect(() => {
-    if (typeof navigator !== 'undefined') setOnline(navigator.onLine);
-    const up = () => setOnline(true);
-    const down = () => setOnline(false);
-    window.addEventListener('online', up);
-    window.addEventListener('offline', down);
-    return () => {
-      window.removeEventListener('online', up);
-      window.removeEventListener('offline', down);
-    };
-  }, []);
 
   const flush = useCallback(async (force = false) => {
     if (!options.ownerId || flushing.current) return;
@@ -267,11 +256,11 @@ export function useLeadResultOutbox(options: {
   }, [flush, options.ownerId, ownedResults]);
 
   useEffect(() => {
-    if (!online) return;
+    if (!connection.online) return;
     void flush(true);
     const timer = setInterval(() => void flush(), 30_000);
     return () => clearInterval(timer);
-  }, [online, flush]);
+  }, [connection.online, flush]);
 
   const failedEntries = deadEntries<KnockResultPayload | ColdCallResultPayload>(entries);
 
@@ -279,7 +268,7 @@ export function useLeadResultOutbox(options: {
     pending: pendingCount<KnockResultPayload | ColdCallResultPayload>(entries),
     failed: failedEntries.length,
     lastError: failedEntries[0]?.lastError ?? null,
-    online,
+    online: connection.online,
     storageError,
     entries,
     enqueueKnock,

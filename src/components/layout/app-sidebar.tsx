@@ -37,18 +37,16 @@ export function SidebarNav({ role, companyName, pathname, duplicateCount, onNavi
       </div>
 
       {/* Primary action, given the prominence it earns in a lead-driven tool */}
-      {role !== 'closer' && (
-        <div className="px-3 pt-3">
-          <Link
-            href="/admin/leads/new"
-            onClick={onNavigate}
-            className="flex h-9 w-full items-center justify-center gap-1.5 rounded-md bg-primary text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
-          >
-            <PlusCircle className="h-4 w-4" />
-            Add Lead
-          </Link>
-        </div>
-      )}
+      <div className="px-3 pt-3">
+        <Link
+          href="/admin/leads/new"
+          onClick={onNavigate}
+          className="flex h-9 w-full items-center justify-center gap-1.5 rounded-md bg-primary text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+        >
+          <PlusCircle className="h-4 w-4" />
+          Add Lead
+        </Link>
+      </div>
 
       <nav className="flex-1 overflow-y-auto px-3 py-3">
         {groups.map((group) => (

@@ -8,10 +8,9 @@ import { join } from 'path';
  * None of the /api/admin routes set cache directives of their own, which makes
  * a plain 200 heuristically cacheable — and without Vary: Cookie the browser
  * will happily reuse one session's response for the next. The sharp edge is
- * /api/admin/auth/me: the admin layout reads it on every page load to decide
- * whose name and whose navigation to render, so a cached copy showed the
- * PREVIOUS user's identity to whoever had just signed in. Signing in as a
- * setter displayed the admin account.
+ * /api/admin/auth/me remains an explicit session endpoint even though the
+ * protected layout now loads its trusted shell directly on the server. It must
+ * never become a reusable cross-session response.
  *
  * This is a static check because the failure is invisible in development until
  * two different users share a browser.
@@ -35,8 +34,11 @@ describe('authenticated API cache headers', () => {
     expect(block).toMatch(/Cookie/);
   });
 
-  it('has the layout read its identity with cache disabled too', () => {
-    const layout = readFileSync(join(process.cwd(), 'src/app/admin/layout.tsx'), 'utf8');
-    expect(layout).toMatch(/auth\/me['"],\s*\{\s*cache:\s*'no-store'\s*\}/);
+  it('loads the protected shell directly on the server without a client identity request', () => {
+    const layout = readFileSync(join(process.cwd(), 'src/app/admin/(app)/layout.tsx'), 'utf8');
+    const loader = readFileSync(join(process.cwd(), 'src/lib/app-shell/server.ts'), 'utf8');
+    expect(layout).toContain('await loadAppShell()');
+    expect(layout).toContain("export const dynamic = 'force-dynamic'");
+    expect(loader).not.toContain("fetch('/api/admin/auth/me");
   });
 });

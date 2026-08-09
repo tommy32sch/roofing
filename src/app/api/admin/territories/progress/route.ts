@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
     const limit = positiveInteger(searchParams.get('limit'), DEFAULT_LIMIT, MAX_LIMIT);
     const result = await loadTerritoryProgressPage(db(), {
       role: admin.role,
-      marketId: await marketFilterFor(admin.sub, searchParams.get('market_id')),
+      marketId: await marketFilterFor(admin.marketId, searchParams.get('market_id')),
       page,
       limit,
       clock: { today, now: new Date().toISOString() },
