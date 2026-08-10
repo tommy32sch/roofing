@@ -1,26 +1,17 @@
 'use client';
 
-import { Suspense, useEffect, useState, useCallback, useRef } from 'react';
+import { Suspense, useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Search, Upload, Sparkles, Download, CalendarClock, MapPin, UserCheck, UserMinus, PhoneOff, CopyCheck, SlidersHorizontal, Navigation, Phone } from 'lucide-react';
+import { ArrowDown, ArrowUp, ChevronsUpDown, Search, Upload, Sparkles, Download, CalendarClock, MapPin, UserCheck, UserMinus, PhoneOff, CopyCheck, Navigation, Phone } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatPhone, formatAddress, mapsUrl } from '@/lib/utils/format';
 import { PageHeader } from '@/components/layout/page-header';
-import { MarketFilter } from '@/components/markets/market-filter';
-import { useMarkets, ALL_MARKETS } from '@/components/markets/use-markets';
+import { useMarkets } from '@/components/markets/use-markets';
 import { isMachineAttribution } from '@/lib/leads/attribution';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import {
   Table,
   TableBody,
@@ -34,22 +25,72 @@ import { LeadStatusBadge } from '@/components/leads/lead-status-badge';
 import { LeadPriorityBadge } from '@/components/leads/lead-priority-badge';
 import { BulkAssignDialog } from '@/components/leads/BulkAssignDialog';
 import { StreetSelectSheet } from '@/components/leads/StreetSelectSheet';
-import { LEAD_STATUS_OPTIONS, LEAD_PRIORITY_OPTIONS } from '@/types';
 import type { LeadWithSource } from '@/types';
 import { LIMITS } from '@/lib/utils/validation';
 import { leadFilterKey, selectionSurvivesFilterChange } from '@/lib/leads/selection';
-import { assigneeLabel, UNASSIGNED } from '@/lib/leads/assignment-filter';
-import { STREET_DIRECTIONS } from '@/lib/utils/lead-query';
+import { assigneeLabel } from '@/lib/leads/assignment-filter';
 import { formatDistanceToNow, isPast, isToday } from 'date-fns';
 import { EmptyState } from '@/components/layout/empty-state';
 import { useAppShell } from '@/components/providers/app-shell-provider';
 import { DataErrorState } from '@/components/layout/data-error-state';
+import { LeadQueueToolbar } from '@/components/leads/LeadQueueToolbar';
+import {
+  buildLeadQueueSearchParams,
+  hasLeadQueueFilters,
+  leadQueueHref,
+  leadQueueParamsFromSearchParams,
+  leadQueueSort,
+  nextLeadSort,
+  patchLeadQueueParams,
+  type LeadQueueParamKey,
+  type LeadQueueParams,
+  type LeadSortOrder,
+} from '@/lib/leads/work-queue';
 
 export default function LeadsListPage() {
   return (
     <Suspense fallback={<div className="space-y-4"><PageHeader title="Leads" /></div>}>
       <LeadsListContent />
     </Suspense>
+  );
+}
+
+function SortableTableHead({
+  label,
+  column,
+  initialOrder,
+  activeSort,
+  activeOrder,
+  className,
+  onSort,
+}: {
+  label: string;
+  column: string;
+  initialOrder: LeadSortOrder;
+  activeSort: string;
+  activeOrder: LeadSortOrder;
+  className?: string;
+  onSort: (column: string, initialOrder: LeadSortOrder) => void;
+}) {
+  const active = activeSort === column;
+  return (
+    <TableHead
+      className={className}
+      aria-sort={active ? (activeOrder === 'asc' ? 'ascending' : 'descending') : 'none'}
+    >
+      <button
+        type="button"
+        className="-ml-2 inline-flex h-8 items-center gap-1 rounded-md px-2 font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+        onClick={() => onSort(column, initialOrder)}
+      >
+        {label}
+        {active
+          ? activeOrder === 'asc'
+            ? <ArrowUp className="h-3.5 w-3.5" />
+            : <ArrowDown className="h-3.5 w-3.5" />
+          : <ChevronsUpDown className="h-3.5 w-3.5 text-muted-foreground/60" />}
+      </button>
+    </TableHead>
   );
 }
 
@@ -74,109 +115,105 @@ function LeadsListContent() {
   const [dncScrubbing, setDncScrubbing] = useState(false);
   const [recheckOpen, setRecheckOpen] = useState(false);
   const [rechecking, setRechecking] = useState(false);
-  const [filtersOpen, setFiltersOpen] = useState(false);
+  const fetchControllerRef = useRef<AbortController | null>(null);
   const isAdmin = user.role === 'admin';
 
-  const status = searchParams.get('status') || '';
-  const priority = searchParams.get('priority') || '';
-  const search = searchParams.get('search') || '';
-  const streetNumber = searchParams.get('street_number') || '';
-  const streetDir = searchParams.get('street_dir') || '';
-  const streetName = searchParams.get('street_name') || '';
-  const streetsParam = searchParams.get('streets') || '';
+  const searchParamsString = searchParams.toString();
+  const queueParams = useMemo(
+    () => leadQueueParamsFromSearchParams(new URLSearchParams(searchParamsString)),
+    [searchParamsString]
+  );
+  const status = queueParams.status || '';
+  const priority = queueParams.priority || '';
+  const search = queueParams.search || '';
+  const streetNumber = queueParams.street_number || '';
+  const streetDir = queueParams.street_dir || '';
+  const streetName = queueParams.street_name || '';
+  const streetsParam = queueParams.streets || '';
   const selectedStreets = streetsParam ? streetsParam.split('|').filter(Boolean) : [];
-  const dncOnly = searchParams.get('is_dnc') === 'true';
-  const { markets, homeMarketId, loading: marketsLoading } = useMarkets();
+  const dncOnly = queueParams.is_dnc === 'true';
+  const { markets, homeMarketId } = useMarkets();
   // Absent param means "my office" — the server resolves it the same way, so the
   // URL stays clean until the rep actually switches markets.
-  const marketParam = searchParams.get('market_id') || '';
-  const marketValue = marketParam || (homeMarketId != null ? String(homeMarketId) : ALL_MARKETS);
+  const marketParam = queueParams.market_id || '';
   // "Show me what this person uploaded." Admin-only because /api/admin/users is.
-  const createdBy = searchParams.get('created_by') || '';
+  const createdBy = queueParams.created_by || '';
   // Ownership filters. The COLUMNS are visible to every role, but the
   // person-pickers need the user list from /api/admin/users, which is
   // admin-only — so reps can see who owns a lead without being able to
   // enumerate the roster.
-  const assignedSetter = searchParams.get('assigned_setter') || '';
-  const assignedCloser = searchParams.get('assigned_closer') || '';
+  const assignedSetter = queueParams.assigned_setter || '';
+  const assignedCloser = queueParams.assigned_closer || '';
   const [uploaders, setUploaders] = useState<{ id: string; name: string }[]>([]);
-  const page = parseInt(searchParams.get('page') || '1', 10);
-  // Drives the mobile filter button's active state
-  const activeFilterCount = [status, priority, streetNumber, streetDir, streetName, streetsParam, dncOnly ? 'dnc' : '', marketParam, createdBy, assignedSetter, assignedCloser].filter(Boolean).length;
+  const requestedPage = parseInt(searchParams.get('page') || '1', 10);
+  const page = Number.isFinite(requestedPage) && requestedPage > 0 ? requestedPage : 1;
+  const selectedViewId = searchParams.get('view') || '';
+  const { sort, order } = leadQueueSort(queueParams);
+  const hasFilters = hasLeadQueueFilters(queueParams);
 
   // Only show optional columns that actually carry data. Freshly imported lists
   // have no source or values yet, and three columns of "—" on every row is noise
   // that pushes the fields a rep needs off to the side.
   const showSource = leads.some((l) => l.lead_sources?.display_name);
   const showAddedBy = leads.some((l) => l.created_by_name);
-  const showEstValue = leads.some((l) => l.estimated_roof_value != null);
-  const showDealValue = leads.some((l) => l.deal_value != null);
+  const showEstValue = sort === 'estimated_roof_value' || leads.some((l) => l.estimated_roof_value != null);
+  const showDealValue = sort === 'deal_value' || leads.some((l) => l.deal_value != null);
   const columnCount =
     // +2 for the always-on Setter and Closer columns.
     (isAdmin ? 1 : 0) + 9 + [showSource, showAddedBy, showEstValue, showDealValue].filter(Boolean).length;
 
-  function applyFilterParams(params: URLSearchParams) {
-    if (status) params.set('status', status);
-    if (priority) params.set('priority', priority);
-    if (search) params.set('search', search);
-    if (streetNumber) params.set('street_number', streetNumber);
-    if (streetDir) params.set('street_dir', streetDir);
-    if (streetName) params.set('street_name', streetName);
-    if (streetsParam) params.set('streets', streetsParam);
-    if (dncOnly) params.set('is_dnc', 'true');
-    if (marketParam) params.set('market_id', marketParam);
-    if (createdBy) params.set('created_by', createdBy);
-    if (assignedSetter) params.set('assigned_setter', assignedSetter);
-    if (assignedCloser) params.set('assigned_closer', assignedCloser);
-  }
+  const applyQueue = useCallback((params: LeadQueueParams, viewId?: string | null) => {
+    const next = buildLeadQueueSearchParams(params, { viewId });
+    router.replace(leadQueueHref(next), { scroll: false });
+  }, [router]);
+
+  const patchQueue = useCallback((
+    patch: Partial<Record<LeadQueueParamKey, string | undefined>>
+  ) => {
+    applyQueue(patchLeadQueueParams(queueParams, patch), selectedViewId || null);
+  }, [applyQueue, queueParams, selectedViewId]);
 
   function toggleStreetFilter(name: string, selected: boolean) {
     const next = selected
       ? [...selectedStreets, name]
       : selectedStreets.filter((s) => s !== name);
-    updateFilter('streets', next.join('|'));
+    patchQueue({ streets: next.join('|') || undefined });
   }
 
   function handleExport() {
-    const params = new URLSearchParams();
-    applyFilterParams(params);
-    window.location.href = `/api/admin/leads/export?${params}`;
+    const params = buildLeadQueueSearchParams(queueParams);
+    const query = params.toString();
+    window.location.href = query ? `/api/admin/leads/export?${query}` : '/api/admin/leads/export';
   }
 
   const fetchLeads = useCallback(async () => {
+    fetchControllerRef.current?.abort();
+    const controller = new AbortController();
+    fetchControllerRef.current = controller;
     setLoading(true);
     setError('');
-    const params = new URLSearchParams();
-    if (status) params.set('status', status);
-    if (priority) params.set('priority', priority);
-    if (search) params.set('search', search);
-    if (streetNumber) params.set('street_number', streetNumber);
-    if (streetDir) params.set('street_dir', streetDir);
-    if (streetName) params.set('street_name', streetName);
-    if (streetsParam) params.set('streets', streetsParam);
-    if (dncOnly) params.set('is_dnc', 'true');
-    if (marketParam) params.set('market_id', marketParam);
-    if (createdBy) params.set('created_by', createdBy);
-    if (assignedSetter) params.set('assigned_setter', assignedSetter);
-    if (assignedCloser) params.set('assigned_closer', assignedCloser);
+    const params = buildLeadQueueSearchParams(queueParams);
     params.set('page', page.toString());
     params.set('limit', '25');
 
     try {
-      const res = await fetch(`/api/admin/leads?${params}`);
+      const res = await fetch(`/api/admin/leads?${params}`, { signal: controller.signal });
       const data = await res.json().catch(() => null);
       if (!res.ok || !data?.success) {
         throw new Error(data?.error || 'Could not load leads');
       }
+      if (fetchControllerRef.current !== controller) return;
       setLeads(data.leads);
       setTotal(data.total);
       setTotalPages(data.totalPages);
     } catch (cause) {
+      if (cause instanceof DOMException && cause.name === 'AbortError') return;
+      if (fetchControllerRef.current !== controller) return;
       setError(cause instanceof Error ? cause.message : 'Could not load leads');
     } finally {
-      setLoading(false);
+      if (fetchControllerRef.current === controller) setLoading(false);
     }
-  }, [status, priority, search, streetNumber, streetDir, streetName, streetsParam, dncOnly, page, marketParam, createdBy, assignedSetter, assignedCloser]);
+  }, [queueParams, page]);
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -245,6 +282,7 @@ function LeadsListContent() {
 
   useEffect(() => {
     fetchLeads();
+    return () => fetchControllerRef.current?.abort();
   }, [fetchLeads]);
 
   useEffect(() => {
@@ -298,32 +336,17 @@ function LeadsListContent() {
   const pageSomeSelected = !pageAllSelected && leads.some((l) => selection.has(l.id));
   const selectionTotal = [...selection.values()].reduce((sum, v) => sum + v, 0);
 
-  function updateFilter(key: string, value: string) {
-    const params = new URLSearchParams(searchParams.toString());
-    if (value) {
-      params.set(key, value);
-    } else {
-      params.delete(key);
-    }
-    params.set('page', '1');
-    router.push(`/admin/leads?${params}`);
+  function handleSort(column: string, initialOrder: LeadSortOrder) {
+    const next = nextLeadSort(queueParams, column, initialOrder);
+    patchQueue({ sort: next.sort, order: next.order });
   }
 
-  const debounceRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
-  function debouncedFilter(key: string, value: string) {
-    clearTimeout(debounceRef.current[key]);
-    debounceRef.current[key] = setTimeout(() => updateFilter(key, value), 350);
-  }
-
-  function handleSearch(value: string) {
-    const params = new URLSearchParams(searchParams.toString());
-    if (value) {
-      params.set('search', value);
-    } else {
-      params.delete('search');
-    }
-    params.set('page', '1');
-    router.push(`/admin/leads?${params}`);
+  function goToPage(nextPage: number) {
+    const params = buildLeadQueueSearchParams(queueParams, {
+      viewId: selectedViewId || null,
+      page: nextPage,
+    });
+    router.replace(leadQueueHref(params));
   }
 
   return (
@@ -359,176 +382,30 @@ function LeadsListContent() {
                 Export
               </Button>
             )}
-            <Link href="/admin/leads/import" className="hidden sm:block">
-              <Button variant="outline" size="sm">
-                <Upload className="h-4 w-4 mr-1" />
-                Import
-              </Button>
-            </Link>
+            <Button
+              render={<Link href="/admin/leads/import" />}
+              nativeButton={false}
+              variant="outline"
+              size="sm"
+              className="hidden sm:inline-flex"
+            >
+              <Upload className="h-4 w-4 mr-1" />
+              Import
+            </Button>
           </>
         }
       />
 
-      {/* Search is always visible; the rest collapses on mobile so leads are
-          on screen immediately instead of below a full page of filter controls. */}
-      <div className="flex gap-2">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search name, address, phone, email..."
-            defaultValue={search}
-            onChange={(e) => {
-              const timeout = setTimeout(() => handleSearch(e.target.value), 300);
-              return () => clearTimeout(timeout);
-            }}
-            className="pl-9"
-          />
-        </div>
-        <Button
-          variant={activeFilterCount > 0 ? 'default' : 'outline'}
-          size="icon"
-          className="sm:hidden shrink-0"
-          aria-label="Filters"
-          aria-expanded={filtersOpen}
-          onClick={() => setFiltersOpen((o) => !o)}
-        >
-          <SlidersHorizontal className="h-4 w-4" />
-        </Button>
-      </div>
-
-      <div className={`${filtersOpen ? 'flex' : 'hidden'} sm:flex flex-col sm:flex-row gap-3`}>
-        {!marketsLoading && (
-          <MarketFilter
-            markets={markets}
-            value={marketValue}
-            onChange={(v) => updateFilter('market_id', v)}
-          />
-        )}
-        {isAdmin && uploaders.length > 0 && (
-          <Select
-            value={createdBy || 'all'}
-            onValueChange={(v) => updateFilter('created_by', v === 'all' ? '' : v ?? '')}
-          >
-            <SelectTrigger className="sm:w-[160px]" aria-label="Added by">
-              <SelectValue>
-                {createdBy
-                  ? uploaders.find((u) => u.id === createdBy)?.name ?? 'Added by'
-                  : 'Anyone'}
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Anyone</SelectItem>
-              {uploaders.map((u) => (
-                <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
-        {/* Ownership filters. Available to every role, not just admins: knowing
-            who owns a door is how a crew avoids knocking it twice. "Unassigned"
-            is the operationally important option — it is the only way to find
-            leads nobody is working. */}
-        {isAdmin && uploaders.length > 0 && (
-          <>
-            <Select
-              value={assignedSetter || 'all'}
-              onValueChange={(v) => updateFilter('assigned_setter', v === 'all' ? '' : v ?? '')}
-            >
-              <SelectTrigger className="sm:w-[170px]" aria-label="Setter">
-                <SelectValue>
-                  {assignedSetter === UNASSIGNED
-                    ? 'Setter: unassigned'
-                    : assignedSetter
-                      ? `Setter: ${uploaders.find((u) => u.id === assignedSetter)?.name ?? '—'}`
-                      : 'Any setter'}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Any setter</SelectItem>
-                <SelectItem value={UNASSIGNED}>Unassigned</SelectItem>
-                {uploaders.map((u) => (
-                  <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select
-              value={assignedCloser || 'all'}
-              onValueChange={(v) => updateFilter('assigned_closer', v === 'all' ? '' : v ?? '')}
-            >
-              <SelectTrigger className="sm:w-[170px]" aria-label="Closer">
-                <SelectValue>
-                  {assignedCloser === UNASSIGNED
-                    ? 'Closer: unassigned'
-                    : assignedCloser
-                      ? `Closer: ${uploaders.find((u) => u.id === assignedCloser)?.name ?? '—'}`
-                      : 'Any closer'}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Any closer</SelectItem>
-                <SelectItem value={UNASSIGNED}>Unassigned</SelectItem>
-                {uploaders.map((u) => (
-                  <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </>
-        )}
-        <Select value={status} onValueChange={(v) => updateFilter('status', v === 'all' ? '' : v ?? '')}>
-          <SelectTrigger className="sm:w-[160px]">
-            <SelectValue placeholder="All Statuses" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Statuses</SelectItem>
-            {LEAD_STATUS_OPTIONS.map((opt) => (
-              <SelectItem key={opt.value} value={opt.value}>
-                {opt.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Select value={priority} onValueChange={(v) => updateFilter('priority', v === 'all' ? '' : v ?? '')}>
-          <SelectTrigger className="sm:w-[140px]">
-            <SelectValue placeholder="All Priorities" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Priorities</SelectItem>
-            {LEAD_PRIORITY_OPTIONS.map((opt) => (
-              <SelectItem key={opt.value} value={opt.value}>
-                {opt.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
-      {/* Street filters */}
-      <div className={`${filtersOpen ? 'flex' : 'hidden'} sm:flex flex-col sm:flex-row gap-3`}>
-        <Input
-          placeholder="Street #"
-          inputMode="numeric"
-          defaultValue={streetNumber}
-          onChange={(e) => debouncedFilter('street_number', e.target.value)}
-          className="sm:w-28"
-        />
-        <Select value={streetDir || 'any'} onValueChange={(v) => updateFilter('street_dir', v === 'any' ? '' : v ?? '')}>
-          <SelectTrigger className="sm:w-[150px]">
-            <SelectValue placeholder="Any direction" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="any">Any direction</SelectItem>
-            {STREET_DIRECTIONS.map((d) => (
-              <SelectItem key={d} value={d}>{d}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Input
-          placeholder="Street name (e.g. Crescent)"
-          defaultValue={streetName}
-          onChange={(e) => debouncedFilter('street_name', e.target.value)}
-          className="flex-1"
-        />
-      </div>
+      <LeadQueueToolbar
+        params={queueParams}
+        selectedViewId={selectedViewId}
+        markets={markets}
+        homeMarketId={homeMarketId}
+        uploaders={uploaders}
+        isAdmin={isAdmin}
+        onApply={applyQueue}
+        onPatch={patchQueue}
+      />
 
       {/* Do Not Call banner */}
       {isAdmin && dncCount > 0 && (
@@ -541,7 +418,7 @@ function LeadsListContent() {
             </span>
           </span>
           <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={() => updateFilter('is_dnc', dncOnly ? '' : 'true')}>
+            <Button variant="outline" size="sm" onClick={() => patchQueue({ is_dnc: dncOnly ? undefined : 'true' })}>
               {dncOnly ? 'Show all leads' : 'Show only DNC'}
             </Button>
             <Button variant="destructive" size="sm" onClick={() => setDncScrubOpen(true)}>
@@ -561,8 +438,11 @@ function LeadsListContent() {
           onRetry={fetchLeads}
         />
       )}
-      <div className="rounded-md border">
-        <Table>
+      <p className="sr-only" aria-live="polite">
+        {loading ? 'Updating lead results' : `${total.toLocaleString()} lead results`}
+      </p>
+      <div id="lead-results" className={`rounded-xl border bg-card transition-opacity ${loading && leads.length > 0 ? 'opacity-70' : ''}`}>
+        <Table aria-busy={loading}>
           <TableHeader>
             <TableRow>
               {isAdmin && (
@@ -578,25 +458,75 @@ function LeadsListContent() {
                   />
                 </TableHead>
               )}
-              <TableHead>Name</TableHead>
+              <SortableTableHead
+                label="Name"
+                column="last_name"
+                initialOrder="asc"
+                activeSort={sort}
+                activeOrder={order}
+                onSort={handleSort}
+              />
               <TableHead className="hidden md:table-cell">Address</TableHead>
               <TableHead className="hidden md:table-cell">Phone</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="hidden sm:table-cell">Priority</TableHead>
+              <SortableTableHead
+                label="Status"
+                column="status"
+                initialOrder="asc"
+                activeSort={sort}
+                activeOrder={order}
+                onSort={handleSort}
+              />
+              <SortableTableHead
+                label="Priority"
+                column="priority"
+                initialOrder="desc"
+                activeSort={sort}
+                activeOrder={order}
+                className="hidden sm:table-cell"
+                onSort={handleSort}
+              />
               {showSource && <TableHead className="hidden lg:table-cell">Source</TableHead>}
               {showAddedBy && <TableHead className="hidden lg:table-cell">Added by</TableHead>}
-              {showEstValue && <TableHead className="hidden lg:table-cell">Est. Value</TableHead>}
-              {showDealValue && <TableHead className="hidden lg:table-cell">Deal Value</TableHead>}
+              {showEstValue && (
+                <SortableTableHead
+                  label="Est. Value"
+                  column="estimated_roof_value"
+                  initialOrder="desc"
+                  activeSort={sort}
+                  activeOrder={order}
+                  className="hidden lg:table-cell"
+                  onSort={handleSort}
+                />
+              )}
+              {showDealValue && (
+                <SortableTableHead
+                  label="Deal Value"
+                  column="deal_value"
+                  initialOrder="desc"
+                  activeSort={sort}
+                  activeOrder={order}
+                  className="hidden lg:table-cell"
+                  onSort={handleSort}
+                />
+              )}
               {/* Always shown, unlike the columns above, which appear only when
                   some row has data. An empty assignment column is the point:
                   "nobody owns this" is the state worth seeing. */}
               <TableHead className="hidden lg:table-cell">Setter</TableHead>
               <TableHead className="hidden lg:table-cell">Closer</TableHead>
-              <TableHead className="hidden md:table-cell">Added</TableHead>
+              <SortableTableHead
+                label="Added"
+                column="created_at"
+                initialOrder="desc"
+                activeSort={sort}
+                activeOrder={order}
+                className="hidden md:table-cell"
+                onSort={handleSort}
+              />
             </TableRow>
           </TableHeader>
           <TableBody>
-            {loading ? (
+            {loading && leads.length === 0 ? (
               [...Array(5)].map((_, i) => (
                 <TableRow key={i}>
                   {isAdmin && <TableCell className="w-10"><Skeleton className="h-4 w-4" /></TableCell>}
@@ -614,7 +544,7 @@ function LeadsListContent() {
                   <TableCell className="hidden md:table-cell"><Skeleton className="h-4 w-16" /></TableCell>
                 </TableRow>
               ))
-            ) : error ? (
+            ) : error && leads.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={columnCount} className="p-4">
                   <DataErrorState title="Leads did not load" description={error} onRetry={fetchLeads} />
@@ -623,7 +553,7 @@ function LeadsListContent() {
             ) : leads.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={columnCount} className="p-0">
-                  {activeFilterCount > 0 || search ? (
+                  {hasFilters ? (
                     <EmptyState
                       icon={Search}
                       title="No leads match your filters"
@@ -635,12 +565,14 @@ function LeadsListContent() {
                       title="No leads yet"
                       description="Import a list to get started — CSV and Excel both work, and Do Not Call numbers are handled automatically."
                       action={
-                        <Link href="/admin/leads/import">
-                          <Button size="sm">
-                            <Upload className="h-4 w-4 mr-1" />
-                            Import leads
-                          </Button>
-                        </Link>
+                        <Button
+                          render={<Link href="/admin/leads/import" />}
+                          nativeButton={false}
+                          size="sm"
+                        >
+                          <Upload className="h-4 w-4 mr-1" />
+                          Import leads
+                        </Button>
                       }
                     />
                   )}
@@ -667,7 +599,13 @@ function LeadsListContent() {
                   <TableCell>
                     <div>
                       <p className="font-medium text-sm flex items-center gap-1">
-                        {lead.first_name} {lead.last_name}
+                        <Link
+                          href={`/admin/leads/${lead.id}`}
+                          className="rounded-sm hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                          onClick={(event) => event.stopPropagation()}
+                        >
+                          {lead.first_name} {lead.last_name}
+                        </Link>
                         {lead.is_dnc && (
                           <span
                             title="Do Not Call"
@@ -825,11 +763,7 @@ function LeadsListContent() {
               variant="outline"
               size="sm"
               disabled={page <= 1}
-              onClick={() => {
-                const params = new URLSearchParams(searchParams.toString());
-                params.set('page', (page - 1).toString());
-                router.push(`/admin/leads?${params}`);
-              }}
+              onClick={() => goToPage(page - 1)}
             >
               Previous
             </Button>
@@ -840,11 +774,7 @@ function LeadsListContent() {
               variant="outline"
               size="sm"
               disabled={page >= totalPages}
-              onClick={() => {
-                const params = new URLSearchParams(searchParams.toString());
-                params.set('page', (page + 1).toString());
-                router.push(`/admin/leads?${params}`);
-              }}
+              onClick={() => goToPage(page + 1)}
             >
               Next
             </Button>
@@ -854,7 +784,7 @@ function LeadsListContent() {
 
       {/* Bulk selection action bar */}
       {isAdmin && selection.size > 0 && (
-        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 rounded-lg border bg-background px-4 py-2.5 shadow-lg">
+        <div className="fixed bottom-[calc(3.75rem+env(safe-area-inset-bottom))] left-2 right-2 z-40 flex items-center gap-3 overflow-x-auto rounded-lg border bg-background px-4 py-2.5 shadow-lg md:bottom-4 md:left-1/2 md:right-auto md:-translate-x-1/2">
           <p className="text-sm whitespace-nowrap">
             <span className="font-medium">{selection.size}</span> selected
             {selectionTotal > 0 && (
@@ -909,10 +839,10 @@ function LeadsListContent() {
           <StreetSelectSheet
             open={streetsOpen}
             onOpenChange={setStreetsOpen}
-            filters={{ status, priority, search }}
+            filters={queueParams}
             selectedStreets={selectedStreets}
             onToggleStreet={toggleStreetFilter}
-            onClear={() => updateFilter('streets', '')}
+            onClear={() => patchQueue({ streets: undefined })}
           />
           <Dialog open={dncScrubOpen} onOpenChange={setDncScrubOpen}>
             <DialogContent className="max-w-md">

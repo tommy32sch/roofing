@@ -22,7 +22,7 @@ import { useAppShell } from '@/components/providers/app-shell-provider';
 export function AdminShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { theme, setTheme } = useTheme();
+  const { setTheme } = useTheme();
   const {
     company,
     connection,
@@ -151,7 +151,8 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
 
               <DropdownMenu>
                 <DropdownMenuTrigger className="inline-flex items-center justify-center rounded-md p-2 text-muted-foreground hover:bg-muted hover:text-foreground">
-                  {theme === 'dark' ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
+                  <Sun className="h-4 w-4 dark:hidden" />
+                  <Moon className="hidden h-4 w-4 dark:block" />
                   <span className="sr-only">Choose theme</span>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">

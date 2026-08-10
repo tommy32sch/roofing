@@ -1,7 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/supabase/server';
 import { getAuthenticatedAdmin } from '@/lib/auth/jwt';
-import { buildLeadSearchFilter, sanitizeSearch, sanitizeStreetNumber, directionRegex, buildStreetNamesFilter } from '@/lib/utils/lead-query';
+import { safeSortColumn } from '@/lib/utils/lead-query';
+import { marketFilterFor } from '@/lib/leads/market-context';
+import { applyMarketFilter } from '@/lib/leads/markets';
+import {
+  applyLeadQueueFilters,
+  leadQueueRequestParamsFromSearchParams,
+} from '@/lib/leads/work-queue.server';
+import { leadQueueSort } from '@/lib/leads/work-queue';
 // Escaping lives in a shared module because it does two jobs — CSV quoting AND
 // neutralising spreadsheet formulas in attacker-supplied lead text.
 import { csvRow as row } from '@/lib/utils/csv';
@@ -30,10 +37,9 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url);
-    const status = searchParams.get('status');
-    const priority = searchParams.get('priority');
     const sourceId = searchParams.get('source_id');
-    const search = searchParams.get('search');
+    const queueParams = leadQueueRequestParamsFromSearchParams(searchParams);
+    const { sort, order } = leadQueueSort(queueParams);
 
     const supabase = db();
 
@@ -41,32 +47,27 @@ export async function GET(request: NextRequest) {
     let query = supabase
       .from('leads')
       .select('*, lead_sources!source_id(display_name)')
-      .eq('is_flagged_duplicate', false)
-      .order('created_at', { ascending: false })
-      .limit(10000);
+      .eq('is_flagged_duplicate', false);
+
+    query = applyMarketFilter(
+      query,
+      await marketFilterFor(admin.marketId, queueParams.market_id ?? null)
+    );
+    query = applyLeadQueueFilters(query, queueParams);
 
     // Only admins reach this point, so the closer status/priority scoping that
     // used to live here was unreachable — and kept implying a closer could
     // still export a narrowed list. The filters below are simply the ones the
     // Leads page passed in.
-    if (status) query = query.eq('status', status);
-    if (priority) query = query.eq('priority', priority);
     if (sourceId) query = query.eq('source_id', parseInt(sourceId, 10));
 
-    const searchFilter = buildLeadSearchFilter(search);
-    if (searchFilter) {
-      query = query.or(searchFilter);
-    }
-
-    // Structured street filters (mirror the leads list so exports match the view)
-    const streetNumber = sanitizeStreetNumber(searchParams.get('street_number'));
-    if (streetNumber) query = query.ilike('address_street', `${streetNumber}%`);
-    const streetName = sanitizeSearch(searchParams.get('street_name') || '');
-    if (streetName) query = query.ilike('address_street', `%${streetName}%`);
-    const dirRegex = directionRegex(searchParams.get('street_dir'));
-    if (dirRegex) query = query.filter('address_street', 'imatch', dirRegex);
-    const streetsFilter = buildStreetNamesFilter(searchParams.get('streets'));
-    if (streetsFilter) query = query.or(streetsFilter);
+    const ascending = order === 'asc';
+    const sortColumn = safeSortColumn(sort);
+    query = query.order(sortColumn, { ascending, nullsFirst: false });
+    if (sortColumn === 'last_name') query = query.order('first_name', { ascending, nullsFirst: false });
+    if (sortColumn === 'first_name') query = query.order('last_name', { ascending, nullsFirst: false });
+    if (sortColumn !== 'created_at') query = query.order('created_at', { ascending: false, nullsFirst: false });
+    query = query.order('id', { ascending: true }).limit(10000);
 
     const { data: leads, error } = await query;
     if (error) {

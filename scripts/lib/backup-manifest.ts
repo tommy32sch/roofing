@@ -11,6 +11,7 @@ export const BACKUP_TABLES = [
   'app_settings',
   'markets',
   'admin_users',
+  'lead_saved_views',
   'lead_sources',
   'tags',
   'integration_api_keys',

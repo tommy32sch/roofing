@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/supabase/server';
 import { getAuthenticatedAdmin } from '@/lib/auth/jwt';
-import { buildLeadSearchFilter, streetName } from '@/lib/utils/lead-query';
+import { streetName } from '@/lib/utils/lead-query';
+import { marketFilterFor } from '@/lib/leads/market-context';
+import { applyMarketFilter } from '@/lib/leads/markets';
+import {
+  applyLeadQueueFilters,
+  leadQueueRequestParamsFromSearchParams,
+} from '@/lib/leads/work-queue.server';
 
 interface StreetGroup {
   street: string;
@@ -22,10 +28,8 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url);
-    const status = searchParams.get('status');
-    const priority = searchParams.get('priority');
     const sourceId = searchParams.get('source_id');
-    const search = searchParams.get('search');
+    const queueParams = leadQueueRequestParamsFromSearchParams(searchParams);
 
     const supabase = db();
 
@@ -36,13 +40,12 @@ export async function GET(request: NextRequest) {
       .eq('is_flagged_duplicate', false)
       .limit(10000);
 
-    if (status) query = query.eq('status', status);
-    if (priority) query = query.eq('priority', priority);
+    query = applyMarketFilter(
+      query,
+      await marketFilterFor(admin.marketId, queueParams.market_id ?? null)
+    );
+    query = applyLeadQueueFilters(query, queueParams, { includeSelectedStreets: false });
     if (sourceId) query = query.eq('source_id', parseInt(sourceId, 10));
-    const searchFilter = buildLeadSearchFilter(search);
-    if (searchFilter) {
-      query = query.or(searchFilter);
-    }
 
     const { data: leads, error } = await query;
     if (error) {

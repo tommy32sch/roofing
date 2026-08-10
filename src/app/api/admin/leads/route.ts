@@ -2,16 +2,19 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/supabase/server';
 import { getAuthenticatedAdmin } from '@/lib/auth/jwt';
 import { marketFilterFor } from '@/lib/leads/market-context';
-import { resolveUploaderFilter } from '@/lib/leads/attribution';
 import { applyMarketFilter } from '@/lib/leads/markets';
-import { parseAssigneeFilter, applyAssigneeFilter } from '@/lib/leads/assignment-filter';
 import { parsePhoneNumber } from 'libphonenumber-js';
 import { enrichLead } from '@/lib/integrations/regrid';
 import { geocodeLeadIfNeeded } from '@/lib/integrations/geocode';
-import { buildLeadSearchFilter, safeSortColumn, sanitizeSearch, sanitizeStreetNumber, directionRegex, buildStreetNamesFilter } from '@/lib/utils/lead-query';
+import { safeSortColumn } from '@/lib/utils/lead-query';
 import { estimateRoofValue } from '@/lib/leads/roof-value';
 import { pickWritableLeadFields, statusDenialReason } from '@/lib/leads/lead-fields';
 import { getRoofPricePerSquare } from '@/lib/leads/roof-value.server';
+import {
+  applyLeadQueueFilters,
+  leadQueueRequestParamsFromSearchParams,
+} from '@/lib/leads/work-queue.server';
+import { leadQueueSort } from '@/lib/leads/work-queue';
 
 export async function GET(request: NextRequest) {
   try {
@@ -23,14 +26,15 @@ export async function GET(request: NextRequest) {
     const supabase = db();
     const { searchParams } = new URL(request.url);
 
-    const status = searchParams.get('status');
-    const priority = searchParams.get('priority');
     const sourceId = searchParams.get('source_id');
-    const search = searchParams.get('search');
-    const sort = searchParams.get('sort') || 'created_at';
-    const order = searchParams.get('order') || 'desc';
-    const page = parseInt(searchParams.get('page') || '1', 10);
-    const limit = Math.min(parseInt(searchParams.get('limit') || '25', 10), 100);
+    const queueParams = leadQueueRequestParamsFromSearchParams(searchParams);
+    const { sort, order } = leadQueueSort(queueParams);
+    const parsedPage = parseInt(searchParams.get('page') || '1', 10);
+    const parsedLimit = parseInt(searchParams.get('limit') || '25', 10);
+    const page = Number.isFinite(parsedPage) && parsedPage > 0 ? parsedPage : 1;
+    const limit = Number.isFinite(parsedLimit) && parsedLimit > 0
+      ? Math.min(parsedLimit, 100)
+      : 25;
     const offset = (page - 1) * limit;
     const showDuplicates = searchParams.get('show_duplicates') === 'true';
     const isFlaggedDuplicate = searchParams.get('is_flagged_duplicate');
@@ -49,28 +53,12 @@ export async function GET(request: NextRequest) {
     // Office scoping: explicit ?market_id, else the caller's home market.
     query = applyMarketFilter(query, await marketFilterFor(admin.marketId, searchParams.get('market_id')));
 
-    // "Show me what this person uploaded." A malformed id narrows to nothing
-    // rather than widening to every lead.
-    const uploader = resolveUploaderFilter(searchParams.get('created_by'));
-    if (uploader) query = query.eq('created_by', uploader);
-
-    // "Who owns this?" Accepts a user id or the literal `unassigned`, which needs
-    // IS NULL rather than an equality — a filter that only matches a person can
-    // never surface the leads nobody owns, which is where they fall through.
-    // Readable by every role: knowing who owns a door prevents double-knocking.
-    query = applyAssigneeFilter(query, 'setter', parseAssigneeFilter(searchParams.get('assigned_setter')));
-    query = applyAssigneeFilter(query, 'closer', parseAssigneeFilter(searchParams.get('assigned_closer')));
+    query = applyLeadQueueFilters(query, queueParams);
 
     // Closers see leads from appointment_set onwards (their working pipeline + history)
     const CLOSER_STATUSES = ['appointment_set', 'inspected', 'proposal_sent', 'sold', 'lost'];
     if (admin.role === 'closer') {
-      if (status && CLOSER_STATUSES.includes(status)) {
-        query = query.eq('status', status);
-      } else {
-        query = query.in('status', CLOSER_STATUSES);
-      }
-    } else if (status) {
-      query = query.eq('status', status);
+      query = query.in('status', CLOSER_STATUSES);
     }
 
     // Exclude flagged duplicates from main list unless explicitly requested
@@ -80,15 +68,7 @@ export async function GET(request: NextRequest) {
       query = query.eq('is_flagged_duplicate', isFlaggedDuplicate === 'true');
     }
 
-    // Do Not Call filter (leads stay visible normally; this isolates them)
-    if (searchParams.get('is_dnc') === 'true') {
-      query = query.eq('is_dnc', true);
-    }
-
-    if (admin.role !== 'closer') {
-      if (priority) query = query.eq('priority', priority);
-      if (sourceId) query = query.eq('source_id', parseInt(sourceId, 10));
-    }
+    if (sourceId && admin.role !== 'closer') query = query.eq('source_id', parseInt(sourceId, 10));
 
     if (followUpBefore) {
       query = query
@@ -97,24 +77,13 @@ export async function GET(request: NextRequest) {
         .not('status', 'in', '("sold","lost")');
     }
 
-    const searchFilter = buildLeadSearchFilter(search);
-    if (searchFilter) {
-      query = query.or(searchFilter);
-    }
-
-    // Structured street filters (all narrow the results together)
-    const streetNumber = sanitizeStreetNumber(searchParams.get('street_number'));
-    if (streetNumber) query = query.ilike('address_street', `${streetNumber}%`);
-    const streetName = sanitizeSearch(searchParams.get('street_name') || '');
-    if (streetName) query = query.ilike('address_street', `%${streetName}%`);
-    const dirRegex = directionRegex(searchParams.get('street_dir'));
-    if (dirRegex) query = query.filter('address_street', 'imatch', dirRegex);
-    // Restrict to specific streets picked in the "By Street" panel
-    const streetsFilter = buildStreetNamesFilter(searchParams.get('streets'));
-    if (streetsFilter) query = query.or(streetsFilter);
-
     const ascending = order === 'asc';
-    query = query.order(safeSortColumn(sort), { ascending }).range(offset, offset + limit - 1);
+    const sortColumn = safeSortColumn(sort);
+    query = query.order(sortColumn, { ascending, nullsFirst: false });
+    if (sortColumn === 'last_name') query = query.order('first_name', { ascending, nullsFirst: false });
+    if (sortColumn === 'first_name') query = query.order('last_name', { ascending, nullsFirst: false });
+    if (sortColumn !== 'created_at') query = query.order('created_at', { ascending: false, nullsFirst: false });
+    query = query.order('id', { ascending: true }).range(offset, offset + limit - 1);
 
     const { data: leads, error, count } = await query;
 
@@ -128,6 +97,8 @@ export async function GET(request: NextRequest) {
       total: count || 0,
       page,
       limit,
+      sort: sortColumn,
+      order,
       totalPages: Math.ceil((count || 0) / limit),
     });
   } catch {

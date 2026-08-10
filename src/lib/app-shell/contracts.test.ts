@@ -8,8 +8,9 @@ const protectedLayout = read('src/app/admin/(app)/layout.tsx');
 const login = read('src/app/admin/login/page.tsx');
 const provider = read('src/components/providers/app-shell-provider.tsx');
 const marketHook = read('src/components/markets/use-markets.ts');
+const adminShell = read('src/components/layout/admin-shell.tsx');
 const clientSources = [
-  read('src/components/layout/admin-shell.tsx'),
+  adminShell,
   marketHook,
   read('src/app/admin/(app)/page.tsx'),
   read('src/app/admin/(app)/leads/page.tsx'),
@@ -44,6 +45,12 @@ describe('trusted application shell contracts', () => {
   it('has no privileged fallback while trusted identity is unknown', () => {
     expect(clientSources).not.toMatch(/useState<UserRole>\(['"]admin['"]\)/);
     expect(clientSources).not.toContain("setUserRole(d.admin.role)");
+  });
+
+  it('keeps theme-toggle markup stable while CSS selects the active icon', () => {
+    expect(adminShell).not.toContain("theme === 'dark'");
+    expect(adminShell).toContain('className="h-4 w-4 dark:hidden"');
+    expect(adminShell).toContain('className="hidden h-4 w-4 dark:block"');
   });
 
   it('owns the browser connection subscription once in the provider', () => {

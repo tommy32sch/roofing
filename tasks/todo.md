@@ -1186,8 +1186,77 @@ the wrong role, and a failed bootstrap must never look like valid empty data.
   ESLint, production build, route generation, and whitespace review. A local
   browser confirmed that login mounts without the protected shell, `/admin`
   redirects to login with its return path, and the browser console stays clean.
-  An authenticated interactive pass was not run because no local sign-in
-  credential was supplied; the authenticated shell is covered by loader,
-  session, permission, and source-contract tests.
-- These changes are local only. No migration, commit, push, or deployment was
-  performed.
+  A signed-in browser pass then confirmed Dashboard, Leads, and Settings through
+  the protected shell.
+- Commit `9b2767a` was pushed to `origin/main` on 2026-08-09. No migration was
+  required.
+
+## Stable Leads work queue
+
+Goal: make Leads a fast, predictable work surface whose URL, table, saved views,
+and exports always describe the same result set.
+
+Architectural decisions:
+- The URL is the canonical transient queue state. Filter and sort changes replace
+  the current history entry; pagination may remain a deliberate history step.
+- User-owned saved views are durable database records. They store only an
+  allowlisted, normalized set of lead query parameters and never use localStorage.
+- Sorting is server-owned, allowlisted, null-safe, and deterministic across pages.
+- Saved views never include pagination. Applying one replaces the full queue
+  filter and sort state in one navigation.
+
+### Query model and API
+
+- [x] Add one typed lead-view query contract with normalization and signatures
+- [x] Fix controlled debounce and use `router.replace` for filter and sort changes
+- [x] Read and send `sort` and `order`, including existing Today links
+- [x] Make list and export filtering and ordering match
+- [x] Add migration 030 and owner-scoped saved-view CRUD routes
+
+### Work-queue UI
+
+- [x] Add a saved-view picker with create, update, rename, and delete actions
+- [x] Add clear active-filter chips and one Clear all action
+- [x] Add accessible sortable table headers and a compact sort control
+- [x] Keep mobile controls compact and preserve safe bulk-selection behavior
+
+### Verification
+
+- [x] Add focused query, route, migration, and page-contract tests
+- [x] Run focused/full tests, TypeScript, changed-file lint, schema build, and production build
+- [x] Verify signed-in desktop search, clear, filter, sorting, and clean hydration
+- [x] Verify saved-view create, update, rename, apply, and delete after migration 030
+- [ ] Verify the phone-width workflow in a real narrow viewport
+- [x] Record review results and deployment requirements
+
+### Review — 2026-08-09
+
+- The Leads URL now owns the complete allowlisted filter and sort state. Search
+  is controlled and debounced, changes replace history, stale requests abort,
+  old rows remain visible during refresh, and pagination is deterministic.
+- List, export, and street grouping use one server filter boundary. Malformed
+  assignment filters still fail closed instead of widening the result set.
+- Saved views are versioned, user-owned database records with create, update,
+  rename, and delete routes. Migration 030 is included in the generated schema
+  and backup manifest and was applied by the owner on 2026-08-10.
+- Desktop browser verification passed for debounced search, URL state, live
+  result counts, Clear all, status filters, and server sorting. A fresh
+  production build also confirmed clean hydration and no browser console errors.
+  The pass fixed the app-shell Sun/Moon mismatch and link-button semantics found
+  during this review.
+- Verification passed: 95 test files / 1,026 tests, TypeScript, changed-file
+  ESLint, schema generation from 30 migrations, `git diff --check`, and a full
+  mocked-font webpack production build with all 42 pages generated. The normal
+  Turbopack build was blocked only by sandbox access to Google Fonts; two network
+  approval attempts timed out.
+- The phone-specific sheet and safe-area bulk bar are covered by contracts, but
+  the current in-app browser cannot change its viewport. A real phone-width pass
+  remains required.
+- Post-migration browser verification created a temporary saved view from the
+  `status=new`, `search=Charles`, `last_name:asc` queue, updated its definition,
+  renamed it, left and reapplied it, and then deleted it. The exact URL and
+  six-lead result set were restored, cleanup was confirmed, and the signed-in
+  browser console stayed clean.
+- Existing closer-status visibility was not changed. The current routes do not
+  share one consistent business policy, so that access decision should be made
+  as its own security-scoped change.
