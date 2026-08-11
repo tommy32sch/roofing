@@ -6,7 +6,7 @@ import { MapContainer, TileLayer, CircleMarker, Pane, Popup, Polygon, Polyline, 
 import type { Map as LeafletMap } from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { formatDistanceToNow } from 'date-fns';
-import { knockLabel, knockRecency } from '@/lib/leads/knocks';
+import { knockLabel, knockRecency, KNOCK_DISPOSITIONS, QUICK_KNOCK_DISPOSITIONS, type KnockDisposition } from '@/lib/leads/knocks';
 import { callLabel } from '@/lib/leads/calls';
 import { Button } from '@/components/ui/button';
 import { FollowUpMenu } from '@/components/leads/FollowUpMenu';
@@ -527,6 +527,11 @@ interface LeadMapProps {
   pendingHouse?: { latitude: number; longitude: number } | null;
   /** Open the phone-sized result picker from a lead pin. */
   onOpenResult?: (lead: GeoLead, channel: LeadResultChannel) => void;
+  /**
+   * Record a knock straight from the popup, with no sheet. Used for the two
+   * high-frequency, no-follow-up outcomes so the common case is one tap.
+   */
+  onQuickKnock?: (lead: GeoLead, disposition: KnockDisposition) => void;
   /** Refetch after a follow-up is set from a popup. */
   onFollowUpChange?: () => void;
   /** Selected office, so the map can move to it when there's nothing to fit. */
@@ -569,6 +574,7 @@ export default function LeadMap({
   stormNow = 0,
   stormZones = false,
   onOpenResult,
+  onQuickKnock,
   onFollowUpChange,
   marketId = null,
   marketCenter = null,
@@ -1009,16 +1015,45 @@ export default function LeadMap({
                     <p className="mb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                       Record result
                     </p>
+
+                    {/* The two commonest knock outcomes record in one tap,
+                        straight from the popup. A rep does this hundreds of
+                        times a shift, and both of these are terminal — no
+                        scheduling or won-lead step follows — so the sheet was
+                        pure overhead on the path they walk most. Everything
+                        else stays behind "More". */}
+                    {onQuickKnock && !lead.do_not_knock && (
+                      <div className="mb-1.5 grid grid-cols-2 gap-1.5">
+                        {QUICK_KNOCK_DISPOSITIONS.map((value) => {
+                          const d = KNOCK_DISPOSITIONS.find((k) => k.value === value)!;
+                          return (
+                            <Button
+                              key={value}
+                              type="button"
+                              size="sm"
+                              className="min-h-11 h-auto px-2 text-xs"
+                              onClick={() => onQuickKnock(lead, value as KnockDisposition)}
+                            >
+                              {d.label}
+                            </Button>
+                          );
+                        })}
+                      </div>
+                    )}
+
                     <div className="grid grid-cols-2 gap-1.5">
                       <Button
                         type="button"
                         size="sm"
+                        variant="outline"
                         className="min-h-11 h-auto px-2 text-xs"
                         disabled={lead.do_not_knock}
                         title={lead.do_not_knock ? 'This house is marked Do Not Knock' : undefined}
                         onClick={() => onOpenResult(lead, 'knock')}
                       >
-                        Knocked
+                        {/* Every other knock outcome, plus appointment and
+                            contract which open their own flow. */}
+                        More…
                       </Button>
                       <Button
                         type="button"

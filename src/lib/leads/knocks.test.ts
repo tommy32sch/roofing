@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   KNOCK_DISPOSITIONS,
   KNOCK_DISPOSITION_VALUES,
+  QUICK_KNOCK_DISPOSITIONS,
   knockLabel,
   knockRecency,
   statusForDisposition,
@@ -81,5 +82,36 @@ describe('knockLabel', () => {
   });
   it('falls back to the raw value', () => {
     expect(knockLabel('mystery')).toBe('mystery');
+  });
+});
+
+describe('QUICK_KNOCK_DISPOSITIONS', () => {
+  it('are all real, selectable dispositions', () => {
+    for (const v of QUICK_KNOCK_DISPOSITIONS) {
+      expect(KNOCK_DISPOSITION_VALUES.has(v), v).toBe(true);
+    }
+  });
+
+  /**
+   * The promise these make is one tap, so every promoted outcome must be
+   * terminal — nothing that opens a scheduling step, a won-lead step, or a
+   * follow-up-date prompt. If a later edit adds one of those to the quick list,
+   * the popup would fire the flow with no way to complete it, and this fails
+   * before it ships.
+   */
+  it('are terminal — none open a follow-up or a downstream flow', () => {
+    const OPENS_A_FLOW = new Set([
+      'appointment_set',   // opens scheduling
+      'contract_signed',   // opens the won-lead workflow
+      'callback',          // prompts for a follow-up date
+      'call_back',         // prompts for a follow-up date
+    ]);
+    for (const v of QUICK_KNOCK_DISPOSITIONS) {
+      expect(OPENS_A_FLOW.has(v), `${v} opens a flow and cannot be one tap`).toBe(false);
+    }
+  });
+
+  it('is a short list — the popup has room for two, not nine', () => {
+    expect(QUICK_KNOCK_DISPOSITIONS.length).toBeLessThanOrEqual(2);
   });
 });

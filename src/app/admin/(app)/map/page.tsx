@@ -1540,6 +1540,13 @@ export default function MapPage() {
             onOpenResult={
               (lead, channel) => setResultTarget({ lead, channel })
             }
+            // Records straight through the same path the sheet uses, so it
+            // queues offline and fires the follow-up flows identically — it
+            // just skips the disposition picker for the two outcomes that
+            // need none.
+            onQuickKnock={(lead, disposition) =>
+              void logLeadResult({ channel: 'knock', disposition }, lead)
+            }
             onFollowUpChange={refreshLeadViews}
             marketId={execution.territory?.market_id ?? selectedMarket?.id ?? null}
             marketCenter={marketCenter}

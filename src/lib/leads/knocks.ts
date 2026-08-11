@@ -20,6 +20,22 @@ export const KNOCK_DISPOSITIONS = [
 ] as const;
 
 /**
+ * The two outcomes a canvasser records without a follow-up step, promoted to
+ * one tap on the map popup.
+ *
+ * These are the high-frequency "record and move to the next door" cases. Most
+ * knocks are a no-answer, and the commonest result when someone does answer is
+ * a decline — so making exactly these two instant removes the sheet from the
+ * path a rep walks hundreds of times a shift.
+ *
+ * They are deliberately the outcomes with NO follow-up: an appointment or a
+ * signed contract opens a scheduling or won-lead flow, so an extra tap there
+ * costs nothing against the work that follows. Change the pair here and the
+ * popup follows.
+ */
+export const QUICK_KNOCK_DISPOSITIONS = ['not_home', 'not_interested'] as const;
+
+/**
  * Accepted for compatibility but intentionally omitted from the selectable
  * list. Existing history and offline entries may still contain this value.
  */
