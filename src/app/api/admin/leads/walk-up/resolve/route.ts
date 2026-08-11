@@ -4,6 +4,9 @@ import { getAuthenticatedAdmin } from '@/lib/auth/jwt';
 import { getCassKey } from '@/lib/integrations/geocode';
 import { reverseGeocode } from '@/lib/integrations/geocode-reverse';
 import { findNearbyLeads, isPlausibleCoordinate, NEARBY_RADIUS_M } from '@/lib/leads/walk-up';
+import { applyLeadVisibilityFilter } from '@/lib/leads/lead-visibility';
+import { applyMarketFilter } from '@/lib/leads/markets';
+import { marketFilterFor } from '@/lib/leads/market-context';
 
 /**
  * What is at this point on the map?
@@ -35,7 +38,11 @@ export async function GET(request: NextRequest) {
      * latitude 0.001 degrees is about 100m, comfortably wider than the radius.
      */
     const pad = 0.001;
-    const { data: candidates } = await supabase
+    // This returns lead names and addresses, so it takes the same scoping the
+    // map data does: a closer sees only leads they are allowed to, and every
+    // role is held to their office. Without it, probing coordinates turned this
+    // dedup check into a way to enumerate the whole book across markets.
+    let candidateQuery = supabase
       .from('leads')
       .select('id, first_name, last_name, address_street, status, latitude, longitude')
       .gte('latitude', latitude - pad)
@@ -43,6 +50,12 @@ export async function GET(request: NextRequest) {
       .gte('longitude', longitude - pad)
       .lte('longitude', longitude + pad)
       .limit(200);
+    candidateQuery = applyLeadVisibilityFilter(candidateQuery, admin.role);
+    candidateQuery = applyMarketFilter(
+      candidateQuery,
+      await marketFilterFor(admin.marketId, searchParams.get('market_id'))
+    );
+    const { data: candidates } = await candidateQuery;
 
     const nearby = findNearbyLeads(
       (candidates ?? []) as { id: string; latitude: number; longitude: number }[],
