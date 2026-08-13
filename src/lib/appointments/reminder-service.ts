@@ -42,6 +42,7 @@ interface MarketSetting {
 type AppointmentRow = {
   id: string;
   scheduled_at: string;
+  outcome: string;
   appointment_type: string | null;
   notes: string | null;
   created_by: string | null;
@@ -95,8 +96,9 @@ export async function planAppointmentReminders(
   const { data, error } = await supabase
     .from('lead_appointments')
     .select(
-      'id, scheduled_at, appointment_type, notes, created_by, leads!lead_id!inner(id, first_name, last_name, email, address_street, address_city, address_state, market_id, assigned_to)'
+      'id, scheduled_at, outcome, appointment_type, notes, created_by, leads!lead_id!inner(id, first_name, last_name, email, address_street, address_city, address_state, market_id, assigned_to)'
     )
+    .eq('outcome', 'scheduled')
     .gte('scheduled_at', window.start)
     .lte('scheduled_at', window.end);
 
@@ -226,7 +228,7 @@ export async function deliverAppointmentReminders(
     const { data: appointment } = await supabase
       .from('lead_appointments')
       .select(
-        'id, scheduled_at, appointment_type, notes, leads!lead_id!inner(first_name, last_name, address_street, address_city, address_state, market_id)'
+        'id, scheduled_at, outcome, appointment_type, notes, leads!lead_id!inner(first_name, last_name, address_street, address_city, address_state, market_id)'
       )
       .eq('id', row.appointment_id)
       .single();
@@ -236,7 +238,12 @@ export async function deliverAppointmentReminders(
     // Rescheduled or cancelled since queueing: the reminder is now wrong, and a
     // wrong time is worse than no reminder. Retire it; the next planning pass
     // queues a fresh one under a new dedupe key.
-    if (!appt || !appt.leads || appt.scheduled_at !== row.appointment_at) {
+    if (
+      !appt ||
+      !appt.leads ||
+      appt.outcome !== 'scheduled' ||
+      appt.scheduled_at !== row.appointment_at
+    ) {
       await supabase
         .from('appointment_reminder_deliveries')
         .update({ status: 'skipped', last_error: 'appointment changed', updated_at: new Date().toISOString() })

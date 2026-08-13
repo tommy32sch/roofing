@@ -1,3 +1,7 @@
+import type { AppointmentOutcome } from '@/types';
+
+export type { AppointmentOutcome } from '@/types';
+
 /**
  * Appointment outcomes — did the visit actually happen?
  *
@@ -15,9 +19,7 @@ export const APPOINTMENT_OUTCOMES = [
   'completed',
   'no_show',
   'cancelled',
-] as const;
-
-export type AppointmentOutcome = (typeof APPOINTMENT_OUTCOMES)[number];
+] as const satisfies readonly AppointmentOutcome[];
 
 export const APPOINTMENT_OUTCOME_VALUES = new Set<string>(APPOINTMENT_OUTCOMES);
 
@@ -150,6 +152,33 @@ export function canRecordOutcome(input: {
   if (!isTheirs) return false;
   // Unset, or previously set by themselves.
   return !input.existingOutcomeBy || input.existingOutcomeBy === input.userId;
+}
+
+/**
+ * One ownership boundary for every appointment-outcome surface.
+ *
+ * A lead can have a setter and a closer. The booking creator also remains an
+ * owner because older and unassigned appointments can rely on that attribution.
+ */
+export function canRecordAppointmentOutcome(input: {
+  role: string;
+  userId: string;
+  appointmentCreatedBy: string | null;
+  leadAssignedSetterId: string | null;
+  leadAssignedCloserId: string | null;
+  existingOutcomeBy: string | null;
+}): boolean {
+  const common = {
+    role: input.role,
+    userId: input.userId,
+    appointmentCreatedBy: input.appointmentCreatedBy,
+    existingOutcomeBy: input.existingOutcomeBy,
+  };
+
+  return (
+    canRecordOutcome({ ...common, appointmentAssignedTo: input.leadAssignedSetterId }) ||
+    canRecordOutcome({ ...common, appointmentAssignedTo: input.leadAssignedCloserId })
+  );
 }
 
 /**

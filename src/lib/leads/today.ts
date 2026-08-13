@@ -1,4 +1,5 @@
-import type { UserRole } from '@/types';
+import type { Lead, LeadAppointment, UserRole } from '@/types';
+import { isAwaitingOutcome, summariseOutcomes } from './appointment-outcomes';
 
 /**
  * Pure logic behind the Today screen.
@@ -10,6 +11,150 @@ import type { UserRole } from '@/types';
 
 /** Whose work the screen shows. */
 export type TodayScope = 'mine' | 'all';
+
+export type TodayLead = Pick<
+  Lead,
+  | 'id'
+  | 'first_name'
+  | 'last_name'
+  | 'phone'
+  | 'phone2'
+  | 'phone3'
+  | 'email'
+  | 'status'
+  | 'priority'
+  | 'address_street'
+  | 'address_city'
+  | 'address_state'
+  | 'address_zip'
+  | 'latitude'
+  | 'longitude'
+  | 'follow_up_date'
+  | 'last_knock_at'
+  | 'last_disposition'
+  | 'knock_count'
+  | 'is_dnc'
+  | 'do_not_knock'
+  | 'market_id'
+  | 'assigned_setter_id'
+  | 'assigned_closer_id'
+>;
+
+export interface TodayAppointment
+  extends Pick<
+    LeadAppointment,
+    | 'id'
+    | 'appointment_type'
+    | 'scheduled_at'
+    | 'notes'
+    | 'outcome'
+    | 'outcome_at'
+    | 'outcome_by'
+    | 'created_by'
+  > {
+  leads: TodayLead | null;
+  /** Server-owned result of the appointment ownership policy. */
+  can_record_outcome: boolean;
+}
+
+export interface TodayData {
+  generatedAt: string;
+  appointments: TodayAppointment[];
+  priorUnresolvedAppointments: TodayAppointment[];
+  followUps: TodayLead[];
+  callbacks: TodayLead[];
+  counts: {
+    appointments: number;
+    priorUnresolved: number;
+    followUps: number;
+    callbacks: number;
+    assignedToMe: number;
+  };
+  limit: number;
+}
+
+export interface TodayAppointmentProgress {
+  total: number;
+  closedOut: number;
+  percent: number;
+  completed: number;
+  noShow: number;
+  cancelled: number;
+  awaiting: number;
+  upcoming: number;
+}
+
+export interface TodayCommandCenter {
+  nextStop: TodayAppointment | null;
+  laterToday: TodayAppointment[];
+  awaitingResults: TodayAppointment[];
+  awaitingTotal: number;
+  progress: TodayAppointmentProgress;
+}
+
+function compareAppointmentTime(a: TodayAppointment, b: TodayAppointment): number {
+  const time = Date.parse(a.scheduled_at) - Date.parse(b.scheduled_at);
+  return time || a.id.localeCompare(b.id);
+}
+
+/**
+ * One deterministic model for every appointment block on Today.
+ *
+ * The API loads prior unresolved visits separately so today's full schedule can
+ * stay useful for progress. This model merges the two result sources, removes
+ * duplicates, and makes each appointment appear in only one action list.
+ */
+export function buildTodayCommandCenter(input: {
+  appointments: TodayAppointment[];
+  priorUnresolvedAppointments: TodayAppointment[];
+  priorUnresolvedTotal?: number;
+  nowIso: string;
+}): TodayCommandCenter {
+  const now = Date.parse(input.nowIso);
+  const today = [...input.appointments].sort(compareAppointmentTime);
+  const upcoming = Number.isNaN(now)
+    ? []
+    : today.filter(
+        (appointment) =>
+          appointment.outcome === 'scheduled' && Date.parse(appointment.scheduled_at) >= now
+      );
+  const nextStop = upcoming[0] ?? null;
+
+  const resultById = new Map<string, TodayAppointment>();
+  for (const appointment of [...input.priorUnresolvedAppointments, ...today]) {
+    if (isAwaitingOutcome(appointment, input.nowIso)) resultById.set(appointment.id, appointment);
+  }
+  const awaitingResults = [...resultById.values()].sort(compareAppointmentTime);
+
+  const todayAwaiting = today.filter((appointment) => isAwaitingOutcome(appointment, input.nowIso));
+  const priorVisibleIds = new Set(
+    input.priorUnresolvedAppointments
+      .filter((appointment) => isAwaitingOutcome(appointment, input.nowIso))
+      .map((appointment) => appointment.id)
+  );
+  const overlap = todayAwaiting.filter((appointment) => priorVisibleIds.has(appointment.id)).length;
+  const priorTotal = Math.max(input.priorUnresolvedTotal ?? priorVisibleIds.size, priorVisibleIds.size);
+
+  const totals = summariseOutcomes(today, input.nowIso);
+  const closedOut = totals.completed + totals.noShow + totals.cancelled;
+
+  return {
+    nextStop,
+    laterToday: nextStop ? upcoming.slice(1) : upcoming,
+    awaitingResults,
+    awaitingTotal: priorTotal + todayAwaiting.length - overlap,
+    progress: {
+      total: totals.total,
+      closedOut,
+      percent: totals.total === 0 ? 0 : Math.round((closedOut / totals.total) * 100),
+      completed: totals.completed,
+      noShow: totals.noShow,
+      cancelled: totals.cancelled,
+      awaiting: totals.awaiting,
+      upcoming: totals.upcoming,
+    },
+  };
+}
 
 /**
  * Which scope a role should land on.

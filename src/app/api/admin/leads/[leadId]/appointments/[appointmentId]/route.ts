@@ -5,10 +5,10 @@ import { isValidUUID } from '@/lib/utils/validation';
 import { findAppointmentConflicts, conflictResponseBody } from '@/lib/leads/appointment-guard';
 import {
   isAppointmentOutcome,
-  appointmentOutcomeLabel,
-  canRecordOutcome,
+  canRecordAppointmentOutcome,
   canModifyAppointment,
 } from '@/lib/leads/appointment-outcomes';
+import type { AppointmentOutcome } from '@/types';
 
 /**
  * Load the appointment, scoped to its lead.
@@ -66,6 +66,19 @@ export async function PATCH(
 
     const body = await request.json();
 
+    // Each write has one meaning. Outcome capture is transactional through the
+    // database function below; mixing it with a reschedule would split one
+    // request across two transactions and recreate partial-success states.
+    if (
+      body.outcome !== undefined &&
+      (body.scheduled_at !== undefined || body.notes !== undefined)
+    ) {
+      return NextResponse.json(
+        { success: false, error: 'Record an outcome separately from appointment changes' },
+        { status: 400 }
+      );
+    }
+
     // Moving or annotating someone else's booking is the same breach as
     // deleting it, so it takes the same ownership test. The outcome branch
     // below keeps its own stricter rule.
@@ -102,27 +115,21 @@ export async function PATCH(
     // the door — but only an admin may overwrite someone else's, so a
     // disappointing outcome cannot be quietly rewritten by the person it
     // reflects on.
+    let requestedOutcome: AppointmentOutcome | null = null;
     if (body.outcome !== undefined) {
       if (!isAppointmentOutcome(body.outcome)) {
         return NextResponse.json({ success: false, error: 'Invalid outcome' }, { status: 400 });
       }
 
       const assigned = await getLeadAssignment(leadId);
-      const allowed =
-        canRecordOutcome({
-          role: admin.role,
-          userId: admin.sub,
-          appointmentCreatedBy: existing.created_by ?? null,
-          appointmentAssignedTo: assigned?.assigned_closer_id ?? null,
-          existingOutcomeBy: existing.outcome_by ?? null,
-        }) ||
-        canRecordOutcome({
-          role: admin.role,
-          userId: admin.sub,
-          appointmentCreatedBy: existing.created_by ?? null,
-          appointmentAssignedTo: assigned?.assigned_setter_id ?? null,
-          existingOutcomeBy: existing.outcome_by ?? null,
-        });
+      const allowed = canRecordAppointmentOutcome({
+        role: admin.role,
+        userId: admin.sub,
+        appointmentCreatedBy: existing.created_by ?? null,
+        leadAssignedSetterId: assigned?.assigned_setter_id ?? null,
+        leadAssignedCloserId: assigned?.assigned_closer_id ?? null,
+        existingOutcomeBy: existing.outcome_by ?? null,
+      });
 
       if (!allowed) {
         return NextResponse.json(
@@ -131,12 +138,7 @@ export async function PATCH(
         );
       }
 
-      updates.outcome = body.outcome;
-      // Returning a booking to 'scheduled' is undoing a mistake, so the
-      // attribution is cleared rather than left pointing at a decision that no
-      // longer exists.
-      updates.outcome_at = body.outcome === 'scheduled' ? null : new Date().toISOString();
-      updates.outcome_by = body.outcome === 'scheduled' ? null : admin.sub;
+      requestedOutcome = body.outcome;
     }
 
     // Same guard as creating one. excludeAppointmentId matters here: without it
@@ -153,15 +155,50 @@ export async function PATCH(
       }
     }
 
-    const { data: appointment, error } = await supabase
-      .from('lead_appointments')
-      .update(updates)
-      .eq('id', appointmentId)
-      .select('*')
-      .single();
+    let appointment: unknown;
+    if (requestedOutcome) {
+      const { data: result, error } = await supabase.rpc('record_appointment_outcome', {
+        p_lead_id: leadId,
+        p_appointment_id: appointmentId,
+        p_outcome: requestedOutcome,
+        p_recorded_by: admin.sub,
+        p_expected_outcome: existing.outcome ?? 'scheduled',
+        p_expected_outcome_by: existing.outcome_by ?? null,
+        p_allow_overwrite: admin.role === 'admin',
+      });
+      if (error) {
+        return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+      }
+      const outcomeResult = result as {
+        success?: boolean;
+        error?: string;
+        appointment?: unknown;
+      } | null;
+      if (!outcomeResult?.success || !outcomeResult.appointment) {
+        const changed = outcomeResult?.error === 'appointment_changed';
+        return NextResponse.json(
+          {
+            success: false,
+            error: changed
+              ? 'This appointment result changed. Refresh and try again.'
+              : outcomeResult?.error || 'Appointment not found',
+          },
+          { status: changed ? 409 : 404 }
+        );
+      }
+      appointment = outcomeResult.appointment;
+    } else {
+      const { data, error } = await supabase
+        .from('lead_appointments')
+        .update(updates)
+        .eq('id', appointmentId)
+        .select('*')
+        .single();
 
-    if (error) {
-      return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+      if (error) {
+        return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+      }
+      appointment = data;
     }
 
     if (updates.scheduled_at) {
@@ -169,20 +206,6 @@ export async function PATCH(
         lead_id: leadId,
         activity_type: 'updated',
         content: `${typeLabel(existing.appointment_type)} appointment rescheduled`,
-        created_by: admin.sub,
-      });
-    }
-
-    // An outcome belongs in the timeline: "nobody was home for the inspection"
-    // is history, and the person reading the lead later needs it without
-    // opening a report.
-    if (updates.outcome && updates.outcome !== existing.outcome) {
-      await supabase.from('lead_activities').insert({
-        lead_id: leadId,
-        activity_type: 'updated',
-        content: `${typeLabel(existing.appointment_type)} appointment marked ${appointmentOutcomeLabel(
-          updates.outcome as string
-        ).toLowerCase()}`,
         created_by: admin.sub,
       });
     }
@@ -213,19 +236,12 @@ export async function DELETE(
       return NextResponse.json({ success: false, error: 'Appointment not found' }, { status: 404 });
     }
 
-    // Cancelling had no ownership test, which made the outcome protection above
-    // hollow: a rep refused permission to overwrite a colleague's outcome could
-    // delete the appointment instead and take the outcome with it.
-    const assigned = await getLeadAssignment(leadId);
-    if (!canModifyAppointment({
-      role: admin.role,
-      userId: admin.sub,
-      appointmentCreatedBy: existing.created_by ?? null,
-      leadAssignedSetterId: assigned?.assigned_setter_id ?? null,
-      leadAssignedCloserId: assigned?.assigned_closer_id ?? null,
-    })) {
+    // This is permanent deletion, not cancellation. Normal cancellation records
+    // outcome='cancelled' through PATCH so reporting and history stay intact.
+    // Only admins may erase that record; ownership is not enough.
+    if (admin.role !== 'admin') {
       return NextResponse.json(
-        { success: false, error: 'You cannot cancel this appointment' },
+        { success: false, error: 'Only an admin can permanently delete an appointment' },
         { status: 403 }
       );
     }
@@ -239,7 +255,7 @@ export async function DELETE(
     await supabase.from('lead_activities').insert({
       lead_id: leadId,
       activity_type: 'updated',
-      content: `${typeLabel(existing.appointment_type)} appointment canceled`,
+      content: `${typeLabel(existing.appointment_type)} appointment deleted permanently`,
       created_by: admin.sub,
     });
 

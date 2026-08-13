@@ -8,6 +8,7 @@ import {
   canRecordOutcome,
   APPOINTMENT_OUTCOMES,
   canModifyAppointment,
+  canRecordAppointmentOutcome,
 } from './appointment-outcomes';
 
 const NOW = '2026-07-29T12:00:00.000Z';
@@ -234,5 +235,32 @@ describe('canModifyAppointment', () => {
    */
   it('ignores who recorded an outcome', () => {
     expect(canModifyAppointment({ ...base, appointmentCreatedBy: 'u1' })).toBe(true);
+  });
+});
+
+describe('canRecordAppointmentOutcome', () => {
+  const base = {
+    role: 'setter',
+    userId: 'rep-1',
+    appointmentCreatedBy: 'other',
+    leadAssignedSetterId: null,
+    leadAssignedCloserId: null,
+    existingOutcomeBy: null,
+  };
+
+  it('uses either assignment role plus the booking creator', () => {
+    expect(canRecordAppointmentOutcome({ ...base, leadAssignedSetterId: 'rep-1' })).toBe(true);
+    expect(canRecordAppointmentOutcome({ ...base, leadAssignedCloserId: 'rep-1' })).toBe(true);
+    expect(canRecordAppointmentOutcome({ ...base, appointmentCreatedBy: 'rep-1' })).toBe(true);
+  });
+
+  it('keeps another actor’s recorded result protected', () => {
+    expect(
+      canRecordAppointmentOutcome({
+        ...base,
+        leadAssignedSetterId: 'rep-1',
+        existingOutcomeBy: 'manager-1',
+      })
+    ).toBe(false);
   });
 });

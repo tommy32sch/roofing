@@ -4,6 +4,8 @@ import { getAuthenticatedAdmin } from '@/lib/auth/jwt';
 import { marketFilterFor } from '@/lib/leads/market-context';
 import { applyMarketFilter } from '@/lib/leads/markets';
 import { isValidDayWindow, isValidDateString } from '@/lib/leads/today';
+import { canRecordAppointmentOutcome } from '@/lib/leads/appointment-outcomes';
+import type { TodayAppointment, TodayLead } from '@/lib/leads/today';
 
 /**
  * Everything a rep needs for the current day, in one request.
@@ -27,6 +29,7 @@ const CLOSED_STATUSES = '("sold","lost")';
 
 /** Per-section cap. A day's work is not 500 rows; the count tells the true total. */
 const LIMIT = 50;
+const APPOINTMENT_PAGE_SIZE = 500;
 
 export async function GET(request: NextRequest) {
   try {
@@ -51,6 +54,10 @@ export async function GET(request: NextRequest) {
     const supabase = db();
     const marketId = await marketFilterFor(admin.marketId, searchParams.get('market_id'));
     const isCloser = admin.role === 'closer';
+    const actor = { id: admin.sub, role: admin.role };
+    // One clock for querying and classifying this response. A visit must not be
+    // upcoming in one section and awaiting a result in another.
+    const generatedAt = new Date().toISOString();
 
     // Assignment scoping. Both columns matter: a lead can be worked by a setter
     // and a closer at different stages, and either makes it "mine".
@@ -60,9 +67,76 @@ export async function GET(request: NextRequest) {
       'id, first_name, last_name, phone, phone2, phone3, email, status, priority, ' +
       'address_street, address_city, address_state, address_zip, latitude, longitude, ' +
       'follow_up_date, last_knock_at, last_disposition, knock_count, is_dnc, do_not_knock, ' +
-      'estimated_roof_value, market_id';
+      'estimated_roof_value, market_id, assigned_setter_id, assigned_closer_id, ' +
+      'is_flagged_duplicate';
 
-    // Appointments today.
+    const APPOINTMENT_FIELDS =
+      'id, appointment_type, scheduled_at, notes, outcome, outcome_at, outcome_by, created_by, ' +
+      `leads!lead_id!inner(${LEAD_FIELDS})`;
+
+    /** Apply the same visibility boundary to today's list and the old backlog. */
+    function appointmentQuery(kind: 'today' | 'prior', offset = 0) {
+      let query = supabase
+        .from('lead_appointments')
+        .select(APPOINTMENT_FIELDS, { count: 'exact' })
+        .order('scheduled_at', { ascending: true });
+
+      query = kind === 'today'
+        ? query.gte('scheduled_at', start!).lt('scheduled_at', end!)
+        : query.lt('scheduled_at', start!).eq('outcome', 'scheduled');
+
+      if (marketId != null) query = query.eq('leads.market_id', marketId);
+      if (isCloser) query = query.in('leads.status', CLOSER_STATUSES);
+      if (mine) query = query.or(assignedToMe, { foreignTable: 'leads' });
+      query = query.eq('leads.is_flagged_duplicate', false);
+
+      const size = kind === 'today' ? APPOINTMENT_PAGE_SIZE : LIMIT;
+      return query.range(offset, offset + size - 1);
+    }
+
+    // Today drives progress, not only a preview, so silently cutting it at the
+    // visible-section limit would make the numerator wrong for a large team.
+    // Page until the exact day is loaded; the prior backlog stays capped and
+    // carries its exact count so the UI can say how much remains.
+    async function loadTodayAppointments() {
+      const rows: unknown[] = [];
+      let exactCount = 0;
+      let offset = 0;
+
+      while (true) {
+        const page = await appointmentQuery('today', offset);
+        if (page.error) return { data: rows, count: exactCount, error: page.error };
+        const pageRows = page.data ?? [];
+        rows.push(...pageRows);
+        exactCount = page.count ?? rows.length;
+        if (rows.length >= exactCount || pageRows.length < APPOINTMENT_PAGE_SIZE) {
+          return { data: rows, count: exactCount, error: null };
+        }
+        offset += APPOINTMENT_PAGE_SIZE;
+      }
+    }
+
+    function withOutcomePermission(row: unknown): TodayAppointment {
+      const appointment = row as Omit<TodayAppointment, 'can_record_outcome'>;
+      const lead = appointment.leads as TodayLead | null;
+      return {
+        ...appointment,
+        outcome: appointment.outcome ?? 'scheduled',
+        outcome_at: appointment.outcome_at ?? null,
+        outcome_by: appointment.outcome_by ?? null,
+        created_by: appointment.created_by ?? null,
+        can_record_outcome: !!lead && canRecordAppointmentOutcome({
+          role: actor.role,
+          userId: actor.id,
+          appointmentCreatedBy: appointment.created_by ?? null,
+          leadAssignedSetterId: lead.assigned_setter_id ?? null,
+          leadAssignedCloserId: lead.assigned_closer_id ?? null,
+          existingOutcomeBy: appointment.outcome_by ?? null,
+        }),
+      };
+    }
+
+    // Appointments today plus unresolved visits left behind on an earlier day.
     //
     // The embed is ALWAYS inner. Filtering an embedded resource without !inner
     // nulls the embed but keeps the parent row, so a scope/role/market filter
@@ -70,16 +144,8 @@ export async function GET(request: NextRequest) {
     // returned an appointment for a lead assigned to nobody. Inner is also safe
     // here because lead_appointments.lead_id is NOT NULL with an ON DELETE
     // CASCADE foreign key, so an appointment without a lead cannot exist.
-    let apptQuery = supabase
-      .from('lead_appointments')
-      .select(`id, appointment_type, scheduled_at, notes, leads!lead_id!inner(${LEAD_FIELDS})`)
-      .gte('scheduled_at', start)
-      .lt('scheduled_at', end)
-      .order('scheduled_at', { ascending: true })
-      .limit(LIMIT);
-    if (marketId != null) apptQuery = apptQuery.eq('leads.market_id', marketId);
-    if (isCloser) apptQuery = apptQuery.in('leads.status', CLOSER_STATUSES);
-    if (mine) apptQuery = apptQuery.or(assignedToMe, { foreignTable: 'leads' });
+    const apptQuery = loadTodayAppointments();
+    const priorUnresolvedQuery = appointmentQuery('prior');
 
     // Follow-ups promised on or before today, still open.
     let followUpQuery = applyMarketFilter(
@@ -123,24 +189,30 @@ export async function GET(request: NextRequest) {
       .or(assignedToMe)
       .eq('is_flagged_duplicate', false);
 
-    const [appts, followUps, callbacks, assigned] = await Promise.all([
+    const [appts, priorUnresolved, followUps, callbacks, assigned] = await Promise.all([
       apptQuery,
+      priorUnresolvedQuery,
       followUpQuery,
       callbackQuery,
       assignedQuery,
     ]);
 
-    const firstError = appts.error || followUps.error || callbacks.error;
+    const firstError =
+      appts.error || priorUnresolved.error || followUps.error || callbacks.error || assigned.error;
     if (firstError) {
       return NextResponse.json({ success: false, error: firstError.message }, { status: 500 });
     }
 
     return NextResponse.json({
       success: true,
-      appointments: appts.data ?? [],
+      generatedAt,
+      appointments: (appts.data ?? []).map(withOutcomePermission),
+      priorUnresolvedAppointments: (priorUnresolved.data ?? []).map(withOutcomePermission),
       followUps: followUps.data ?? [],
       callbacks: callbacks.data ?? [],
       counts: {
+        appointments: appts.count ?? 0,
+        priorUnresolved: priorUnresolved.count ?? 0,
         followUps: followUps.count ?? 0,
         callbacks: callbacks.count ?? 0,
         assignedToMe: assigned.count ?? 0,

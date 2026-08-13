@@ -4,6 +4,7 @@ export type RoofType = 'asphalt_shingle' | 'metal' | 'tile' | 'slate' | 'wood_sh
 export type ActivityType = 'note' | 'status_change' | 'call' | 'email' | 'visit' | 'created' | 'updated';
 export type UserRole = 'admin' | 'setter' | 'closer';
 export type AppointmentType = 'inspection' | 'adjuster';
+export type AppointmentOutcome = 'scheduled' | 'completed' | 'no_show' | 'cancelled';
 
 export const LEAD_STATUS_OPTIONS: { value: LeadStatus; label: string }[] = [
   { value: 'new', label: 'New' },
@@ -221,6 +222,9 @@ export interface LeadAppointment {
   appointment_type: AppointmentType;
   scheduled_at: string;
   notes: string | null;
+  outcome: AppointmentOutcome;
+  outcome_at: string | null;
+  outcome_by: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;

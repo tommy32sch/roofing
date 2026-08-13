@@ -6,7 +6,26 @@ import {
   compareFollowUps,
   isValidDayWindow,
   isValidDateString,
+  buildTodayCommandCenter,
+  type TodayAppointment,
 } from './today';
+
+const appointment = (
+  id: string,
+  scheduledAt: string,
+  outcome: TodayAppointment['outcome'] = 'scheduled'
+): TodayAppointment => ({
+  id,
+  appointment_type: 'inspection',
+  scheduled_at: scheduledAt,
+  notes: null,
+  outcome,
+  outcome_at: outcome === 'scheduled' ? null : scheduledAt,
+  outcome_by: outcome === 'scheduled' ? null : 'rep-1',
+  created_by: 'rep-1',
+  leads: null,
+  can_record_outcome: true,
+});
 
 describe('defaultScope', () => {
   it('gives reps their own book and admins the team', () => {
@@ -119,5 +138,78 @@ describe('isValidDateString', () => {
     expect(isValidDateString('07/24/2026')).toBe(false);
     expect(isValidDateString(null)).toBe(false);
     expect(isValidDateString('')).toBe(false);
+  });
+});
+
+describe('buildTodayCommandCenter', () => {
+  const now = '2026-08-12T19:00:00.000Z';
+
+  it('builds one oldest-first result queue without duplicates', () => {
+    const earlierToday = appointment('today-old', '2026-08-12T17:00:00.000Z');
+    const prior = appointment('prior', '2026-08-10T17:00:00.000Z');
+    const settled = appointment('done', '2026-08-11T17:00:00.000Z', 'completed');
+
+    const model = buildTodayCommandCenter({
+      appointments: [earlierToday],
+      priorUnresolvedAppointments: [earlierToday, settled, prior],
+      nowIso: now,
+    });
+
+    expect(model.awaitingResults.map((item) => item.id)).toEqual(['prior', 'today-old']);
+    expect(model.awaitingTotal).toBe(2);
+  });
+
+  it('chooses the earliest future scheduled stop and separates later visits', () => {
+    const model = buildTodayCommandCenter({
+      appointments: [
+        appointment('later', '2026-08-12T22:00:00.000Z'),
+        appointment('settled', '2026-08-12T20:00:00.000Z', 'cancelled'),
+        appointment('next-b', '2026-08-12T20:00:00.000Z'),
+        appointment('next-a', '2026-08-12T20:00:00.000Z'),
+        appointment('past', '2026-08-12T18:00:00.000Z'),
+      ],
+      priorUnresolvedAppointments: [],
+      nowIso: now,
+    });
+
+    expect(model.nextStop?.id).toBe('next-a');
+    expect(model.laterToday.map((item) => item.id)).toEqual(['next-b', 'later']);
+  });
+
+  it('reports honest appointment progress for the whole day', () => {
+    const model = buildTodayCommandCenter({
+      appointments: [
+        appointment('completed', '2026-08-12T16:00:00.000Z', 'completed'),
+        appointment('no-show', '2026-08-12T17:00:00.000Z', 'no_show'),
+        appointment('cancelled', '2026-08-12T18:00:00.000Z', 'cancelled'),
+        appointment('awaiting', '2026-08-12T18:30:00.000Z'),
+        appointment('upcoming', '2026-08-12T20:00:00.000Z'),
+      ],
+      priorUnresolvedAppointments: [],
+      nowIso: now,
+    });
+
+    expect(model.progress).toEqual({
+      total: 5,
+      closedOut: 3,
+      percent: 60,
+      completed: 1,
+      noShow: 1,
+      cancelled: 1,
+      awaiting: 1,
+      upcoming: 1,
+    });
+  });
+
+  it('keeps the exact backlog count when only the first page is visible', () => {
+    const model = buildTodayCommandCenter({
+      appointments: [appointment('today', '2026-08-12T18:00:00.000Z')],
+      priorUnresolvedAppointments: [appointment('prior', '2026-08-10T18:00:00.000Z')],
+      priorUnresolvedTotal: 9,
+      nowIso: now,
+    });
+
+    expect(model.awaitingResults).toHaveLength(2);
+    expect(model.awaitingTotal).toBe(10);
   });
 });

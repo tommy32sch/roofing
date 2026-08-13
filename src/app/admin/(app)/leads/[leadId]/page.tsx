@@ -57,7 +57,7 @@ import { Input } from '@/components/ui/input';
 import { WonLeadModal } from '@/components/leads/WonLeadModal';
 import { AppointmentModal } from '@/components/leads/AppointmentModal';
 import { LEAD_STATUS_OPTIONS, LEAD_PRIORITY_OPTIONS, APPOINTMENT_TYPE_OPTIONS } from '@/types';
-import type { LeadWithActivities, LeadActivity, ActivityType, AdminUser, AppointmentType, LeadAppointment } from '@/types';
+import type { AppointmentOutcome, LeadWithActivities, LeadActivity, ActivityType, AdminUser, AppointmentType, LeadAppointment } from '@/types';
 import { estimateRoofValue } from '@/lib/leads/roof-value';
 import { EmptyState } from '@/components/layout/empty-state';
 import { LeadPhotos } from '@/components/leads/LeadPhotos';
@@ -71,6 +71,9 @@ import { knockLabel } from '@/lib/leads/knocks';
 import { callLabel } from '@/lib/leads/calls';
 import { useAppShell } from '@/components/providers/app-shell-provider';
 import { DataErrorState } from '@/components/layout/data-error-state';
+import { AppointmentOutcomeActions, type RecordableAppointmentOutcome } from '@/components/leads/AppointmentOutcomeActions';
+import { appointmentOutcomeLabel, canRecordAppointmentOutcome } from '@/lib/leads/appointment-outcomes';
+import { saveAppointmentOutcome } from '@/lib/leads/appointment-outcome-client';
 
 const SETTER_ALLOWED_STATUSES = new Set(['new', 'contacted', 'appointment_set', 'lost']);
 const CLOSER_ALLOWED_STATUSES = new Set(['sold', 'lost']);
@@ -100,7 +103,8 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const [cancelTarget, setCancelTarget] = useState<LeadAppointment | null>(null);
+  const [deleteAppointmentTarget, setDeleteAppointmentTarget] = useState<LeadAppointment | null>(null);
+  const [appointmentOutcomePending, setAppointmentOutcomePending] = useState<Record<string, AppointmentOutcome | undefined>>({});
   const userRole = user.role;
   const [wonModalOpen, setWonModalOpen] = useState(false);
   const [apptModalOpen, setApptModalOpen] = useState(false);
@@ -319,11 +323,8 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
   }
 
   /**
-   * Cancelling an appointment is confirmed because it is not reversible in the
-   * way it looks. Deleting the row also destroys any outcome recorded against
-   * it and that outcome's contribution to the performance report — and the
-   * control sits directly beside Edit at icon size, so a mis-tap is a normal
-   * thing to do rather than a careless one.
+   * Permanent deletion is confirmed because it destroys the booking and any
+   * recorded result. Normal cancellation is an outcome and must use PATCH.
    *
    * The rule this follows: confirm when the action destroys work that cannot be
    * recreated from what is on screen. Not "is it a delete" — removing an
@@ -334,14 +335,30 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
       const res = await fetch(`/api/admin/leads/${leadId}/appointments/${appt.id}`, { method: 'DELETE' });
       const data = await res.json();
       if (data.success) {
-        toast.success('Appointment canceled');
-        setCancelTarget(null);
+        toast.success('Appointment deleted permanently');
+        setDeleteAppointmentTarget(null);
         fetchLead();
       } else {
-        toast.error(data.error || 'Failed to cancel appointment');
+        toast.error(data.error || 'Failed to delete appointment');
       }
     } catch {
-      toast.error('Failed to cancel appointment');
+      toast.error('Failed to delete appointment');
+    }
+  }
+
+  async function handleAppointmentOutcome(
+    appointment: LeadAppointment,
+    outcome: RecordableAppointmentOutcome
+  ) {
+    setAppointmentOutcomePending((current) => ({ ...current, [appointment.id]: outcome }));
+    try {
+      await saveAppointmentOutcome({ leadId, appointmentId: appointment.id, outcome });
+      toast.success(`Appointment marked ${appointmentOutcomeLabel(outcome).toLowerCase()}`);
+      await fetchLead();
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : 'Could not record the appointment result');
+    } finally {
+      setAppointmentOutcomePending((current) => ({ ...current, [appointment.id]: undefined }));
     }
   }
 
@@ -943,41 +960,93 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
                     {lead.lead_appointments.map((appt) => {
                       const when = new Date(appt.scheduled_at);
                       const past = when.getTime() < Date.now();
+                      const outcome = appt.outcome ?? 'scheduled';
+                      const canRecordResult = canRecordAppointmentOutcome({
+                        role: user.role,
+                        userId: user.id,
+                        appointmentCreatedBy: appt.created_by ?? null,
+                        leadAssignedSetterId: lead.assigned_setter_id ?? null,
+                        leadAssignedCloserId: lead.assigned_closer_id ?? null,
+                        existingOutcomeBy: appt.outcome_by ?? null,
+                      });
+                      const pendingOutcome = appointmentOutcomePending[appt.id] ?? null;
                       return (
                         <div
                           key={appt.id}
-                          className={`flex items-start justify-between gap-2 rounded-md border p-2 text-sm ${past ? 'opacity-60' : ''}`}
+                          className="rounded-lg border p-3 text-sm"
                         >
-                          <div className="min-w-0">
-                            <p className="font-medium">
-                              {format(when, 'EEE, MMM d · h:mm a')}
-                              <span className="ml-2 text-xs font-normal text-muted-foreground capitalize">
-                                {appt.appointment_type}
-                              </span>
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <p className="font-medium">
+                                <time dateTime={appt.scheduled_at}>
+                                  {format(when, 'EEE, MMM d · h:mm a')}
+                                </time>
+                                <span className="ml-2 text-xs font-normal capitalize text-muted-foreground">
+                                  {appt.appointment_type}
+                                </span>
+                              </p>
+                              {appt.notes && (
+                                <p className="mt-0.5 text-xs text-muted-foreground">{appt.notes}</p>
+                              )}
+                              {outcome !== 'scheduled' && (
+                                <span className={`mt-2 inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${
+                                  outcome === 'completed'
+                                    ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+                                    : outcome === 'no_show'
+                                      ? 'border-destructive/25 bg-destructive/10 text-destructive'
+                                      : 'border-border bg-muted text-muted-foreground'
+                                }`}>
+                                  {appointmentOutcomeLabel(outcome)}
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex shrink-0 gap-1">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 w-8 p-0"
+                                aria-label="Edit appointment"
+                                onClick={() => openEditAppointment(appt)}
+                              >
+                                <Edit2 className="h-3.5 w-3.5" />
+                              </Button>
+                              {user.role === 'admin' && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-8 w-8 p-0 text-destructive"
+                                  aria-label="Delete appointment permanently"
+                                  onClick={() => setDeleteAppointmentTarget(appt)}
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                          {outcome === 'scheduled' && past && canRecordResult && (
+                            <AppointmentOutcomeActions
+                              label={`${format(when, 'MMM d at h:mm a')} appointment`}
+                              pending={pendingOutcome}
+                              onSelect={(nextOutcome) => handleAppointmentOutcome(appt, nextOutcome)}
+                              className="mt-3"
+                            />
+                          )}
+                          {outcome === 'scheduled' && past && !canRecordResult && (
+                            <p className="mt-3 rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
+                              Awaiting result from the appointment owner.
                             </p>
-                            {appt.notes && (
-                              <p className="text-xs text-muted-foreground mt-0.5">{appt.notes}</p>
-                            )}
-                          </div>
-                          <div className="flex gap-1 shrink-0">
+                          )}
+                          {outcome === 'scheduled' && !past && canRecordResult && (
                             <Button
+                              type="button"
                               variant="ghost"
-                              size="sm"
-                              className="h-7 w-7 p-0"
-                              onClick={() => openEditAppointment(appt)}
+                              className="mt-2 h-10 px-0 text-xs text-muted-foreground hover:bg-transparent hover:text-destructive"
+                              disabled={pendingOutcome !== null}
+                              onClick={() => handleAppointmentOutcome(appt, 'cancelled')}
                             >
-                              <Edit2 className="h-3.5 w-3.5" />
+                              {pendingOutcome === 'cancelled' ? 'Saving cancellation…' : 'Mark appointment cancelled'}
                             </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-7 w-7 p-0 text-destructive"
-                              aria-label="Cancel appointment"
-                              onClick={() => setCancelTarget(appt)}
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
-                          </div>
+                          )}
                         </div>
                       );
                     })}
@@ -1271,32 +1340,30 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
         </DialogContent>
       </Dialog>
 
-      {/* Cancelling destroys any recorded outcome along with the booking, and
-          the control is an icon beside Edit — so this asks first. */}
-      <Dialog open={cancelTarget !== null} onOpenChange={(o) => { if (!o) setCancelTarget(null); }}>
+      {/* Permanent deletion destroys any recorded outcome along with the
+          booking, and the control is an icon beside Edit — so this asks first. */}
+      <Dialog
+        open={deleteAppointmentTarget !== null}
+        onOpenChange={(open) => { if (!open) setDeleteAppointmentTarget(null); }}
+      >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Cancel this appointment?</DialogTitle>
+            <DialogTitle>Delete this appointment permanently?</DialogTitle>
           </DialogHeader>
-          {/* One message rather than branching on whether a result was
-              recorded: the client's LeadAppointment type predates the outcome
-              column, so it cannot actually tell. Stating the worst case that is
-              always true beats guessing and being wrong in the direction that
-              makes the action look safer than it is. */}
           <p className="text-sm text-muted-foreground">
             This deletes the booking and any result recorded against it,
             including its contribution to the performance report. It cannot be
             undone.
           </p>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setCancelTarget(null)}>
+            <Button variant="outline" onClick={() => setDeleteAppointmentTarget(null)}>
               Keep appointment
             </Button>
             <Button
               variant="destructive"
-              onClick={() => cancelTarget && handleDeleteAppointment(cancelTarget)}
+              onClick={() => deleteAppointmentTarget && handleDeleteAppointment(deleteAppointmentTarget)}
             >
-              Cancel appointment
+              Delete permanently
             </Button>
           </DialogFooter>
         </DialogContent>

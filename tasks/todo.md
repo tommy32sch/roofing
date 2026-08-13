@@ -1260,3 +1260,63 @@ Architectural decisions:
 - Existing closer-status visibility was not changed. The current routes do not
   share one consistent business policy, so that access decision should be made
   as its own security-scoped change.
+
+## Today command center
+
+Goal: make Today the screen a rep can work from without opening every lead.
+Show the next stop, make overdue appointment results impossible to miss, and
+show honest progress for the current day.
+
+Architectural decisions:
+- Keep `lead_appointments.outcome` as the source of truth. Today records results
+  through the existing permission-checked appointment PATCH route.
+- A cancellation is an outcome, not deletion. The booking and its reporting
+  history remain in the database.
+- Load today's schedule and earlier unresolved appointments separately. This
+  avoids duplicate rows while still finding work left behind on a prior day.
+- Derive the next stop, awaiting list, and daily progress from one pure command
+  center model so the UI and tests cannot disagree.
+- Calculate the local day on the device, but compare appointment instants with
+  one server-provided request time so every section uses the same clock.
+
+### Data and domain
+- [x] Add a pure Today command-center model for next stop, result queue, and progress
+- [x] Return outcome fields, action permission, server time, and prior unresolved visits
+- [x] Keep role, assignment, market, duplicate, and lead-visibility boundaries intact
+
+### UI
+- [x] Add a prominent next-stop card with call, text, directions, and lead access
+- [x] Add one-tap Completed, No-show, and Cancelled actions for awaiting visits
+- [x] Add compact daily appointment progress and clear outcome states
+- [x] Preserve the existing follow-up, callback, scope, and empty-state workflows
+
+### Verification
+- [x] Add focused domain, route, and page-contract tests
+- [x] Run focused/full tests, TypeScript, changed-file lint, build, and diff review
+- [ ] Verify the signed-in Today workflow in the browser when local app access is available
+- [x] Record the delivered behavior and verification limits
+
+### Review — 2026-08-12
+
+- Today now leads with the next scheduled stop, large call/text/directions
+  actions, a daily appointment-progress card, an oldest-first result backlog,
+  and later visits. Follow-ups and door callbacks remain below the fixed-time
+  work and share a two-column desktop layout.
+- Past scheduled visits from earlier days now remain visible until somebody
+  records Completed, No-show, or Cancelled. The server returns the exact
+  backlog count and computes each row's action permission from the shared
+  appointment-ownership policy.
+- Migration 031 adds a service-role-only transaction for an outcome plus its
+  lead-history entry. It rejects stale rep updates. Cancellation preserves the
+  booking, stops reminder planning and delivery, and frees the time from the
+  conflict checker. Permanent deletion is now admin-only and named clearly.
+- Lead Detail uses the same PATCH-based outcome client, so its old cancellation
+  workflow no longer deletes reporting history. Appointment status is visible
+  there, and overdue visits have the same result controls as Today.
+- Verification passed: 97 test files / 1,048 tests, TypeScript, changed-file
+  ESLint, generated 31-migration schema, `git diff --check`, and the real
+  Turbopack production build with all 42 pages generated.
+- Signed-in browser acceptance is still pending. The local browser reached the
+  protected login screen, but this browser session had no local login. No real
+  appointment result was changed. Migration 031 is live and its RPC is exposed;
+  commit, push, and deployment remain pending.

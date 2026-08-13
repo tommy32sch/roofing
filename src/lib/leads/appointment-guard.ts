@@ -38,6 +38,9 @@ export async function findAppointmentConflicts(
   let query = supabase
     .from('lead_appointments')
     .select('id, scheduled_at, appointment_type, leads!lead_id!inner(first_name, last_name, market_id)')
+    // A recorded cancellation keeps its row for reporting, but it no longer
+    // occupies the crew's time slot.
+    .eq('outcome', 'scheduled')
     .gte('scheduled_at', window.start)
     .lte('scheduled_at', window.end);
 
