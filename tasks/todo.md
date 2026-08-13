@@ -1293,7 +1293,7 @@ Architectural decisions:
 ### Verification
 - [x] Add focused domain, route, and page-contract tests
 - [x] Run focused/full tests, TypeScript, changed-file lint, build, and diff review
-- [ ] Verify the signed-in Today workflow in the browser when local app access is available
+- [x] Verify the signed-in Today workflow in the production browser
 - [x] Record the delivered behavior and verification limits
 
 ### Review — 2026-08-12
@@ -1316,7 +1316,9 @@ Architectural decisions:
 - Verification passed: 97 test files / 1,048 tests, TypeScript, changed-file
   ESLint, generated 31-migration schema, `git diff --check`, and the real
   Turbopack production build with all 42 pages generated.
-- Signed-in browser acceptance is still pending. The local browser reached the
-  protected login screen, but this browser session had no local login. No real
-  appointment result was changed. Migration 031 is live and its RPC is exposed;
-  commit, push, and deployment remain pending.
+- Migration 031 is live and its RPC is exposed. Commit `7473f6d` deployed to
+  production, where signed-in browser acceptance passed in the team and personal
+  scopes. The live page showed four overdue result cards, the focused personal
+  empty state, 12 enabled outcome actions with 44 px minimum touch height,
+  responsive mobile and desktop layouts, and no browser warnings or errors. No
+  real appointment result was changed during acceptance.
