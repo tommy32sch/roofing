@@ -120,6 +120,7 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
   const [apptOverride, setApptOverride] = useState(false);
   const [editingApptId, setEditingApptId] = useState<string | null>(null);
   const [users, setUsers] = useState<AdminUser[]>([]);
+  const [apptCloserId, setApptCloserId] = useState('');
   const [dealValueInput, setDealValueInput] = useState('');
 
   // Activity form
@@ -153,14 +154,13 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
 
   useEffect(() => {
     fetchLead();
-    if (userRole === 'admin') {
-      fetch('/api/admin/users')
-        .then((response) => response.json())
-        .then((usersData) => {
-          if (usersData.success) setUsers(usersData.users);
-        })
-        .catch(() => {});
-    }
+    fetch(userRole === 'admin' ? '/api/admin/users' : '/api/admin/team')
+      .then((response) => response.json())
+      .then((payload) => {
+        if (!payload.success) return;
+        setUsers(userRole === 'admin' ? payload.users : payload.members);
+      })
+      .catch(() => {});
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [leadId]);
 
@@ -263,6 +263,7 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
     setApptType('inspection');
     setApptDateTime('');
     setApptNotes('');
+    setApptCloserId(lead?.assigned_closer_id || '');
     setAddApptOpen(true);
   }
 
@@ -295,6 +296,7 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
           ...(editingApptId ? {} : { appointment_type: apptType }),
           scheduled_at: new Date(apptDateTime).toISOString(),
           notes: apptNotes.trim() || null,
+          assigned_closer_id: apptCloserId || undefined,
           allow_conflict: apptOverride,
         }),
       });
@@ -549,7 +551,11 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
           <label className="block text-xs font-medium uppercase tracking-wide text-muted-foreground">
             Status
           </label>
-          <Select value={lead.status} onValueChange={handleStatusChange}>
+          <Select
+            value={lead.status}
+            onValueChange={handleStatusChange}
+            disabled={userRole === 'setter' && lead.status === 'sold'}
+          >
             <SelectTrigger className="h-9 w-[160px]">
               <SelectValue />
             </SelectTrigger>
@@ -964,7 +970,6 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
                       const canRecordResult = canRecordAppointmentOutcome({
                         role: user.role,
                         userId: user.id,
-                        appointmentCreatedBy: appt.created_by ?? null,
                         leadAssignedSetterId: lead.assigned_setter_id ?? null,
                         leadAssignedCloserId: lead.assigned_closer_id ?? null,
                         existingOutcomeBy: appt.outcome_by ?? null,
@@ -1273,6 +1278,7 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
         leadId={leadId}
         open={apptModalOpen}
         onOpenChange={setApptModalOpen}
+        currentCloserId={lead.assigned_closer_id}
         onSuccess={() => { toast.success('Appointment set!'); fetchLead(); }}
       />
       {/* Add / edit appointment from the Appointments card */}
@@ -1310,6 +1316,21 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
                 onConflictsChange={setApptConflicts}
               />
             </div>
+            {!editingApptId && (
+              <div className="space-y-1">
+                <label className="text-sm font-medium">Closer</label>
+                <Select value={apptCloserId || null} onValueChange={(value) => setApptCloserId(value ?? '')}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a closer" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {users.filter((member) => member.role === 'closer' || member.role === 'admin').map((member) => (
+                      <SelectItem key={member.id} value={member.id}>{member.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <div className="space-y-1">
               <label htmlFor="card_appt_notes" className="text-sm font-medium">Notes</label>
               <Textarea
@@ -1326,7 +1347,12 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
             </Button>
             <Button
               onClick={handleSaveAppointment}
-              disabled={apptSaving || !apptDateTime || Number.isNaN(new Date(apptDateTime).getTime())}
+              disabled={
+                apptSaving
+                || !apptDateTime
+                || Number.isNaN(new Date(apptDateTime).getTime())
+                || (!editingApptId && !apptCloserId && !lead.assigned_closer_id)
+              }
             >
               {apptSaving
                 ? 'Saving...'

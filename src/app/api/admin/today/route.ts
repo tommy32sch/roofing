@@ -5,6 +5,10 @@ import { marketFilterFor } from '@/lib/leads/market-context';
 import { applyMarketFilter } from '@/lib/leads/markets';
 import { isValidDayWindow, isValidDateString } from '@/lib/leads/today';
 import { canRecordAppointmentOutcome } from '@/lib/leads/appointment-outcomes';
+import {
+  applyLeadAccessFilter,
+  resolveLeadDataScope,
+} from '@/lib/leads/lead-visibility';
 import type { TodayAppointment, TodayLead } from '@/lib/leads/today';
 
 /**
@@ -18,11 +22,6 @@ import type { TodayAppointment, TodayLead } from '@/lib/leads/today';
  * the Arizona office (MST, no DST) and the Minnesota one (CST/CDT) — see
  * localDayBounds. The values are validated here rather than trusted.
  */
-
-// Closers work from the appointment onward; the earlier pipeline is a setter's.
-// Mirrors the same list in /api/admin/leads and /api/admin/leads/geo — a closer
-// must never be shown a 'new' lead by any route.
-const CLOSER_STATUSES = ['appointment_set', 'inspected', 'proposal_sent', 'sold', 'lost'];
 
 /** Finished leads are nobody's follow-up. */
 const CLOSED_STATUSES = '("sold","lost")';
@@ -50,18 +49,20 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const mine = searchParams.get('scope') !== 'all';
     const supabase = db();
     const marketId = await marketFilterFor(admin.marketId, searchParams.get('market_id'));
-    const isCloser = admin.role === 'closer';
     const actor = { id: admin.sub, role: admin.role };
+    const scopeDecision = resolveLeadDataScope(actor, searchParams.get('scope'));
+    if (!scopeDecision.ok) {
+      return NextResponse.json(
+        { success: false, error: scopeDecision.error },
+        { status: scopeDecision.status }
+      );
+    }
+    const scope = scopeDecision.scope;
     // One clock for querying and classifying this response. A visit must not be
     // upcoming in one section and awaiting a result in another.
     const generatedAt = new Date().toISOString();
-
-    // Assignment scoping. Both columns matter: a lead can be worked by a setter
-    // and a closer at different stages, and either makes it "mine".
-    const assignedToMe = `assigned_setter_id.eq.${admin.sub},assigned_closer_id.eq.${admin.sub}`;
 
     const LEAD_FIELDS =
       'id, first_name, last_name, phone, phone2, phone3, email, status, priority, ' +
@@ -86,8 +87,7 @@ export async function GET(request: NextRequest) {
         : query.lt('scheduled_at', start!).eq('outcome', 'scheduled');
 
       if (marketId != null) query = query.eq('leads.market_id', marketId);
-      if (isCloser) query = query.in('leads.status', CLOSER_STATUSES);
-      if (mine) query = query.or(assignedToMe, { foreignTable: 'leads' });
+      query = applyLeadAccessFilter(query, actor, { scope, foreignTable: 'leads' });
       query = query.eq('leads.is_flagged_duplicate', false);
 
       const size = kind === 'today' ? APPOINTMENT_PAGE_SIZE : LIMIT;
@@ -128,7 +128,6 @@ export async function GET(request: NextRequest) {
         can_record_outcome: !!lead && canRecordAppointmentOutcome({
           role: actor.role,
           userId: actor.id,
-          appointmentCreatedBy: appointment.created_by ?? null,
           leadAssignedSetterId: lead.assigned_setter_id ?? null,
           leadAssignedCloserId: lead.assigned_closer_id ?? null,
           existingOutcomeBy: appointment.outcome_by ?? null,
@@ -160,8 +159,7 @@ export async function GET(request: NextRequest) {
         .limit(LIMIT),
       marketId
     );
-    if (isCloser) followUpQuery = followUpQuery.in('status', CLOSER_STATUSES);
-    if (mine) followUpQuery = followUpQuery.or(assignedToMe);
+    followUpQuery = applyLeadAccessFilter(followUpQuery, actor, { scope });
 
     // Doors that asked us to come back. Without this screen a callback logged at
     // the door goes nowhere — nothing else in the app surfaces last_disposition.
@@ -177,17 +175,18 @@ export async function GET(request: NextRequest) {
         .limit(LIMIT),
       marketId
     );
-    if (isCloser) callbackQuery = callbackQuery.in('status', CLOSER_STATUSES);
-    if (mine) callbackQuery = callbackQuery.or(assignedToMe);
+    callbackQuery = applyLeadAccessFilter(callbackQuery, actor, { scope });
 
     // Is anything assigned to this user at all? Drives an honest empty state:
-    // "nothing assigned to you" is a different message from "nothing due today",
-    // and right now no lead in this database has an owner.
-    const assignedQuery = supabase
-      .from('leads')
-      .select('id', { count: 'exact', head: true })
-      .or(assignedToMe)
-      .eq('is_flagged_duplicate', false);
+    // "nothing assigned to you" is a different message from "nothing due today".
+    const assignedQuery = applyLeadAccessFilter(
+      supabase
+        .from('leads')
+        .select('id', { count: 'exact', head: true })
+        .eq('is_flagged_duplicate', false),
+      actor,
+      { scope: 'mine' }
+    );
 
     const [appts, priorUnresolved, followUps, callbacks, assigned] = await Promise.all([
       apptQuery,

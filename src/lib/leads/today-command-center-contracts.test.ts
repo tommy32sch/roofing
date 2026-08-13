@@ -18,8 +18,14 @@ describe('Today command center contracts', () => {
     expect(route).toMatch(/\.lt\('scheduled_at', start!\)\.eq\('outcome', 'scheduled'\)/);
     expect(route).toMatch(/\.eq\('leads\.is_flagged_duplicate', false\)/);
     expect(route).toMatch(/if \(marketId != null\)/);
-    expect(route).toMatch(/if \(isCloser\)/);
-    expect(route).toMatch(/if \(mine\)/);
+    expect(route).toMatch(/resolveLeadDataScope\(actor, searchParams\.get\('scope'\)\)/);
+    expect(route.match(/applyLeadAccessFilter\(/g) ?? []).toHaveLength(4);
+  });
+
+  it('shows the Mine and Everyone control only to an admin', () => {
+    expect(page).toContain('permissions.canViewTeamData && (');
+    expect(page).toContain("{s === 'mine' ? 'Mine' : 'Everyone'}");
+    expect(page).toContain('permissions.canBulkAssignLeads');
   });
 
   it('returns one clock, exact counts, outcome fields, and server-owned permission', () => {

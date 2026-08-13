@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
     const page = positiveInteger(searchParams.get('page'), 1);
     const limit = positiveInteger(searchParams.get('limit'), DEFAULT_LIMIT, MAX_LIMIT);
     const result = await loadTerritoryProgressPage(db(), {
-      role: admin.role,
+      actor: { id: admin.sub, role: admin.role },
       marketId: await marketFilterFor(admin.marketId, searchParams.get('market_id')),
       page,
       limit,

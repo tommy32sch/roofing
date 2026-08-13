@@ -174,7 +174,9 @@ export function TerritorySheet({
           {!loading && visible.length === 0 && (
             <div className="rounded-md border border-dashed p-5 text-center">
               <MapPinned className="mx-auto mb-2 h-6 w-6 text-muted-foreground" />
-              <p className="text-sm font-medium">No territories yet</p>
+              <p className="text-sm font-medium">
+                {isAdmin ? 'No territories yet' : 'No territories assigned to you'}
+              </p>
               <p className="mt-1 text-xs text-muted-foreground">
                 {isAdmin
                   ? 'Close this panel and choose New territory to draw the first one.'

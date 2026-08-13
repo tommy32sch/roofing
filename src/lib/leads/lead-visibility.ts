@@ -1,54 +1,110 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { UserRole } from '@/types';
 
-/**
- * Who may see a lead and every resource beneath it.
- *
- * The server uses a service-role Supabase client, so database RLS cannot infer
- * the signed-in app user. Every route that starts from a lead id must therefore
- * pass through authorizeLeadAccess, while aggregate routes apply the same rule
- * to their database query with applyLeadVisibilityFilter. Keeping those two
- * entry points beside the pure policy prevents child collections and reports
- * from gradually inventing different definitions of a visible lead.
- */
+/** The signed-in account used by every lead access decision. */
+export interface LeadActor {
+  id: string;
+  role: UserRole;
+}
 
-export const CLOSER_VISIBLE_LEAD_STATUS = 'sold' as const;
+export type LeadDataScope = 'mine' | 'all';
+
+export interface LeadAccessFacts {
+  id?: string;
+  assigned_setter_id: string | null;
+  assigned_closer_id: string | null;
+}
+
+export type LeadScopeDecision =
+  | { ok: true; scope: LeadDataScope }
+  | { ok: false; status: 400 | 403; error: string };
 
 /**
- * May this role read this lead?
- *
- * Mirrors the lead detail route: only closers are restricted, and only to sold
- * leads. Setters knock every door, so they see everything — deliberate, since
- * knowing who owns a door is what stops two reps knocking it.
- *
- * A null/unknown status fails CLOSED for a closer. A missing status usually
- * means the lead row could not be read, and guessing "probably fine" is the
- * wrong default for an access check.
+ * Resolve a requested team scope without trusting the client control. Admins
+ * may choose either scope. Setters and closers always remain in "mine".
  */
-export function canViewLead(role: UserRole, leadStatus: string | null | undefined): boolean {
-  if (role !== 'closer') return true;
-  return leadStatus === CLOSER_VISIBLE_LEAD_STATUS;
+export function resolveLeadDataScope(
+  actor: LeadActor,
+  requestedScope: string | null | undefined,
+  adminDefault: LeadDataScope = 'all'
+): LeadScopeDecision {
+  if (requestedScope != null && requestedScope !== 'mine' && requestedScope !== 'all') {
+    return { ok: false, status: 400, error: 'Invalid lead scope' };
+  }
+
+  if (actor.role === 'admin') {
+    return { ok: true, scope: requestedScope ?? adminDefault };
+  }
+
+  if (requestedScope === 'all') {
+    return { ok: false, status: 403, error: 'Team data is limited to admins' };
+  }
+
+  return { ok: true, scope: 'mine' };
+}
+
+/** Apply the same assignment rule to direct lead checks. */
+export function canAccessLead(
+  actor: LeadActor,
+  lead: LeadAccessFacts,
+  scope: LeadDataScope = actor.role === 'admin' ? 'all' : 'mine'
+): boolean {
+  if (actor.role === 'admin' && scope === 'all') return true;
+  if (actor.role === 'setter') return lead.assigned_setter_id === actor.id;
+  if (actor.role === 'closer') return lead.assigned_closer_id === actor.id;
+  return lead.assigned_setter_id === actor.id || lead.assigned_closer_id === actor.id;
+}
+
+interface LeadFilterQuery<T> {
+  eq(column: string, value: string): T;
+  or(filters: string, options?: { foreignTable: string }): T;
 }
 
 /**
- * Narrow a lead query (or a child query with an embedded lead) to rows the role
- * may see. Admins and setters keep the original query; closers only receive sold
- * leads, matching canViewLead.
+ * Apply the shared assignment rule to a lead query or an embedded lead join.
+ * The server uses a service-role client, so every aggregate route must call this
+ * helper instead of relying on database RLS.
  */
-export function applyLeadVisibilityFilter<T>(
+export function applyLeadAccessFilter<T>(
   query: T,
-  role: UserRole,
-  statusColumn = 'status'
+  actor: LeadActor,
+  options: { scope?: LeadDataScope; foreignTable?: string } = {}
 ): T {
-  if (role !== 'closer') return query;
-  return (query as { eq(column: string, value: string): T }).eq(
-    statusColumn,
-    CLOSER_VISIBLE_LEAD_STATUS
-  );
+  const scope = options.scope ?? (actor.role === 'admin' ? 'all' : 'mine');
+  if (actor.role === 'admin' && scope === 'all') return query;
+
+  const filtered = query as LeadFilterQuery<T>;
+  if (actor.role === 'setter') {
+    return filtered.eq(
+      options.foreignTable ? `${options.foreignTable}.assigned_setter_id` : 'assigned_setter_id',
+      actor.id
+    );
+  }
+  if (actor.role === 'closer') {
+    return filtered.eq(
+      options.foreignTable ? `${options.foreignTable}.assigned_closer_id` : 'assigned_closer_id',
+      actor.id
+    );
+  }
+
+  const assignmentFilter =
+    `assigned_setter_id.eq.${actor.id},assigned_closer_id.eq.${actor.id}`;
+  return options.foreignTable
+    ? filtered.or(assignmentFilter, { foreignTable: options.foreignTable })
+    : filtered.or(assignmentFilter);
+}
+
+/** Make a rep-created lead visible to that rep without changing admin input. */
+export function assignmentForNewLead(
+  actor: LeadActor
+): Partial<Pick<LeadAccessFacts, 'assigned_setter_id' | 'assigned_closer_id'>> {
+  if (actor.role === 'setter') return { assigned_setter_id: actor.id };
+  if (actor.role === 'closer') return { assigned_closer_id: actor.id };
+  return {};
 }
 
 export type LeadAccessDecision =
-  | { ok: true; lead: { id: string; status: string | null } }
+  | { ok: true; lead: LeadAccessFacts & { id: string } }
   | { ok: false; status: 403 | 404 | 500; error: string };
 
 /**
@@ -58,21 +114,21 @@ export type LeadAccessDecision =
  */
 export async function authorizeLeadAccess(
   supabase: SupabaseClient,
-  role: UserRole,
+  actor: LeadActor,
   leadId: string
 ): Promise<LeadAccessDecision> {
   const { data, error } = await supabase
     .from('leads')
-    .select('id, status')
+    .select('id, assigned_setter_id, assigned_closer_id')
     .eq('id', leadId)
     .maybeSingle();
 
   if (error) return { ok: false, status: 500, error: error.message };
   if (!data) return { ok: false, status: 404, error: 'Lead not found' };
-  if (!canViewLead(role, data.status)) {
+  if (!canAccessLead(actor, data)) {
     return { ok: false, status: 403, error: 'Forbidden' };
   }
-  return { ok: true, lead: { id: data.id, status: data.status } };
+  return { ok: true, lead: data };
 }
 
 /** Permanent photo deletion is limited to an admin or the account that uploaded it. */

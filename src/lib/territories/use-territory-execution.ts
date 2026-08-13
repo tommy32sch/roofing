@@ -84,6 +84,7 @@ export function useTerritoryExecution({
 
   const load = useCallback(async (territoryId: string, updateUrl = true) => {
     const requestId = ++loadRequestIdRef.current;
+    let serverResponded = false;
     setLoading(true);
     setError(null);
     try {
@@ -92,6 +93,7 @@ export function useTerritoryExecution({
         `/api/admin/territories/${encodeURIComponent(territoryId)}/execution?${params}`,
         { cache: 'no-store' }
       );
+      serverResponded = true;
       const body = await response.json().catch(() => null);
       if (!response.ok || !body?.success || !body.snapshot) {
         throw new Error(body?.error || 'Failed to load territory work');
@@ -105,6 +107,14 @@ export function useTerritoryExecution({
       return next;
     } catch (cause) {
       if (requestId !== loadRequestIdRef.current) return null;
+
+      // A server denial must win over a stale cache. Use downloaded data only
+      // when the request could not reach the server.
+      if (serverResponded) {
+        const message = cause instanceof Error ? cause.message : 'Failed to load territory work';
+        setError(message);
+        return null;
+      }
 
       /*
        * No signal: fall back to a territory the rep downloaded earlier.

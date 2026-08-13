@@ -45,7 +45,6 @@ type AppointmentRow = {
   outcome: string;
   appointment_type: string | null;
   notes: string | null;
-  created_by: string | null;
   leads: {
     id: string;
     first_name: string | null;
@@ -55,7 +54,8 @@ type AppointmentRow = {
     address_city: string | null;
     address_state: string | null;
     market_id: number | null;
-    assigned_to: string | null;
+    assigned_setter_id: string | null;
+    assigned_closer_id: string | null;
   } | null;
 };
 
@@ -96,7 +96,7 @@ export async function planAppointmentReminders(
   const { data, error } = await supabase
     .from('lead_appointments')
     .select(
-      'id, scheduled_at, outcome, appointment_type, notes, created_by, leads!lead_id!inner(id, first_name, last_name, email, address_street, address_city, address_state, market_id, assigned_to)'
+      'id, scheduled_at, outcome, appointment_type, notes, leads!lead_id!inner(id, first_name, last_name, email, address_street, address_city, address_state, market_id, assigned_setter_id, assigned_closer_id)'
     )
     .eq('outcome', 'scheduled')
     .gte('scheduled_at', window.start)
@@ -122,9 +122,9 @@ export async function planAppointmentReminders(
 
     const recipients: { email: string; type: 'rep' | 'homeowner' }[] = [];
     if (notifyReps) {
-      // Whoever owns the lead, else whoever booked it. Both, when they differ —
-      // the setter who booked it still wants to know it held.
-      for (const userId of [lead.assigned_to, appointment.created_by]) {
+      // Current role assignment is the access boundary. The account that made
+      // the booking does not keep customer access after reassignment.
+      for (const userId of [lead.assigned_setter_id, lead.assigned_closer_id]) {
         const email = userId ? emailFor.get(userId) : null;
         if (email && !recipients.some((r) => r.email === email)) {
           recipients.push({ email, type: 'rep' });
@@ -228,7 +228,7 @@ export async function deliverAppointmentReminders(
     const { data: appointment } = await supabase
       .from('lead_appointments')
       .select(
-        'id, scheduled_at, outcome, appointment_type, notes, leads!lead_id!inner(first_name, last_name, address_street, address_city, address_state, market_id)'
+        'id, scheduled_at, outcome, appointment_type, notes, leads!lead_id!inner(first_name, last_name, address_street, address_city, address_state, market_id, assigned_setter_id, assigned_closer_id)'
       )
       .eq('id', row.appointment_id)
       .single();

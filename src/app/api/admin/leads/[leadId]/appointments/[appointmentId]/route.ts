@@ -9,6 +9,7 @@ import {
   canModifyAppointment,
 } from '@/lib/leads/appointment-outcomes';
 import type { AppointmentOutcome } from '@/types';
+import { authorizeLeadAccess } from '@/lib/leads/lead-visibility';
 
 /**
  * Load the appointment, scoped to its lead.
@@ -29,17 +30,6 @@ async function getOwnedAppointment(leadId: string, appointmentId: string) {
   return data;
 }
 
-/** Who the lead is assigned to — the other half of the ownership question. */
-async function getLeadAssignment(leadId: string) {
-  const supabase = db();
-  const { data } = await supabase
-    .from('leads')
-    .select('assigned_setter_id, assigned_closer_id')
-    .eq('id', leadId)
-    .single();
-  return (data as { assigned_setter_id: string | null; assigned_closer_id: string | null } | null);
-}
-
 function typeLabel(type: string) {
   return type === 'adjuster' ? 'Adjuster' : 'Inspection';
 }
@@ -57,6 +47,16 @@ export async function PATCH(
     const { leadId, appointmentId } = await params;
     if (!isValidUUID(leadId) || !isValidUUID(appointmentId)) {
       return NextResponse.json({ success: false, error: 'Invalid ID' }, { status: 400 });
+    }
+
+    const supabase = db();
+    const actor = { id: admin.sub, role: admin.role };
+    const access = await authorizeLeadAccess(supabase, actor, leadId);
+    if (!access.ok) {
+      return NextResponse.json(
+        { success: false, error: access.error },
+        { status: access.status }
+      );
     }
 
     const existing = await getOwnedAppointment(leadId, appointmentId);
@@ -83,13 +83,11 @@ export async function PATCH(
     // deleting it, so it takes the same ownership test. The outcome branch
     // below keeps its own stricter rule.
     if (body.scheduled_at !== undefined || body.notes !== undefined) {
-      const assignedFor = await getLeadAssignment(leadId);
       if (!canModifyAppointment({
         role: admin.role,
         userId: admin.sub,
-        appointmentCreatedBy: existing.created_by ?? null,
-        leadAssignedSetterId: assignedFor?.assigned_setter_id ?? null,
-        leadAssignedCloserId: assignedFor?.assigned_closer_id ?? null,
+        leadAssignedSetterId: access.lead.assigned_setter_id,
+        leadAssignedCloserId: access.lead.assigned_closer_id,
       })) {
         return NextResponse.json(
           { success: false, error: 'You cannot change this appointment' },
@@ -109,8 +107,6 @@ export async function PATCH(
       updates.notes = typeof body.notes === 'string' && body.notes.trim() ? body.notes.trim() : null;
     }
 
-    const supabase = db();
-
     // Did the visit happen? Reps record their own results — they are the ones at
     // the door — but only an admin may overwrite someone else's, so a
     // disappointing outcome cannot be quietly rewritten by the person it
@@ -121,13 +117,11 @@ export async function PATCH(
         return NextResponse.json({ success: false, error: 'Invalid outcome' }, { status: 400 });
       }
 
-      const assigned = await getLeadAssignment(leadId);
       const allowed = canRecordAppointmentOutcome({
         role: admin.role,
         userId: admin.sub,
-        appointmentCreatedBy: existing.created_by ?? null,
-        leadAssignedSetterId: assigned?.assigned_setter_id ?? null,
-        leadAssignedCloserId: assigned?.assigned_closer_id ?? null,
+        leadAssignedSetterId: access.lead.assigned_setter_id,
+        leadAssignedCloserId: access.lead.assigned_closer_id,
         existingOutcomeBy: existing.outcome_by ?? null,
       });
 
@@ -146,6 +140,7 @@ export async function PATCH(
     // ever succeed.
     if (updates.scheduled_at && !body.allow_conflict) {
       const conflicts = await findAppointmentConflicts(supabase, {
+        actor,
         leadId,
         scheduledAt: updates.scheduled_at as string,
         excludeAppointmentId: appointmentId,
@@ -231,6 +226,13 @@ export async function DELETE(
       return NextResponse.json({ success: false, error: 'Invalid ID' }, { status: 400 });
     }
 
+    if (admin.role !== 'admin') {
+      return NextResponse.json(
+        { success: false, error: 'Only an admin can permanently delete an appointment' },
+        { status: 403 }
+      );
+    }
+
     const existing = await getOwnedAppointment(leadId, appointmentId);
     if (!existing) {
       return NextResponse.json({ success: false, error: 'Appointment not found' }, { status: 404 });
@@ -239,13 +241,6 @@ export async function DELETE(
     // This is permanent deletion, not cancellation. Normal cancellation records
     // outcome='cancelled' through PATCH so reporting and history stay intact.
     // Only admins may erase that record; ownership is not enough.
-    if (admin.role !== 'admin') {
-      return NextResponse.json(
-        { success: false, error: 'Only an admin can permanently delete an appointment' },
-        { status: 403 }
-      );
-    }
-
     const supabase = db();
     const { error } = await supabase.from('lead_appointments').delete().eq('id', appointmentId);
     if (error) {

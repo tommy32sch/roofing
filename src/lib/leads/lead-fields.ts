@@ -21,7 +21,14 @@
  * market_id sits with the assignment fields: moving a lead to the other office
  * changes whose book it lands in, so it is an admin action.
  */
-export const LEAD_ADMIN_ONLY_FIELDS = new Set(['deal_value', 'assigned_setter_id', 'assigned_closer_id', 'market_id']);
+export const LEAD_ADMIN_ONLY_FIELDS = new Set(['deal_value', 'assigned_setter_id', 'market_id']);
+
+/**
+ * A setter may hand a door to a closer. That is the booking handoff: the
+ * closer only sees leads assigned to them, so the appointment is invisible
+ * until this field is set. Closers cannot reassign work.
+ */
+export const LEAD_SETTER_HANDOFF_FIELDS = new Set(['assigned_closer_id']);
 
 /**
  * The complete set of lead columns a client may write. Anything not listed —
@@ -40,6 +47,7 @@ export const LEAD_EDITABLE_FIELDS = new Set<string>([
   'career', 'family_size', 'marital_status', 'age_range', 'household_income_range',
   'education_level', 'years_in_home', 'insurance_carrier', 'decision_maker', 'referral_source',
   ...LEAD_ADMIN_ONLY_FIELDS,
+  ...LEAD_SETTER_HANDOFF_FIELDS,
 ]);
 
 /** Statuses a setter may move a lead into. */
@@ -63,6 +71,7 @@ export function pickWritableLeadFields(
   for (const key of Object.keys(body)) {
     if (!LEAD_EDITABLE_FIELDS.has(key)) continue;
     if (LEAD_ADMIN_ONLY_FIELDS.has(key) && role !== 'admin') continue;
+    if (LEAD_SETTER_HANDOFF_FIELDS.has(key) && role === 'closer') continue;
     out[key] = body[key];
   }
   return out;
@@ -77,8 +86,15 @@ export function pickWritableLeadFields(
  * specific state transition, and quietly saving a different state than the one
  * requested is worse than refusing.
  */
-export function statusDenialReason(status: unknown, role: LeadWriterRole): string | null {
+export function statusDenialReason(
+  status: unknown,
+  role: LeadWriterRole,
+  currentStatus?: string | null
+): string | null {
   if (typeof status !== 'string' || status === '') return null;
+  if (role === 'setter' && currentStatus === 'sold' && status !== 'sold') {
+    return 'Setters cannot change a sold lead';
+  }
   if (role !== 'setter') return null;
   if (status === 'sold') return 'Setters cannot mark a lead as sold';
   if (!SETTER_ALLOWED_STATUSES.has(status)) return 'Setters cannot set this status';

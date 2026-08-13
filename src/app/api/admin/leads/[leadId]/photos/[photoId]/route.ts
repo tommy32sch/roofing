@@ -26,7 +26,7 @@ export async function DELETE(
     }
 
     const supabase = db();
-    const access = await authorizeLeadAccess(supabase, admin.role, leadId);
+    const access = await authorizeLeadAccess(supabase, { id: admin.sub, role: admin.role }, leadId);
     if (!access.ok) {
       return NextResponse.json(
         { success: false, error: access.error },

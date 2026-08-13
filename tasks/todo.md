@@ -1322,3 +1322,66 @@ Architectural decisions:
   empty state, 12 enabled outcome actions with 44 px minimum touch height,
   responsive mobile and desktop layouts, and no browser warnings or errors. No
   real appointment result was changed during acceptance.
+
+## Admin-only team data scope
+
+Goal: let admins switch between personal and team data while setters and closers
+can only read work assigned to their role across the whole application.
+
+Architectural decisions:
+- Treat team scope as an access-control permission, not a client-side filter.
+- Use one shared role-aware policy for direct lead queries, embedded lead
+  queries, and lead-detail authorization.
+- A setter owns a lead through `assigned_setter_id`; a closer owns it through
+  `assigned_closer_id`. An admin personal scope matches either assignment.
+- Assignment is the access boundary for both rep roles. Pipeline status remains
+  a workflow filter, not an authorization rule, so a closer does not lose a
+  newly created or newly assigned lead before it reaches a later stage.
+- Reject an explicit team-scope request from a non-admin instead of silently
+  broadening or interpreting it.
+
+### Policy and server
+- [x] Add the shared role-aware scope resolver and query helpers
+- [x] Apply it to Today and every lead-derived list, detail, map, calendar,
+      activity, reporting, and export boundary
+- [x] Preserve admin team access and admin personal-scope behavior
+- [x] Require a closer handoff when a setter books an appointment
+- [x] Stop setters from changing a sold lead
+
+### UI
+- [x] Show Mine/Everyone and account/team selectors only to admins
+- [x] Keep setter and closer requests fixed to their own role assignment
+- [x] Add a closer picker on appointment booking
+
+### Verification
+- [x] Add pure policy, route-contract, and UI-contract coverage
+- [x] Run focused/full tests, TypeScript, changed-file lint, build, and diff review
+- [ ] Verify admin and non-admin behavior in the production browser after deploy
+- [x] Record delivered behavior and remaining limits
+
+### Review
+
+- One assignment policy now controls direct lead reads, embedded lead lists,
+  detail and child routes, appointments, reports, map data, and territory work.
+- Admins keep team access and may select Mine or Everyone on Today. Setters and
+  closers have no team control, and an explicit `scope=all` request returns 403.
+- New leads created or imported by a rep are assigned to that rep's role so the
+  record does not disappear after creation. Existing unassigned leads remain
+  admin-only until an admin assigns them.
+- Booking an appointment requires a closer. Setters may set `assigned_closer_id`
+  only; they cannot award themselves doors or change a sold lead. The team
+  directory returns names and roles, not emails.
+- Appointment conflicts and nearby-house checks keep other accounts' customer
+  details private. Reminder recipients now use current setter and closer
+  assignments instead of the booking creator.
+- Offline territory packages use schema 3, so packages created before this
+  access boundary are discarded. A server denial cannot fall back to a cached
+  package; a device with no network can still use a package that was valid when
+  downloaded, because offline access cannot receive a later reassignment.
+- Booking an appointment now requires a closer. Setters may set
+  `assigned_closer_id` only. They cannot change a sold lead. `/api/admin/team`
+  returns id, name, and role for the picker; emails stay on the admin users
+  route.
+- Verified locally: 1,074 tests, TypeScript, and changed-file ESLint pass.
+  Not deployed. Existing unassigned leads stay admin-only until an admin
+  assigns them. Signed-in production role checks remain after deploy.

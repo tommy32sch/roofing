@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/supabase/server';
 import { getAuthenticatedAdmin } from '@/lib/auth/jwt';
 import { marketFilterFor } from '@/lib/leads/market-context';
+import { applyLeadAccessFilter } from '@/lib/leads/lead-visibility';
 
-const CLOSER_STATUSES = new Set(['appointment_set', 'inspected', 'proposal_sent', 'sold', 'lost']);
 const MAX_WINDOW_MS = 90 * 24 * 60 * 60 * 1000;
 
 export async function GET(request: NextRequest) {
@@ -28,22 +28,25 @@ export async function GET(request: NextRequest) {
 
     const supabase = db();
 
-    // Office scoping runs through the appointment's lead. The embed is only
-    // made inner when a market is actually selected — forcing it always would
-    // silently drop any appointment whose lead row is missing.
+    // Office and account scoping run through the appointment's lead. The lead
+    // foreign key is required with ON DELETE CASCADE, so an inner join cannot
+    // remove a valid appointment.
     const marketId = await marketFilterFor(admin.marketId, searchParams.get('market_id'));
-    const leadEmbed = marketId != null ? 'leads!lead_id!inner' : 'leads!lead_id';
+    const leadEmbed = 'leads!lead_id!inner';
 
     let apptQuery = supabase
       .from('lead_appointments')
       .select(
-        `*, ${leadEmbed}(id, first_name, last_name, address_street, address_city, status, assigned_closer_id, market_id)`
+        `*, ${leadEmbed}(id, first_name, last_name, address_street, address_city, status, assigned_setter_id, assigned_closer_id, market_id)`
       )
       .gte('scheduled_at', start)
       .lt('scheduled_at', end)
       .order('scheduled_at', { ascending: true });
 
     if (marketId != null) apptQuery = apptQuery.eq('leads.market_id', marketId);
+    apptQuery = applyLeadAccessFilter(apptQuery, { id: admin.sub, role: admin.role }, {
+      foreignTable: 'leads',
+    });
 
     const { data: appointments, error } = await apptQuery;
 
@@ -51,16 +54,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: false, error: error.message }, { status: 500 });
     }
 
-    let visible = appointments || [];
-    // Closers only see appointments on leads in their visible statuses
-    if (admin.role === 'closer') {
-      visible = visible.filter((a) => {
-        const lead = a.leads as { status?: string } | null;
-        return lead?.status && CLOSER_STATUSES.has(lead.status);
-      });
-    }
-
-    return NextResponse.json({ success: true, appointments: visible });
+    return NextResponse.json({ success: true, appointments: appointments || [] });
   } catch {
     return NextResponse.json({ success: false, error: 'Internal server error' }, { status: 500 });
   }

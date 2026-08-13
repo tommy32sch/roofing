@@ -7,6 +7,7 @@ import { assignImportDuplicates } from '@/lib/leads/dedupe';
 import { checkConfiguredRateLimit } from '@/lib/utils/rate-limit';
 import { LIMITS } from '@/lib/utils/validation';
 import * as XLSX from 'xlsx';
+import { assignmentForNewLead } from '@/lib/leads/lead-visibility';
 
 function excelToCSV(buffer: ArrayBuffer): string {
   const workbook = XLSX.read(buffer, { type: 'array' });
@@ -118,6 +119,7 @@ export async function POST(request: NextRequest) {
       return {
         ...lead,
         market_id: marketId,
+        ...assignmentForNewLead({ id: admin.sub, role: admin.role }),
         created_by: admin.sub,
         created_by_name: uploaderName,
         import_batch_id: batchId,

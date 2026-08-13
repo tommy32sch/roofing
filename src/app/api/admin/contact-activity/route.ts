@@ -8,6 +8,7 @@ import {
   resolveContactActivityUser,
 } from '@/lib/leads/contact-activity';
 import type { ContactActivityEvent } from '@/types';
+import { applyLeadAccessFilter } from '@/lib/leads/lead-visibility';
 
 interface EmbeddedLead {
   id: string;
@@ -102,6 +103,10 @@ export async function GET(request: NextRequest) {
       knockQuery = knockQuery.eq('created_by', user.userId);
       callQuery = callQuery.eq('created_by', user.userId);
     }
+
+    const actor = { id: admin.sub, role: admin.role };
+    knockQuery = applyLeadAccessFilter(knockQuery, actor, { foreignTable: 'leads' });
+    callQuery = applyLeadAccessFilter(callQuery, actor, { foreignTable: 'leads' });
 
     const [knocks, calls] = await Promise.all([knockQuery, callQuery]);
     if (knocks.error || calls.error) {

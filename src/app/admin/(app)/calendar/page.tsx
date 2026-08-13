@@ -20,6 +20,7 @@ import {
   weekdayLabels,
   type CalendarView,
 } from '@/lib/leads/calendar';
+import { useAppShell } from '@/components/providers/app-shell-provider';
 
 interface CalendarAppointment extends LeadAppointment {
   leads: {
@@ -42,6 +43,7 @@ const TYPE_COLORS: Record<string, string> = {
 const MONTH_CELL_LIMIT = 3;
 
 export default function CalendarPage() {
+  const { permissions } = useAppShell();
   const [view, setView] = useState<CalendarView>('week');
   const [anchor, setAnchor] = useState(() => normalizeAnchor('week', new Date()));
   const [appointments, setAppointments] = useState<CalendarAppointment[]>([]);
@@ -99,7 +101,12 @@ export default function CalendarPage() {
   if (!loading && error) {
     return (
       <div className="space-y-4">
-        <PageHeader title="Calendar" description="Inspections and adjuster visits for your team" />
+        <PageHeader
+          title="Calendar"
+          description={permissions.canViewTeamData
+            ? 'Inspections and adjuster visits for your team'
+            : 'Inspections and adjuster visits assigned to you'}
+        />
         <DataErrorState title="Appointments did not load" description={error} onRetry={fetchAppointments} />
       </div>
     );
@@ -109,7 +116,9 @@ export default function CalendarPage() {
     <div className="space-y-4">
       <PageHeader
         title="Calendar"
-        description="Inspections and adjuster visits for your team"
+        description={permissions.canViewTeamData
+          ? 'Inspections and adjuster visits for your team'
+          : 'Inspections and adjuster visits assigned to you'}
         actions={
           <div className="flex flex-wrap items-center gap-2">
             {!marketsLoading && (

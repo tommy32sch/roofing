@@ -24,7 +24,7 @@ import type { TerritoryExecutionLead } from '@/lib/territories/execution';
  * feeding a stale shape to the execution screen would show a rep the wrong
  * doors, which is the failure worth preventing.
  */
-export const PACKAGE_SCHEMA_VERSION = 2;
+export const PACKAGE_SCHEMA_VERSION = 3;
 
 /** Older than this and the package is shown as stale, though still usable. */
 export const STALE_AFTER_MS = 12 * 60 * 60 * 1000;

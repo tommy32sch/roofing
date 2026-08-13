@@ -1,19 +1,34 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { DateTimeFields } from '@/components/leads/DateTimeFields';
 import { AppointmentConflictWarning } from '@/components/leads/AppointmentConflictWarning';
 import type { AppointmentConflict } from '@/lib/leads/appointment-conflicts';
+import { isAssignableCloserRole } from '@/lib/leads/closer-handoff';
+
+interface TeamMember {
+  id: string;
+  name: string;
+  role: string;
+}
 
 interface AppointmentModalProps {
   leadId: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSuccess: () => void;
+  currentCloserId?: string | null;
 }
 
 /**
@@ -21,16 +36,41 @@ interface AppointmentModalProps {
  * the server rejects that transition without a scheduled time
  * (appointment_form_required), same pattern as the sold/demographics flow.
  */
-export function AppointmentModal({ leadId, open, onOpenChange, onSuccess }: AppointmentModalProps) {
+export function AppointmentModal({
+  leadId,
+  open,
+  onOpenChange,
+  onSuccess,
+  currentCloserId = null,
+}: AppointmentModalProps) {
   const [scheduledAt, setScheduledAt] = useState('');
   const [notes, setNotes] = useState('');
+  const [closerId, setCloserId] = useState(currentCloserId ?? '');
+  const [closers, setClosers] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [conflicts, setConflicts] = useState<AppointmentConflict[]>([]);
   // Set after the server refuses, so the next press is an explicit override.
   const [override, setOverride] = useState(false);
 
-  const isValid = scheduledAt !== '' && !Number.isNaN(new Date(scheduledAt).getTime());
+  useEffect(() => {
+    if (!open) return;
+    setCloserId(currentCloserId ?? '');
+    fetch('/api/admin/team')
+      .then((response) => response.json())
+      .then((data) => {
+        if (!data.success) return;
+        setClosers(
+          (data.members as TeamMember[]).filter((member) => isAssignableCloserRole(member.role))
+        );
+      })
+      .catch(() => {});
+  }, [open, currentCloserId]);
+
+  const isValid =
+    scheduledAt !== '' &&
+    !Number.isNaN(new Date(scheduledAt).getTime()) &&
+    closerId !== '';
 
   async function handleSubmit() {
     if (!isValid) return;
@@ -45,6 +85,7 @@ export function AppointmentModal({ leadId, open, onOpenChange, onSuccess }: Appo
           status: 'appointment_set',
           appointment_scheduled_at: new Date(scheduledAt).toISOString(),
           appointment_notes: notes.trim() || null,
+          assigned_closer_id: closerId,
           allow_conflict: override,
         }),
       });
@@ -65,6 +106,7 @@ export function AppointmentModal({ leadId, open, onOpenChange, onSuccess }: Appo
 
       setScheduledAt('');
       setNotes('');
+      setCloserId(currentCloserId ?? '');
       onOpenChange(false);
       onSuccess();
     } catch {
@@ -77,6 +119,7 @@ export function AppointmentModal({ leadId, open, onOpenChange, onSuccess }: Appo
   function handleCancel() {
     setScheduledAt('');
     setNotes('');
+    setCloserId(currentCloserId ?? '');
     setError(null);
     setConflicts([]);
     setOverride(false);
@@ -89,7 +132,7 @@ export function AppointmentModal({ leadId, open, onOpenChange, onSuccess }: Appo
         <DialogHeader>
           <DialogTitle>Set Appointment</DialogTitle>
           <p className="text-sm text-muted-foreground">
-            When is the inspection appointment? This goes on the calendar.
+            When is the inspection, and which closer will run it?
           </p>
         </DialogHeader>
 
@@ -102,6 +145,21 @@ export function AppointmentModal({ leadId, open, onOpenChange, onSuccess }: Appo
               disabled={loading}
             />
             <AppointmentConflictWarning value={scheduledAt} onConflictsChange={setConflicts} />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="appt_closer">Closer</Label>
+            <Select value={closerId || null} onValueChange={(value) => setCloserId(value ?? '')}>
+              <SelectTrigger id="appt_closer">
+                <SelectValue placeholder="Select a closer" />
+              </SelectTrigger>
+              <SelectContent>
+                {closers.map((member) => (
+                  <SelectItem key={member.id} value={member.id}>
+                    {member.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div className="space-y-1">
             <Label htmlFor="appt_notes">Notes from the call / knock</Label>

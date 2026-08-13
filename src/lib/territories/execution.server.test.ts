@@ -104,6 +104,8 @@ function lead(overrides: Row = {}): Row {
     last_call_disposition: null,
     call_count: 0,
     follow_up_date: null,
+    assigned_setter_id: TERRITORY.owner_user_id,
+    assigned_closer_id: null,
     is_flagged_duplicate: false,
     lead_appointments: [],
     ...overrides,
@@ -126,13 +128,14 @@ describe('territory execution server loading', () => {
         lead({ id: 'duplicate', is_flagged_duplicate: true }),
         lead({ id: 'other-market', market_id: 2 }),
         lead({ id: 'missing-coords', latitude: null }),
+        lead({ id: 'other-assignee', assigned_setter_id: 'other-setter' }),
       ],
     });
 
     const result = await loadTerritoryExecutionSnapshot(
       supabase,
       TERRITORY.id,
-      'setter',
+      { id: TERRITORY.owner_user_id, role: 'setter' },
       { today: '2026-08-02', now: '2026-08-02T12:00:00Z' }
     );
     expect(result.ok).toBe(true);
@@ -151,6 +154,16 @@ describe('territory execution server loading', () => {
     });
   });
 
+  it('does not load another rep territory', async () => {
+    const result = await loadTerritoryExecutionSnapshot(
+      fakeSupabase({ territories: [TERRITORY] }),
+      TERRITORY.id,
+      { id: 'other-setter', role: 'setter' },
+      { today: '2026-08-02', now: '2026-08-02T12:00:00Z' }
+    );
+    expect(result).toEqual({ ok: false, status: 404, error: 'Territory not found' });
+  });
+
   it('loads progress independently of map filters and paginates territory summaries', async () => {
     const supabase = fakeSupabase({
       territories: [TERRITORY],
@@ -158,7 +171,7 @@ describe('territory execution server loading', () => {
       leads: [lead()],
     });
     const result = await loadTerritoryProgressPage(supabase, {
-      role: 'admin',
+      actor: { id: 'admin-1', role: 'admin' },
       marketId: 1,
       page: 1,
       limit: 25,

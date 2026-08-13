@@ -4,7 +4,7 @@ import { getAuthenticatedAdmin } from '@/lib/auth/jwt';
 import { getCassKey } from '@/lib/integrations/geocode';
 import { reverseGeocode } from '@/lib/integrations/geocode-reverse';
 import { findNearbyLeads, isPlausibleCoordinate, NEARBY_RADIUS_M } from '@/lib/leads/walk-up';
-import { applyLeadVisibilityFilter } from '@/lib/leads/lead-visibility';
+import { canAccessLead } from '@/lib/leads/lead-visibility';
 import { applyMarketFilter } from '@/lib/leads/markets';
 import { marketFilterFor } from '@/lib/leads/market-context';
 
@@ -38,34 +38,44 @@ export async function GET(request: NextRequest) {
      * latitude 0.001 degrees is about 100m, comfortably wider than the radius.
      */
     const pad = 0.001;
-    // This returns lead names and addresses, so it takes the same scoping the
-    // map data does: a closer sees only leads they are allowed to, and every
-    // role is held to their office. Without it, probing coordinates turned this
-    // dedup check into a way to enumerate the whole book across markets.
+    // The query must inspect every nearby row to preserve duplicate warnings,
+    // but only accessible rows may return names or addresses.
     let candidateQuery = supabase
       .from('leads')
-      .select('id, first_name, last_name, address_street, status, latitude, longitude')
+      .select('id, first_name, last_name, address_street, status, latitude, longitude, assigned_setter_id, assigned_closer_id')
       .gte('latitude', latitude - pad)
       .lte('latitude', latitude + pad)
       .gte('longitude', longitude - pad)
       .lte('longitude', longitude + pad)
       .limit(200);
-    candidateQuery = applyLeadVisibilityFilter(candidateQuery, admin.role);
     candidateQuery = applyMarketFilter(
       candidateQuery,
       await marketFilterFor(admin.marketId, searchParams.get('market_id'))
     );
     const { data: candidates } = await candidateQuery;
 
-    const nearby = findNearbyLeads(
-      (candidates ?? []) as { id: string; latitude: number; longitude: number }[],
+    const candidateRows = (candidates ?? []) as {
+        id: string;
+        latitude: number;
+        longitude: number;
+        assigned_setter_id: string | null;
+        assigned_closer_id: string | null;
+      }[];
+    const nearbyAll = findNearbyLeads(
+      candidateRows,
       { latitude, longitude },
       NEARBY_RADIUS_M
     );
+    const actor = { id: admin.sub, role: admin.role };
+    const accessibleIds = new Set(
+      candidateRows.filter((lead) => canAccessLead(actor, lead)).map((lead) => lead.id)
+    );
+    const nearby = nearbyAll.filter((lead) => accessibleIds.has(lead.id));
+    const hiddenNearbyCount = nearbyAll.length - nearby.length;
 
     const address = await reverseGeocode(latitude, longitude, await getCassKey());
 
-    return NextResponse.json({ success: true, address, nearby });
+    return NextResponse.json({ success: true, address, nearby, hiddenNearbyCount });
   } catch {
     return NextResponse.json({ success: false, error: 'Internal server error' }, { status: 500 });
   }

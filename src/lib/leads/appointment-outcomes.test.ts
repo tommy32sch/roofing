@@ -140,24 +140,23 @@ describe('canRecordOutcome', () => {
   const base = {
     role: 'setter',
     userId: 'rep-1',
-    appointmentCreatedBy: 'rep-1',
-    appointmentAssignedTo: null,
+    appointmentAssignedTo: 'rep-1',
     existingOutcomeBy: null,
   };
 
-  it('lets a rep record the result of their own appointment', () => {
+  it('lets a rep record an outcome on assigned work', () => {
     expect(canRecordOutcome(base)).toBe(true);
   });
 
-  it('lets a rep record when the lead is assigned to them', () => {
+  it('does not grant access when the work is not assigned', () => {
     expect(
-      canRecordOutcome({ ...base, appointmentCreatedBy: 'someone', appointmentAssignedTo: 'rep-1' })
-    ).toBe(true);
+      canRecordOutcome({ ...base, appointmentAssignedTo: 'other' })
+    ).toBe(false);
   });
 
   it('stops a rep touching an appointment that is not theirs', () => {
     expect(
-      canRecordOutcome({ ...base, appointmentCreatedBy: 'other', appointmentAssignedTo: 'other' })
+      canRecordOutcome({ ...base, appointmentAssignedTo: 'other' })
     ).toBe(false);
   });
 
@@ -176,7 +175,6 @@ describe('canRecordOutcome', () => {
       canRecordOutcome({
         role: 'admin',
         userId: 'admin-1',
-        appointmentCreatedBy: 'other',
         appointmentAssignedTo: 'other',
         existingOutcomeBy: 'someone-else',
       })
@@ -188,7 +186,6 @@ describe('canModifyAppointment', () => {
   const base = {
     role: 'setter',
     userId: 'u1',
-    appointmentCreatedBy: null,
     leadAssignedSetterId: null,
     leadAssignedCloserId: null,
   };
@@ -197,8 +194,8 @@ describe('canModifyAppointment', () => {
     expect(canModifyAppointment({ ...base, role: 'admin' })).toBe(true);
   });
 
-  it('lets the rep who booked it modify it', () => {
-    expect(canModifyAppointment({ ...base, appointmentCreatedBy: 'u1' })).toBe(true);
+  it('does not grant access without a matching assignment', () => {
+    expect(canModifyAppointment(base)).toBe(false);
   });
 
   it('lets a rep the lead is assigned to modify it', () => {
@@ -215,7 +212,6 @@ describe('canModifyAppointment', () => {
     expect(
       canModifyAppointment({
         ...base,
-        appointmentCreatedBy: 'someone-else',
         leadAssignedSetterId: 'someone-else',
         leadAssignedCloserId: 'another',
       })
@@ -233,8 +229,13 @@ describe('canModifyAppointment', () => {
    * Deliberately unlike canRecordOutcome: a rep who already recorded an outcome
    * must still be able to rebook. Cancelling is not overwriting a judgement.
    */
-  it('ignores who recorded an outcome', () => {
-    expect(canModifyAppointment({ ...base, appointmentCreatedBy: 'u1' })).toBe(true);
+  it('uses assignment even when another account created the booking', () => {
+    expect(
+      canModifyAppointment({
+        ...base,
+        leadAssignedSetterId: 'u1',
+      })
+    ).toBe(true);
   });
 });
 
@@ -242,16 +243,29 @@ describe('canRecordAppointmentOutcome', () => {
   const base = {
     role: 'setter',
     userId: 'rep-1',
-    appointmentCreatedBy: 'other',
     leadAssignedSetterId: null,
     leadAssignedCloserId: null,
     existingOutcomeBy: null,
   };
 
-  it('uses either assignment role plus the booking creator', () => {
+  it('uses only the assignment for the current role', () => {
     expect(canRecordAppointmentOutcome({ ...base, leadAssignedSetterId: 'rep-1' })).toBe(true);
-    expect(canRecordAppointmentOutcome({ ...base, leadAssignedCloserId: 'rep-1' })).toBe(true);
-    expect(canRecordAppointmentOutcome({ ...base, appointmentCreatedBy: 'rep-1' })).toBe(true);
+    expect(canRecordAppointmentOutcome({ ...base, leadAssignedCloserId: 'rep-1' })).toBe(false);
+    expect(canRecordAppointmentOutcome(base)).toBe(false);
+    expect(
+      canRecordAppointmentOutcome({
+        ...base,
+        role: 'closer',
+        leadAssignedCloserId: 'rep-1',
+      })
+    ).toBe(true);
+    expect(
+      canRecordAppointmentOutcome({
+        ...base,
+        role: 'closer',
+        leadAssignedSetterId: 'rep-1',
+      })
+    ).toBe(false);
   });
 
   it('keeps another actor’s recorded result protected', () => {

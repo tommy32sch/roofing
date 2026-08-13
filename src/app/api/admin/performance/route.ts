@@ -12,6 +12,7 @@ import {
   type MetricsAppointment,
   type RepMetrics,
 } from '@/lib/leads/rep-metrics';
+import { applyLeadAccessFilter } from '@/lib/leads/lead-visibility';
 
 export type { RepMetrics };
 
@@ -62,25 +63,48 @@ export async function GET(request: NextRequest) {
     // Office scoping: a blended close rate across two offices describes neither.
     const marketId = await marketFilterFor(admin.marketId, params.get('market_id'));
 
-    const { data: leadRows } = await applyMarketFilter(
+    const actor = { id: admin.sub, role: admin.role };
+    let leadQuery = applyMarketFilter(
       supabase
         .from('leads')
         .select('id, status, deal_value, assigned_setter_id, assigned_closer_id, created_at')
-        .or(
-          `assigned_setter_id.in.(${userIds.join(',')}),assigned_closer_id.in.(${userIds.join(',')})`
-        )
         .eq('is_flagged_duplicate', false),
       marketId
     );
+    if (admin.role === 'admin') {
+      leadQuery = leadQuery.or(
+        `assigned_setter_id.in.(${userIds.join(',')}),assigned_closer_id.in.(${userIds.join(',')})`
+      );
+    }
+    leadQuery = applyLeadAccessFilter(leadQuery, actor);
+    const { data: leadRows } = await leadQuery;
     const leads = (leadRows ?? []) as MetricsLead[];
 
-    // Activity is fetched by ACTOR, not by lead assignment — a rep covering
-    // someone else's territory still did that work, and it would disappear if it
-    // were only counted against leads assigned to them.
+    let knockQuery = supabase
+      .from('lead_knocks')
+      .select('lead_id, created_by, knocked_at, leads!lead_id!inner(market_id)')
+      .in('created_by', userIds);
+    let callQuery = supabase
+      .from('lead_calls')
+      .select('lead_id, created_by, called_at, leads!lead_id!inner(market_id)')
+      .in('created_by', userIds);
+    let appointmentQuery = supabase
+      .from('lead_appointments')
+      .select('lead_id, created_by, scheduled_at, outcome, leads!lead_id!inner(market_id)');
+
+    if (marketId != null) {
+      knockQuery = knockQuery.eq('leads.market_id', marketId);
+      callQuery = callQuery.eq('leads.market_id', marketId);
+      appointmentQuery = appointmentQuery.eq('leads.market_id', marketId);
+    }
+
+    // Activity is attributed to the account that did it. These rows carry no
+    // lead PII, and the rep user list above contains only the signed-in account.
+    // Current lead assignment still governs funnel, revenue, and close metrics.
     const [{ data: knockRows }, { data: callRows }, { data: apptRows }] = await Promise.all([
-      supabase.from('lead_knocks').select('lead_id, created_by, knocked_at').in('created_by', userIds),
-      supabase.from('lead_calls').select('lead_id, created_by, called_at').in('created_by', userIds),
-      supabase.from('lead_appointments').select('lead_id, created_by, scheduled_at, outcome'),
+      knockQuery,
+      callQuery,
+      appointmentQuery,
     ]);
 
     const knocks: MetricsEvent[] = (knockRows ?? []).map(

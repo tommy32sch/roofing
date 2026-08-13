@@ -25,6 +25,7 @@ const ADMIN_ONLY_PREFIXES = [
 
 // Route files whose every exported handler must self-check admin role.
 const ADMIN_ONLY_ROUTES = [
+  'src/app/api/admin/users/route.ts',
   'src/app/api/admin/settings/route.ts',
   'src/app/api/admin/integrations/route.ts',
   'src/app/api/admin/integrations/[keyId]/route.ts',

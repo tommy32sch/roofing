@@ -59,6 +59,7 @@ const pkg = (over: Partial<ReturnType<typeof buildTerritoryPackage>> = {}) => ({
 describe('buildTerritoryPackage', () => {
   it('stamps the current schema version', () => {
     expect(pkg().schemaVersion).toBe(PACKAGE_SCHEMA_VERSION);
+    expect(PACKAGE_SCHEMA_VERSION).toBe(3);
   });
 
   it('keeps everything needed to rebuild the execution screen offline', () => {

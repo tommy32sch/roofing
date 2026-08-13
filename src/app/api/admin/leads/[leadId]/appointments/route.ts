@@ -4,6 +4,8 @@ import { getAuthenticatedAdmin } from '@/lib/auth/jwt';
 import { isValidUUID } from '@/lib/utils/validation';
 import { notifyAppointmentBooked } from '@/lib/notifications/notify-appointment';
 import { findAppointmentConflicts, conflictResponseBody } from '@/lib/leads/appointment-guard';
+import { authorizeLeadAccess } from '@/lib/leads/lead-visibility';
+import { assertAssignableCloser, resolveCloserHandoff } from '@/lib/leads/closer-handoff';
 
 const APPOINTMENT_TYPES = new Set(['inspection', 'adjuster']);
 
@@ -33,10 +35,34 @@ export async function POST(
     const notes = typeof body.notes === 'string' && body.notes.trim() ? body.notes.trim() : null;
 
     const supabase = db();
+    const actor = { id: admin.sub, role: admin.role };
+    const access = await authorizeLeadAccess(supabase, actor, leadId);
+    if (!access.ok) {
+      return NextResponse.json(
+        { success: false, error: access.error },
+        { status: access.status }
+      );
+    }
 
-    const { data: lead } = await supabase.from('leads').select('id').eq('id', leadId).single();
-    if (!lead) {
-      return NextResponse.json({ success: false, error: 'Lead not found' }, { status: 404 });
+    const handoff = resolveCloserHandoff(access.lead.assigned_closer_id, body.assigned_closer_id);
+    if (!handoff.ok) {
+      return NextResponse.json({ success: false, error: handoff.error }, { status: 400 });
+    }
+    if (handoff.closerId !== access.lead.assigned_closer_id) {
+      if (admin.role === 'closer') {
+        return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
+      }
+      const closer = await assertAssignableCloser(supabase, handoff.closerId);
+      if (!closer.ok) {
+        return NextResponse.json({ success: false, error: closer.error }, { status: 400 });
+      }
+      const { error: assignError } = await supabase
+        .from('leads')
+        .update({ assigned_closer_id: handoff.closerId })
+        .eq('id', leadId);
+      if (assignError) {
+        return NextResponse.json({ success: false, error: assignError.message }, { status: 500 });
+      }
     }
 
     // Refuse a clashing time unless the caller has seen the warning and said
@@ -44,6 +70,7 @@ export async function POST(
     // same slot seconds apart would both pass a client-side check.
     if (!body.allow_conflict) {
       const conflicts = await findAppointmentConflicts(supabase, {
+        actor,
         leadId,
         scheduledAt: body.scheduled_at,
       });

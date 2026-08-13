@@ -178,7 +178,7 @@ function SectionCard({
 }
 
 export default function TodayPage() {
-  const { user } = useAppShell();
+  const { user, permissions } = useAppShell();
   const [data, setData] = useState<TodayData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -338,21 +338,23 @@ export default function TodayPage() {
             )}
             {/* Segmented rather than a dropdown: two options, and which one is
                 active is the single most important thing on the screen. */}
-            <div className="flex rounded-md border p-0.5" role="group" aria-label="Whose work">
-              {(['mine', 'all'] as const).map((s) => (
-                <button
-                  key={s}
-                  type="button"
-                  aria-pressed={scope === s}
-                  onClick={() => { setScope(s); setLoading(true); }}
-                  className={`h-9 rounded px-3 text-xs font-medium transition-colors ${
-                    scope === s ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'
-                  }`}
-                >
-                  {s === 'mine' ? 'Mine' : 'Everyone'}
-                </button>
-              ))}
-            </div>
+            {permissions.canViewTeamData && (
+              <div className="flex rounded-md border p-0.5" role="group" aria-label="Whose work">
+                {(['mine', 'all'] as const).map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    aria-pressed={scope === s}
+                    onClick={() => { setScope(s); setLoading(true); }}
+                    className={`h-9 rounded px-3 text-xs font-medium transition-colors ${
+                      scope === s ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    {s === 'mine' ? 'Mine' : 'Everyone'}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         }
       />
@@ -372,13 +374,17 @@ export default function TodayPage() {
             <EmptyState
               icon={Sun}
               title="Nothing is assigned to you yet"
-              description="No leads have you as their setter or closer. An admin can assign leads from the Leads list, or you can view the whole team."
+              description={permissions.canViewTeamData
+                ? 'No leads have you as their setter or closer. Assign leads from the Leads list or view the whole team.'
+                : `No leads are assigned to you as a ${user.role}. An admin can assign leads from the Leads list.`}
               action={
                 <div className="flex gap-2">
-                  <Button variant="outline" onClick={() => { setScope('all'); setLoading(true); }}>
-                    View everyone&apos;s
-                  </Button>
-                  {user.role === 'admin' && (
+                  {permissions.canViewTeamData && (
+                    <Button variant="outline" onClick={() => { setScope('all'); setLoading(true); }}>
+                      View everyone&apos;s
+                    </Button>
+                  )}
+                  {permissions.canBulkAssignLeads && (
                     <Link href="/admin/leads" className={buttonVariants()}>
                       Assign leads
                     </Link>

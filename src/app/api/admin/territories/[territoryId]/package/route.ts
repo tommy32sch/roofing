@@ -50,7 +50,7 @@ export async function GET(
     const result = await loadTerritoryExecutionSnapshot(
       db(),
       territoryId,
-      admin.role,
+      { id: admin.sub, role: admin.role },
       { today, now: new Date().toISOString() }
     );
     if (!result.ok) {

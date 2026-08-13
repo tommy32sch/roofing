@@ -21,6 +21,7 @@ import { MarketFilter } from '@/components/markets/market-filter';
 import { useMarkets, ALL_MARKETS } from '@/components/markets/use-markets';
 import { DeletedLeadsPanel } from '@/components/leads/DeletedLeadsPanel';
 import { DataErrorState } from '@/components/layout/data-error-state';
+import { useAppShell } from '@/components/providers/app-shell-provider';
 
 const ACTIVITY_ICONS: Record<string, React.ElementType> = {
   note: MessageSquare,
@@ -59,6 +60,7 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 export default function ActivityPage() {
+  const { permissions } = useAppShell();
   const [activities, setActivities] = useState<Activity[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -73,11 +75,12 @@ export default function ActivityPage() {
   const limit = 50;
 
   useEffect(() => {
+    if (!permissions.canViewTeamData) return;
     fetch('/api/admin/users')
       .then(r => r.json())
       .then(d => { if (d.success) setActivityUsers(d.users); })
       .catch(() => {});
-  }, []);
+  }, [permissions.canViewTeamData]);
 
   const fetchActivities = useCallback(async () => {
     setLoading(true);
@@ -112,16 +115,20 @@ export default function ActivityPage() {
       <PageHeader
         title="Activity"
         description={`${total.toLocaleString()} event${total === 1 ? '' : 's'} ${
-          marketValue === ALL_MARKETS
-            ? 'across all leads'
-            : `in ${markets.find(m => String(m.id) === marketValue)?.name ?? 'this market'}`
+          permissions.canViewTeamData
+            ? marketValue === ALL_MARKETS
+              ? 'across all leads'
+              : `in ${markets.find(m => String(m.id) === marketValue)?.name ?? 'this market'}`
+            : marketValue === ALL_MARKETS
+              ? 'across your assigned leads'
+              : `across your assigned leads in ${markets.find(m => String(m.id) === marketValue)?.name ?? 'this market'}`
         }`}
       />
 
       {/* Deleted leads sit above the feed because they cannot appear IN it:
           lead_activities cascades on lead delete, so a deletion erases its own
           trail. Renders nothing when nothing has been deleted. */}
-      <DeletedLeadsPanel />
+      {permissions.canDeleteLeads && <DeletedLeadsPanel />}
 
       {/* Filters */}
       <div className="flex flex-wrap gap-3">
@@ -148,7 +155,7 @@ export default function ActivityPage() {
             <SelectItem value="updated">Updated</SelectItem>
           </SelectContent>
         </Select>
-        {activityUsers.length > 0 && (
+        {permissions.canViewTeamData && activityUsers.length > 0 && (
           <Select value={userFilter} onValueChange={v => { setUserFilter(v === 'all' ? '' : (v ?? '')); setPage(1); }}>
             <SelectTrigger className="w-[180px]">
               <SelectValue placeholder="All Users" />
@@ -178,7 +185,9 @@ export default function ActivityPage() {
               description={
                 typeFilter || userFilter
                   ? 'Try clearing the type or user filter.'
-                  : 'Calls, notes, visits and status changes will appear here as your team works leads.'
+                  : permissions.canViewTeamData
+                    ? 'Calls, notes, visits and status changes will appear here as your team works leads.'
+                    : 'Calls, notes, visits and status changes will appear here for your assigned leads.'
               }
             />
           </CardContent>

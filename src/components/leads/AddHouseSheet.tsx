@@ -55,6 +55,7 @@ export function AddHouseSheet({ open, onOpenChange, point, marketId, onCreated }
   const [saving, setSaving] = useState(false);
   const [resolved, setResolved] = useState<ResolvedAddress | null>(null);
   const [nearby, setNearby] = useState<NearbyHit[]>([]);
+  const [hiddenNearbyCount, setHiddenNearbyCount] = useState(0);
 
   const set = (k: keyof typeof EMPTY, v: string) => setForm(f => ({ ...f, [k]: v }));
 
@@ -62,11 +63,13 @@ export function AddHouseSheet({ open, onOpenChange, point, marketId, onCreated }
     setResolving(true);
     setResolved(null);
     setNearby([]);
+    setHiddenNearbyCount(0);
     try {
       const res = await fetch(`/api/admin/leads/walk-up/resolve?lat=${lat}&lng=${lng}`);
       const d = await res.json();
       if (d.success) {
         setNearby(d.nearby ?? []);
+        setHiddenNearbyCount(d.hiddenNearbyCount ?? 0);
         if (d.address) {
           setResolved(d.address);
           setForm(f => ({
@@ -177,6 +180,18 @@ export function AddHouseSheet({ open, onOpenChange, point, marketId, onCreated }
                   Add anyway if this is a different door.
                 </p>
               </div>
+            </div>
+          )}
+
+          {hiddenNearbyCount > 0 && (
+            <div className="flex gap-2 rounded-md border border-amber-500/40 bg-amber-500/5 p-3 text-sm">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+              <p>
+                {hiddenNearbyCount === 1
+                  ? 'A lead assigned to another account is near this point.'
+                  : `${hiddenNearbyCount} leads assigned to other accounts are near this point.`}
+                {' '}Check that this is a different door before you add it.
+              </p>
             </div>
           )}
 

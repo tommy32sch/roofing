@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/supabase/server';
 import { getAuthenticatedAdmin } from '@/lib/auth/jwt';
 import { marketFilterFor } from '@/lib/leads/market-context';
-import { applyLeadVisibilityFilter } from '@/lib/leads/lead-visibility';
+import { applyLeadAccessFilter } from '@/lib/leads/lead-visibility';
 import { resolveContactActivityUser } from '@/lib/leads/contact-activity';
 
 export async function GET(request: NextRequest) {
@@ -47,7 +47,9 @@ export async function GET(request: NextRequest) {
     if (type) query = query.eq('activity_type', type);
     if (user.userId) query = query.eq('created_by', user.userId);
     if (marketId != null) query = query.eq('leads.market_id', marketId);
-    query = applyLeadVisibilityFilter(query, admin.role, 'leads.status');
+    query = applyLeadAccessFilter(query, { id: admin.sub, role: admin.role }, {
+      foreignTable: 'leads',
+    });
 
     query = query.range(offset, offset + limit - 1);
 

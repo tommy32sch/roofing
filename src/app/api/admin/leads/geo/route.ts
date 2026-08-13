@@ -3,8 +3,7 @@ import { db } from '@/lib/supabase/server';
 import { getAuthenticatedAdmin } from '@/lib/auth/jwt';
 import { marketFilterFor } from '@/lib/leads/market-context';
 import { applyMarketFilter } from '@/lib/leads/markets';
-
-const CLOSER_STATUSES = ['appointment_set', 'inspected', 'proposal_sent', 'sold', 'lost'];
+import { applyLeadAccessFilter } from '@/lib/leads/lead-visibility';
 
 export async function GET(request: NextRequest) {
   try {
@@ -27,16 +26,9 @@ export async function GET(request: NextRequest) {
       .eq('is_flagged_duplicate', false)
       .limit(10000);
 
-    // Closers only see leads from appointment_set onward (matches leads GET)
-    if (admin.role === 'closer') {
-      if (status && CLOSER_STATUSES.includes(status)) {
-        query = query.eq('status', status);
-      } else {
-        query = query.in('status', CLOSER_STATUSES);
-      }
-    } else if (status) {
-      query = query.eq('status', status);
-    }
+    query = applyLeadAccessFilter(query, { id: admin.sub, role: admin.role });
+
+    if (status) query = query.eq('status', status);
     if (priority) query = query.eq('priority', priority);
 
     // Office scoping: explicit ?market_id, else the caller's home market.

@@ -5,6 +5,7 @@ import { marketFilterFor } from '@/lib/leads/market-context';
 import { normalizePhone } from '@/lib/leads/normalize';
 import { KNOCK_DISPOSITION_VALUES, type KnockDisposition } from '@/lib/leads/knocks';
 import { validateWalkUp, walkUpNameColumns, type WalkUpInput } from '@/lib/leads/walk-up';
+import { assignmentForNewLead } from '@/lib/leads/lead-visibility';
 
 /** The seeded "Door Knock" source — a walk-up is by definition one. */
 const DOOR_KNOCK_SOURCE_ID = 8;
@@ -82,6 +83,7 @@ export async function POST(request: NextRequest) {
         source_id: DOOR_KNOCK_SOURCE_ID,
         source_notes: 'Added from the map while canvassing',
         market_id: await marketFilterFor(admin.marketId, body.market_id != null ? String(body.market_id) : null),
+        ...assignmentForNewLead({ id: admin.sub, role: admin.role }),
         created_by: admin.sub,
         created_by_name: admin.name?.trim() || admin.email,
       })

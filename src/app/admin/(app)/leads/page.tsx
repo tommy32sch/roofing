@@ -562,8 +562,10 @@ function LeadsListContent() {
                   ) : (
                     <EmptyState
                       icon={Upload}
-                      title="No leads yet"
-                      description="Import a list to get started — CSV and Excel both work, and Do Not Call numbers are handled automatically."
+                      title={isAdmin ? 'No leads yet' : 'No leads assigned to you yet'}
+                      description={isAdmin
+                        ? 'Import a list to get started — CSV and Excel both work, and Do Not Call numbers are handled automatically.'
+                        : 'An admin can assign existing leads to you, or you can import a new list for your role.'}
                       action={
                         <Button
                           render={<Link href="/admin/leads/import" />}

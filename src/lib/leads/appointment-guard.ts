@@ -4,6 +4,7 @@ import {
   conflictWindow,
   type AppointmentConflict,
 } from './appointment-conflicts';
+import { applyLeadAccessFilter, type LeadActor } from './lead-visibility';
 
 /**
  * Server-side double-booking check, shared by every path that sets a time.
@@ -18,7 +19,12 @@ import {
  */
 export async function findAppointmentConflicts(
   supabase: SupabaseClient,
-  opts: { leadId: string; scheduledAt: string; excludeAppointmentId?: string | null }
+  opts: {
+    actor: LeadActor;
+    leadId: string;
+    scheduledAt: string;
+    excludeAppointmentId?: string | null;
+  }
 ): Promise<AppointmentConflict[]> {
   const window = conflictWindow(opts.scheduledAt);
   if (!window) return [];
@@ -37,7 +43,7 @@ export async function findAppointmentConflicts(
   // a same-market clash.
   let query = supabase
     .from('lead_appointments')
-    .select('id, scheduled_at, appointment_type, leads!lead_id!inner(first_name, last_name, market_id)')
+    .select('id, scheduled_at, appointment_type, leads!lead_id!inner(first_name, last_name, market_id, assigned_setter_id, assigned_closer_id)')
     // A recorded cancellation keeps its row for reporting, but it no longer
     // occupies the crew's time slot.
     .eq('outcome', 'scheduled')
@@ -47,6 +53,7 @@ export async function findAppointmentConflicts(
   query = marketId == null
     ? query.is('leads.market_id', null)
     : query.eq('leads.market_id', marketId);
+  query = applyLeadAccessFilter(query, opts.actor, { foreignTable: 'leads' });
 
   const { data, error } = await query;
   if (error || !data) return [];

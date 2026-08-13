@@ -96,11 +96,16 @@ describe('territory execution route boundaries', () => {
     expect(marketFilterMock).toHaveBeenCalledWith(USER.marketId, '2');
     expect(progressMock).toHaveBeenCalledWith(
       expect.anything(),
-      expect.objectContaining({ role: 'setter', marketId: 2, page: 2, limit: 100 })
+      expect.objectContaining({
+        actor: { id: USER.sub, role: 'setter' },
+        marketId: 2,
+        page: 2,
+        limit: 100,
+      })
     );
   });
 
-  it('loads any active territory for a setter without treating owner as an ACL', async () => {
+  it('passes the complete actor to the server ownership boundary', async () => {
     authMock.mockResolvedValue(USER);
     snapshotMock.mockResolvedValue({
       ok: true,
@@ -128,7 +133,7 @@ describe('territory execution route boundaries', () => {
     expect(snapshotMock).toHaveBeenCalledWith(
       expect.anything(),
       TERRITORY_ID,
-      'setter',
+      { id: USER.sub, role: 'setter' },
       expect.objectContaining({ today: '2026-08-02' })
     );
   });
@@ -144,7 +149,8 @@ describe('territory execution server contract', () => {
     expect(source).toContain('pointInPolygon([lead.latitude, lead.longitude], territory.boundary)');
     expect(source).toContain(".eq('market_id', marketId)");
     expect(source).toContain(".eq('is_flagged_duplicate', false)");
-    expect(source).toContain('canViewLead(role, row.status)');
+    expect(source).toContain('applyLeadAccessFilter(query, actor)');
+    expect(source).toContain("territoryQuery.eq('owner_user_id', actor.id)");
     expect(source).toContain(".is('archived_at', null)");
   });
 

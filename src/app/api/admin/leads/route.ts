@@ -15,6 +15,10 @@ import {
   leadQueueRequestParamsFromSearchParams,
 } from '@/lib/leads/work-queue.server';
 import { leadQueueSort } from '@/lib/leads/work-queue';
+import {
+  applyLeadAccessFilter,
+  assignmentForNewLead,
+} from '@/lib/leads/lead-visibility';
 
 export async function GET(request: NextRequest) {
   try {
@@ -53,13 +57,9 @@ export async function GET(request: NextRequest) {
     // Office scoping: explicit ?market_id, else the caller's home market.
     query = applyMarketFilter(query, await marketFilterFor(admin.marketId, searchParams.get('market_id')));
 
-    query = applyLeadQueueFilters(query, queueParams);
+    query = applyLeadAccessFilter(query, { id: admin.sub, role: admin.role });
 
-    // Closers see leads from appointment_set onwards (their working pipeline + history)
-    const CLOSER_STATUSES = ['appointment_set', 'inspected', 'proposal_sent', 'sold', 'lost'];
-    if (admin.role === 'closer') {
-      query = query.in('status', CLOSER_STATUSES);
-    }
+    query = applyLeadQueueFilters(query, queueParams);
 
     // Exclude flagged duplicates from main list unless explicitly requested
     if (!showDuplicates) {
@@ -68,7 +68,7 @@ export async function GET(request: NextRequest) {
       query = query.eq('is_flagged_duplicate', isFlaggedDuplicate === 'true');
     }
 
-    if (sourceId && admin.role !== 'closer') query = query.eq('source_id', parseInt(sourceId, 10));
+    if (sourceId) query = query.eq('source_id', parseInt(sourceId, 10));
 
     if (followUpBefore) {
       query = query
@@ -178,6 +178,7 @@ export async function POST(request: NextRequest) {
         phone_normalized,
         email: email?.trim()?.toLowerCase() || null,
         estimated_roof_value: estimate?.value ?? null,
+        ...assignmentForNewLead({ id: admin.sub, role: admin.role }),
         created_by: admin.sub,
         created_by_name: admin.name?.trim() || admin.email,
       })

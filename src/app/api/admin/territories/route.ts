@@ -38,6 +38,7 @@ export async function GET(request: NextRequest) {
     let query = supabase.from('territories').select(TERRITORY_DB_FIELDS);
     query = applyMarketFilter(query, await marketFilterFor(admin.marketId, searchParams.get('market_id')));
     if (!includeArchived) query = query.is('archived_at', null);
+    if (admin.role !== 'admin') query = query.eq('owner_user_id', admin.sub);
     query = query.order('created_at', { ascending: false });
 
     const { data, error } = await query;

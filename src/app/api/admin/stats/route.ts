@@ -3,7 +3,7 @@ import { db } from '@/lib/supabase/server';
 import { getAuthenticatedAdmin } from '@/lib/auth/jwt';
 import { marketFilterFor } from '@/lib/leads/market-context';
 import { applyMarketFilter } from '@/lib/leads/markets';
-import { applyLeadVisibilityFilter } from '@/lib/leads/lead-visibility';
+import { applyLeadAccessFilter } from '@/lib/leads/lead-visibility';
 import { LEAD_STATUS_OPTIONS } from '@/types';
 import type { LeadStatus } from '@/types';
 import { startOfWeek, startOfMonth } from 'date-fns';
@@ -26,7 +26,8 @@ export async function GET(request: NextRequest) {
     const marketId = await marketFilterFor(admin.marketId, new URL(request.url).searchParams.get('market_id'));
 
     // Overdue follow-ups count
-    const overdueQuery = applyLeadVisibilityFilter(
+    const actor = { id: admin.sub, role: admin.role };
+    const overdueQuery = applyLeadAccessFilter(
       applyMarketFilter(
         supabase
           .from('leads')
@@ -36,12 +37,12 @@ export async function GET(request: NextRequest) {
           .not('status', 'in', '("sold","lost")'),
         marketId
       ),
-      admin.role
+      actor
     );
     const { count: overdueFollowUps } = await overdueQuery;
 
     // Get all leads with source
-    const leadsQuery = applyLeadVisibilityFilter(
+    const leadsQuery = applyLeadAccessFilter(
       applyMarketFilter(
         supabase
           .from('leads')
@@ -50,7 +51,7 @@ export async function GET(request: NextRequest) {
           .select('id, first_name, last_name, address_street, address_city, address_state, status, priority, source_id, deal_value, estimated_roof_value, created_at, lead_sources(display_name)'),
         marketId
       ),
-      admin.role
+      actor
     );
     const { data: leads, error } = await leadsQuery
       .order('created_at', { ascending: false });

@@ -12,13 +12,12 @@ describe('pickWritableLeadFields', () => {
    * into a service-role insert, so a setter could POST these four columns and
    * award themselves a sale the performance leaderboard then counted.
    */
-  it('drops financial and assignment fields for a setter', () => {
+  it('drops financial and setter-assignment fields for a setter', () => {
     const out = pickWritableLeadFields(
       {
         first_name: 'A',
         deal_value: 250000,
         assigned_setter_id: 'self',
-        assigned_closer_id: 'self',
         market_id: 2,
       },
       'setter'
@@ -26,7 +25,13 @@ describe('pickWritableLeadFields', () => {
     expect(out).toEqual({ first_name: 'A' });
   });
 
-  it('drops them for a closer too', () => {
+  it('lets a setter hand a lead to a closer', () => {
+    expect(pickWritableLeadFields({ assigned_closer_id: 'self' }, 'setter')).toEqual({
+      assigned_closer_id: 'self',
+    });
+  });
+
+  it('drops financial and assignment fields for a closer', () => {
     expect(pickWritableLeadFields({ deal_value: 1, assigned_closer_id: 'self' }, 'closer')).toEqual({});
   });
 
@@ -120,6 +125,11 @@ describe('statusDenialReason', () => {
   it('does not restrict admins or closers', () => {
     expect(statusDenialReason('sold', 'admin')).toBeNull();
     expect(statusDenialReason('sold', 'closer')).toBeNull();
+  });
+
+  it('stops a setter moving a sold lead to another status', () => {
+    expect(statusDenialReason('lost', 'setter', 'sold')).toBe('Setters cannot change a sold lead');
+    expect(statusDenialReason('new', 'setter', 'sold')).toBe('Setters cannot change a sold lead');
   });
 
   // No status in the payload means no transition was requested.

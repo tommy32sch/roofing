@@ -208,3 +208,15 @@
   - jsdom has no touch. Unit-test the gesture DECISION as a pure function
     (`classifyDrawGestureEnd`) and confirm on a real device — the owner's phone
     was the only thing that actually proved this fixed.
+
+## Team-scope controls must match the server access boundary
+- **Correction:** the Today page exposed Mine and Everyone to every role, so a
+  setter or closer could request team work instead of only their own work.
+- **Rules:**
+  - Treat team scope as an admin permission, not a display preference.
+  - Resolve requested scope through one shared role-aware policy. Admins may
+    choose personal or team data; setters and closers are always personal.
+  - Hide team-scope controls from non-admin users, but never rely on hidden UI
+    for access control. Every affected API must enforce the same rule.
+  - Audit all lead-derived pages and exports when this boundary changes, and add
+    a static guard so a new route cannot accept team scope without the policy.

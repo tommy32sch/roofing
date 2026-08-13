@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { LeadPriority, LeadStatus, Territory, UserRole } from '@/types';
-import { canViewLead } from '@/lib/leads/lead-visibility';
+import type { LeadPriority, LeadStatus, Territory } from '@/types';
+import { applyLeadAccessFilter, type LeadActor } from '@/lib/leads/lead-visibility';
 import { pointInPolygon } from './geometry';
 import { loadTerritoryOwners, toTerritory, type TerritoryDbRow } from './server';
 import type { TerritoryBounds } from './types';
@@ -22,7 +22,7 @@ export const TERRITORY_EXECUTION_LEAD_FIELDS =
   'id, market_id, first_name, last_name, latitude, longitude, status, priority, ' +
   'estimated_roof_value, address_street, address_city, is_dnc, hail_date, hail_size_inches, ' +
   'last_knock_at, last_disposition, knock_count, do_not_knock, last_call_at, ' +
-  'last_call_disposition, call_count, follow_up_date, ' +
+  'last_call_disposition, call_count, follow_up_date, assigned_setter_id, assigned_closer_id, ' +
   'lead_appointments(appointment_type, outcome)';
 
 const DATABASE_PAGE_SIZE = 1000;
@@ -52,6 +52,8 @@ interface ExecutionLeadDbRow {
   last_call_disposition: string | null;
   call_count: number | null;
   follow_up_date: string | null;
+  assigned_setter_id: string | null;
+  assigned_closer_id: string | null;
   lead_appointments?: TerritoryAppointmentEvidence[] | null;
 }
 
@@ -135,12 +137,12 @@ async function loadMarketLeadCandidates(
   supabase: SupabaseClient,
   marketId: number,
   bounds: TerritoryBounds,
-  role: UserRole,
+  actor: LeadActor,
   clock: TerritoryClassificationClock
 ): Promise<{ leads: TerritoryExecutionLead[]; error: string | null }> {
   const leads: TerritoryExecutionLead[] = [];
   for (let offset = 0; ; offset += DATABASE_PAGE_SIZE) {
-    const { data, error } = await supabase
+    let query = supabase
       .from('leads')
       .select(TERRITORY_EXECUTION_LEAD_FIELDS)
       .eq('market_id', marketId)
@@ -153,11 +155,12 @@ async function loadMarketLeadCandidates(
       .lte('longitude', bounds.max_lng)
       .order('id', { ascending: true })
       .range(offset, offset + DATABASE_PAGE_SIZE - 1);
+    query = applyLeadAccessFilter(query, actor);
+    const { data, error } = await query;
 
     if (error) return { leads: [], error: error.message };
     const rows = (data ?? []) as unknown as ExecutionLeadDbRow[];
     for (const row of rows) {
-      if (!canViewLead(role, row.status)) continue;
       const lead = toExecutionLead(row, clock);
       if (lead) leads.push(lead);
     }
@@ -189,15 +192,16 @@ async function territoryWithOwner(
 export async function loadTerritoryExecutionSnapshot(
   supabase: SupabaseClient,
   territoryId: string,
-  role: UserRole,
+  actor: LeadActor,
   clock: TerritoryClassificationClock
 ): Promise<TerritoryExecutionLoadResult> {
-  const { data, error } = await supabase
+  let territoryQuery = supabase
     .from('territories')
     .select(TERRITORY_EXECUTION_DB_FIELDS)
     .eq('id', territoryId)
-    .is('archived_at', null)
-    .maybeSingle();
+    .is('archived_at', null);
+  if (actor.role !== 'admin') territoryQuery = territoryQuery.eq('owner_user_id', actor.id);
+  const { data, error } = await territoryQuery.maybeSingle();
 
   if (error) return { ok: false, status: 500, error: error.message };
   if (!data) return { ok: false, status: 404, error: 'Territory not found' };
@@ -208,7 +212,7 @@ export async function loadTerritoryExecutionSnapshot(
     return { ok: false, status: 500, error: ownerResult.error ?? 'Could not load territory owner' };
   }
 
-  const candidateResult = await loadMarketLeadCandidates(supabase, row.market_id, row, role, clock);
+  const candidateResult = await loadMarketLeadCandidates(supabase, row.market_id, row, actor, clock);
   if (candidateResult.error) return { ok: false, status: 500, error: candidateResult.error };
 
   const leads = insideTerritory(row, candidateResult.leads);
@@ -222,7 +226,7 @@ export async function loadTerritoryExecutionSnapshot(
 export async function loadTerritoryProgressPage(
   supabase: SupabaseClient,
   options: {
-    role: UserRole;
+    actor: LeadActor;
     marketId: number | null;
     page: number;
     limit: number;
@@ -235,6 +239,7 @@ export async function loadTerritoryProgressPage(
     .select(TERRITORY_EXECUTION_DB_FIELDS, { count: 'exact' })
     .is('archived_at', null);
   if (options.marketId != null) query = query.eq('market_id', options.marketId);
+  if (options.actor.role !== 'admin') query = query.eq('owner_user_id', options.actor.id);
 
   const { data, error, count } = await query
     .order('created_at', { ascending: false })
@@ -261,7 +266,7 @@ export async function loadTerritoryProgressPage(
       supabase,
       marketId,
       unionBounds(marketTerritories),
-      options.role,
+      options.actor,
       options.clock
     );
     if (loaded.error) return { ok: false, status: 500, error: loaded.error };

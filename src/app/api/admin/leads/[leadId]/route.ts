@@ -9,7 +9,8 @@ import { getRoofPricePerSquare } from '@/lib/leads/roof-value.server';
 import { notifyAppointmentBooked } from '@/lib/notifications/notify-appointment';
 import { pickWritableLeadFields, statusDenialReason } from '@/lib/leads/lead-fields';
 import { buildLeadDeletionRecord, type DeletedLeadSnapshot } from '@/lib/leads/lead-deletion';
-import { canViewLead } from '@/lib/leads/lead-visibility';
+import { authorizeLeadAccess } from '@/lib/leads/lead-visibility';
+import { assertAssignableCloser, resolveCloserHandoff } from '@/lib/leads/closer-handoff';
 
 // The mass-assignment whitelist and the setter status rules are shared with the
 // create route — see src/lib/leads/lead-fields.ts for why they live there.
@@ -34,6 +35,14 @@ export async function GET(
     }
 
     const supabase = db();
+    const actor = { id: admin.sub, role: admin.role };
+    const access = await authorizeLeadAccess(supabase, actor, leadId);
+    if (!access.ok) {
+      return NextResponse.json(
+        { success: false, error: access.error },
+        { status: access.status }
+      );
+    }
 
     const { data: lead, error } = await supabase
       .from('leads')
@@ -45,10 +54,6 @@ export async function GET(
 
     if (error || !lead) {
       return NextResponse.json({ success: false, error: 'Lead not found' }, { status: 404 });
-    }
-
-    if (!canViewLead(admin.role, lead.status)) {
-      return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
     }
 
     // Bring structured contact history into the detail response. The generic
@@ -113,12 +118,20 @@ export async function PATCH(
     }
 
     const supabase = db();
+    const actor = { id: admin.sub, role: admin.role };
+    const access = await authorizeLeadAccess(supabase, actor, leadId);
+    if (!access.ok) {
+      return NextResponse.json(
+        { success: false, error: access.error },
+        { status: access.status }
+      );
+    }
     const body = await request.json();
 
     // Get current lead for status change tracking + roof-value recompute inputs
     const { data: currentLead } = await supabase
       .from('leads')
-      .select('status, sqft, stories, roof_type')
+      .select('status, sqft, stories, roof_type, assigned_closer_id')
       .eq('id', leadId)
       .single();
 
@@ -128,17 +141,27 @@ export async function PATCH(
 
     // Enforce role-based status transition rules
     if (body.status && body.status !== currentLead.status) {
-      const denial = statusDenialReason(body.status, admin.role);
+      const denial = statusDenialReason(body.status, admin.role, currentLead.status);
       if (denial) {
         return NextResponse.json({ success: false, error: denial }, { status: 403 });
       }
     }
 
-    // Transitioning to appointment_set requires a scheduled time — the
-    // appointment row is created after the lead update succeeds.
+    // Transitioning to appointment_set requires a scheduled time and a closer —
+    // the appointment row is created after the lead update succeeds, and the
+    // closer only sees the lead after the handoff field is set.
     let appointmentScheduledAt: string | null = null;
     let appointmentNotes: string | null = null;
     if (body.status === 'appointment_set' && body.status !== currentLead.status) {
+      const handoff = resolveCloserHandoff(currentLead.assigned_closer_id, body.assigned_closer_id);
+      if (!handoff.ok) {
+        return NextResponse.json({ success: false, error: handoff.error }, { status: 400 });
+      }
+      const closer = await assertAssignableCloser(supabase, handoff.closerId);
+      if (!closer.ok) {
+        return NextResponse.json({ success: false, error: closer.error }, { status: 400 });
+      }
+      body.assigned_closer_id = handoff.closerId;
       if (
         typeof body.appointment_scheduled_at !== 'string' ||
         Number.isNaN(Date.parse(body.appointment_scheduled_at))
@@ -155,6 +178,7 @@ export async function PATCH(
       // the same conflict check as the Appointments card.
       if (!body.allow_conflict) {
         const conflicts = await findAppointmentConflicts(supabase, {
+          actor,
           leadId,
           scheduledAt,
         });

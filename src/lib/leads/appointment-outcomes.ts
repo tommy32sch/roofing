@@ -134,21 +134,17 @@ export function summariseOutcomes(
 /**
  * Whether a user may record this outcome.
  *
- * Reps record outcomes for their own work — they are the ones standing at the
- * door — but only an admin may overwrite an outcome someone else already set,
- * so a disappointing result cannot be quietly rewritten.
+ * Reps record outcomes only for work assigned to their role. Creating an
+ * appointment does not grant lasting access after the lead is reassigned.
  */
 export function canRecordOutcome(input: {
   role: string;
   userId: string;
-  appointmentCreatedBy: string | null;
   appointmentAssignedTo: string | null;
   existingOutcomeBy: string | null;
 }): boolean {
   if (input.role === 'admin') return true;
-  const isTheirs =
-    input.appointmentCreatedBy === input.userId ||
-    input.appointmentAssignedTo === input.userId;
+  const isTheirs = input.appointmentAssignedTo === input.userId;
   if (!isTheirs) return false;
   // Unset, or previously set by themselves.
   return !input.existingOutcomeBy || input.existingOutcomeBy === input.userId;
@@ -157,35 +153,32 @@ export function canRecordOutcome(input: {
 /**
  * One ownership boundary for every appointment-outcome surface.
  *
- * A lead can have a setter and a closer. The booking creator also remains an
- * owner because older and unassigned appointments can rely on that attribution.
+ * Setters use the setter assignment and closers use the closer assignment.
  */
 export function canRecordAppointmentOutcome(input: {
   role: string;
   userId: string;
-  appointmentCreatedBy: string | null;
   leadAssignedSetterId: string | null;
   leadAssignedCloserId: string | null;
   existingOutcomeBy: string | null;
 }): boolean {
-  const common = {
+  const assignedTo = input.role === 'setter'
+    ? input.leadAssignedSetterId
+    : input.role === 'closer'
+      ? input.leadAssignedCloserId
+      : null;
+  return canRecordOutcome({
     role: input.role,
     userId: input.userId,
-    appointmentCreatedBy: input.appointmentCreatedBy,
+    appointmentAssignedTo: assignedTo,
     existingOutcomeBy: input.existingOutcomeBy,
-  };
-
-  return (
-    canRecordOutcome({ ...common, appointmentAssignedTo: input.leadAssignedSetterId }) ||
-    canRecordOutcome({ ...common, appointmentAssignedTo: input.leadAssignedCloserId })
-  );
+  });
 }
 
 /**
  * Whether a user may cancel or reschedule this appointment.
  *
- * Same notion of ownership as canRecordOutcome — admin, the rep who booked it,
- * or a rep the lead is assigned to — but deliberately WITHOUT the
+ * Same assignment boundary as canRecordOutcome, but deliberately WITHOUT the
  * existingOutcomeBy rule. That rule protects a recorded judgement from being
  * rewritten; moving your own booking to another time is not that, and a rep who
  * marked their own visit "no show" must still be able to rebook it.
@@ -198,7 +191,6 @@ export function canRecordAppointmentOutcome(input: {
 export function canModifyAppointment(input: {
   role: string;
   userId: string;
-  appointmentCreatedBy: string | null;
   leadAssignedSetterId: string | null;
   leadAssignedCloserId: string | null;
 }): boolean {
@@ -206,9 +198,7 @@ export function canModifyAppointment(input: {
   // Guard the null===null case: an unassigned lead must not match a caller
   // whose id is somehow absent.
   if (!input.userId) return false;
-  return (
-    input.appointmentCreatedBy === input.userId ||
-    input.leadAssignedSetterId === input.userId ||
-    input.leadAssignedCloserId === input.userId
-  );
+  if (input.role === 'setter') return input.leadAssignedSetterId === input.userId;
+  if (input.role === 'closer') return input.leadAssignedCloserId === input.userId;
+  return false;
 }
