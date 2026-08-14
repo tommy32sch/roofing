@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, type ComponentProps } from 'react';
-import { ArrowUpDown, Search, SlidersHorizontal, X } from 'lucide-react';
+import { ArrowUpDown, ChevronDown, Search, SlidersHorizontal, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -148,7 +148,7 @@ function FilterFields({
           <MarketFilter
             markets={markets}
             value={marketValue}
-            className="w-full"
+            className="w-full data-[size=default]:h-11"
             onChange={(value) => onPatch({ market_id: value })}
           />
         </div>
@@ -162,7 +162,7 @@ function FilterFields({
               value={params.created_by || 'all'}
               onValueChange={(value) => onPatch({ created_by: value === 'all' ? undefined : value ?? undefined })}
             >
-              <SelectTrigger className="w-full" aria-label="Added by">
+              <SelectTrigger className="w-full data-[size=default]:h-11" aria-label="Added by">
                 <SelectValue>
                   {params.created_by
                     ? uploaders.find((user) => user.id === params.created_by)?.name ?? 'Added by'
@@ -170,8 +170,8 @@ function FilterFields({
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">Anyone</SelectItem>
-                {uploaders.map((user) => <SelectItem key={user.id} value={user.id}>{user.name}</SelectItem>)}
+                <SelectItem value="all" className="min-h-11">Anyone</SelectItem>
+                {uploaders.map((user) => <SelectItem key={user.id} value={user.id} className="min-h-11">{user.name}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
@@ -182,7 +182,7 @@ function FilterFields({
               value={params.assigned_setter || 'all'}
               onValueChange={(value) => onPatch({ assigned_setter: value === 'all' ? undefined : value ?? undefined })}
             >
-              <SelectTrigger className="w-full" aria-label="Setter">
+              <SelectTrigger className="w-full data-[size=default]:h-11" aria-label="Setter">
                 <SelectValue>
                   {params.assigned_setter === UNASSIGNED
                     ? 'Setter: unassigned'
@@ -192,9 +192,9 @@ function FilterFields({
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">Any setter</SelectItem>
-                <SelectItem value={UNASSIGNED}>Unassigned</SelectItem>
-                {uploaders.map((user) => <SelectItem key={user.id} value={user.id}>{user.name}</SelectItem>)}
+                <SelectItem value="all" className="min-h-11">Any setter</SelectItem>
+                <SelectItem value={UNASSIGNED} className="min-h-11">Unassigned</SelectItem>
+                {uploaders.map((user) => <SelectItem key={user.id} value={user.id} className="min-h-11">{user.name}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
@@ -205,7 +205,7 @@ function FilterFields({
               value={params.assigned_closer || 'all'}
               onValueChange={(value) => onPatch({ assigned_closer: value === 'all' ? undefined : value ?? undefined })}
             >
-              <SelectTrigger className="w-full" aria-label="Closer">
+              <SelectTrigger className="w-full data-[size=default]:h-11" aria-label="Closer">
                 <SelectValue>
                   {params.assigned_closer === UNASSIGNED
                     ? 'Closer: unassigned'
@@ -215,9 +215,9 @@ function FilterFields({
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">Any closer</SelectItem>
-                <SelectItem value={UNASSIGNED}>Unassigned</SelectItem>
-                {uploaders.map((user) => <SelectItem key={user.id} value={user.id}>{user.name}</SelectItem>)}
+                <SelectItem value="all" className="min-h-11">Any closer</SelectItem>
+                <SelectItem value={UNASSIGNED} className="min-h-11">Unassigned</SelectItem>
+                {uploaders.map((user) => <SelectItem key={user.id} value={user.id} className="min-h-11">{user.name}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
@@ -230,7 +230,7 @@ function FilterFields({
           value={params.status || 'all'}
           onValueChange={(value) => onPatch({ status: value === 'all' ? undefined : value ?? undefined })}
         >
-          <SelectTrigger className="w-full" aria-label="Status">
+          <SelectTrigger className="w-full data-[size=default]:h-11" aria-label="Status">
             <SelectValue>
               {params.status
                 ? LEAD_STATUS_OPTIONS.find((option) => option.value === params.status)?.label ?? params.status
@@ -238,9 +238,9 @@ function FilterFields({
             </SelectValue>
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All statuses</SelectItem>
+            <SelectItem value="all" className="min-h-11">All statuses</SelectItem>
             {LEAD_STATUS_OPTIONS.map((option) => (
-              <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+              <SelectItem key={option.value} value={option.value} className="min-h-11">{option.label}</SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -252,7 +252,7 @@ function FilterFields({
           value={params.priority || 'all'}
           onValueChange={(value) => onPatch({ priority: value === 'all' ? undefined : value ?? undefined })}
         >
-          <SelectTrigger className="w-full" aria-label="Priority">
+          <SelectTrigger className="w-full data-[size=default]:h-11" aria-label="Priority">
             <SelectValue>
               {params.priority
                 ? LEAD_PRIORITY_OPTIONS.find((option) => option.value === params.priority)?.label ?? params.priority
@@ -260,9 +260,9 @@ function FilterFields({
             </SelectValue>
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All priorities</SelectItem>
+            <SelectItem value="all" className="min-h-11">All priorities</SelectItem>
             {LEAD_PRIORITY_OPTIONS.map((option) => (
-              <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+              <SelectItem key={option.value} value={option.value} className="min-h-11">{option.label}</SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -277,6 +277,7 @@ function FilterFields({
           value={params.street_number ?? ''}
           inputMode="numeric"
           placeholder="Street #"
+          className="h-11"
           onCommit={(value) => onPatch({ street_number: value || undefined })}
         />
       </div>
@@ -287,13 +288,13 @@ function FilterFields({
           value={params.street_dir || 'any'}
           onValueChange={(value) => onPatch({ street_dir: value === 'any' ? undefined : value ?? undefined })}
         >
-          <SelectTrigger className="w-full" aria-label="Street direction">
+          <SelectTrigger className="w-full data-[size=default]:h-11" aria-label="Street direction">
             <SelectValue>{params.street_dir || 'Any direction'}</SelectValue>
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="any">Any direction</SelectItem>
+            <SelectItem value="any" className="min-h-11">Any direction</SelectItem>
             {STREET_DIRECTIONS.map((direction) => (
-              <SelectItem key={direction} value={direction}>{direction}</SelectItem>
+              <SelectItem key={direction} value={direction} className="min-h-11">{direction}</SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -307,6 +308,7 @@ function FilterFields({
           id={labels ? 'mobile-street-name' : 'desktop-street-name'}
           value={params.street_name ?? ''}
           placeholder="Street name"
+          className="h-11"
           onCommit={(value) => onPatch({ street_name: value || undefined })}
         />
       </div>
@@ -368,6 +370,7 @@ export function LeadQueueToolbar({
   onPatch,
 }: LeadQueueToolbarProps) {
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
+  const [desktopFiltersOpen, setDesktopFiltersOpen] = useState(false);
   const [mobileDraft, setMobileDraft] = useState<LeadQueueParams>(params);
   const activeChips = chipLabels(params, markets, uploaders);
   const sort = leadQueueSort(params);
@@ -379,17 +382,65 @@ export function LeadQueueToolbar({
     setMobileFiltersOpen(open);
   }
 
+  const activePreset = params.is_dnc === 'true'
+    ? 'dnc'
+    : params.status === 'new'
+      ? 'new'
+      : params.status === 'appointment_set'
+        ? 'appointments'
+        : params.status === 'sold'
+          ? 'sold'
+          : sort.sort === 'follow_up_date' && sort.order === 'asc' && !params.status
+            ? 'follow-ups'
+            : !params.status
+              ? 'all'
+              : null;
+
+  function selectPreset(preset: 'all' | 'new' | 'follow-ups' | 'appointments' | 'sold' | 'dnc') {
+    if (preset === 'follow-ups') {
+      onPatch({ status: undefined, is_dnc: undefined, sort: 'follow_up_date', order: 'asc' });
+      return;
+    }
+
+    const status = preset === 'new'
+      ? 'new'
+      : preset === 'appointments'
+        ? 'appointment_set'
+        : preset === 'sold'
+          ? 'sold'
+          : undefined;
+    const leavingFollowUpOrder = sort.sort === 'follow_up_date';
+    const patch: Partial<Record<LeadQueueParamKey, string | undefined>> = {
+      status,
+      is_dnc: preset === 'dnc' ? 'true' : undefined,
+    };
+    if (leavingFollowUpOrder) {
+      patch.sort = 'created_at';
+      patch.order = 'desc';
+    }
+    onPatch(patch);
+  }
+
+  const presets = [
+    { id: 'all', label: 'All leads' },
+    { id: 'new', label: 'New' },
+    { id: 'follow-ups', label: 'Follow-up order' },
+    { id: 'appointments', label: 'Appointments' },
+    { id: 'sold', label: 'Sold' },
+    { id: 'dnc', label: 'DNC' },
+  ] as const;
+
   return (
-    <section className="space-y-3 rounded-xl border bg-card/60 p-3 shadow-sm" aria-label="Lead work queue controls">
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="relative min-w-[16rem] flex-1 basis-full sm:basis-auto">
+    <section className="space-y-4 border-y py-4" aria-label="Lead work queue controls">
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative min-w-0 flex-1 basis-full sm:min-w-[18rem] sm:basis-auto">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <DebouncedQueueInput
             key={params.search ?? ''}
             value={params.search ?? ''}
             aria-label="Search leads"
-            placeholder="Search name, address, phone, email…"
-            className="pl-9"
+            placeholder="Find a homeowner, address, phone, or email"
+            className="h-11 rounded-none border-0 border-b bg-transparent pl-9 shadow-none focus-visible:ring-0"
             onCommit={(value) => onPatch({ search: value || undefined })}
           />
         </div>
@@ -407,48 +458,87 @@ export function LeadQueueToolbar({
             if (option) onPatch({ sort: option.sort, order: option.order });
           }}
         >
-          <SelectTrigger className="w-[170px]" aria-label="Sort leads">
+          <SelectTrigger className="w-[180px] rounded-none border-0 border-b bg-transparent px-0 shadow-none data-[size=default]:h-11" aria-label="Sort leads">
             <ArrowUpDown className="h-4 w-4 shrink-0 text-muted-foreground" />
             <SelectValue>{sortLabel}</SelectValue>
           </SelectTrigger>
           <SelectContent>
             {LEAD_SORT_OPTIONS.map((option) => (
-              <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+              <SelectItem key={option.value} value={option.value} className="min-h-11">{option.label}</SelectItem>
             ))}
           </SelectContent>
         </Select>
 
         <Button
           variant={activeChips.length > 0 ? 'secondary' : 'outline'}
-          className="sm:hidden"
+          className="h-11 sm:hidden"
           aria-haspopup="dialog"
           onClick={() => openMobileFilters(true)}
         >
           <SlidersHorizontal />
           Filters{activeChips.length > 0 ? ` (${activeChips.length})` : ''}
         </Button>
+
+        <Button
+          variant={desktopFiltersOpen ? 'secondary' : 'outline'}
+          className="hidden h-11 sm:inline-flex"
+          aria-expanded={desktopFiltersOpen}
+          aria-controls="desktop-lead-filters"
+          onClick={() => setDesktopFiltersOpen((open) => !open)}
+        >
+          <SlidersHorizontal />
+          Filters{activeChips.length > 0 ? ` (${activeChips.length})` : ''}
+          <ChevronDown className={`transition-transform ${desktopFiltersOpen ? 'rotate-180' : ''}`} />
+        </Button>
       </div>
 
-      <div className="hidden gap-2 sm:grid sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6">
-        <FilterFields
-          params={params}
-          markets={markets}
-          homeMarketId={homeMarketId}
-          uploaders={uploaders}
-          isAdmin={isAdmin}
-          labels={false}
-          deferText
-          onPatch={onPatch}
-        />
+      <div
+        className="flex min-w-0 items-center gap-1 overflow-x-auto border-b"
+        role="group"
+        aria-label="Lead queue presets"
+      >
+        {presets.map((preset) => (
+          <button
+            key={preset.id}
+            type="button"
+            aria-pressed={activePreset === preset.id}
+            onClick={() => selectPreset(preset.id)}
+            className={`relative h-11 shrink-0 px-3 text-xs font-semibold transition-colors after:absolute after:inset-x-2 after:-bottom-px after:h-0.5 ${
+              activePreset === preset.id
+                ? 'text-foreground after:bg-primary'
+                : 'text-muted-foreground after:bg-transparent hover:text-foreground'
+            }`}
+          >
+            {preset.label}
+          </button>
+        ))}
       </div>
+
+      {desktopFiltersOpen && (
+        <div
+          id="desktop-lead-filters"
+          className="hidden gap-3 border-t pt-4 sm:grid sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6"
+        >
+          <FilterFields
+            params={params}
+            markets={markets}
+            homeMarketId={homeMarketId}
+            uploaders={uploaders}
+            isAdmin={isAdmin}
+            labels
+            deferText
+            onPatch={onPatch}
+          />
+        </div>
+      )}
 
       {activeChips.length > 0 && (
-        <div className="flex flex-wrap items-center gap-1.5 border-t pt-3" aria-label="Active filters">
+        <div className="flex flex-wrap items-center gap-1.5" aria-label="Active filters">
           {activeChips.map((chip) => (
             <button
               key={chip.key}
               type="button"
-              className="inline-flex h-7 items-center gap-1 rounded-full border bg-background px-2.5 text-xs font-medium text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+              className="inline-flex min-h-11 items-center gap-1 border border-border/80 bg-background px-2.5 text-xs font-medium text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
               aria-label={`Remove ${chip.label} filter`}
               onClick={() => onPatch({ [chip.key]: undefined })}
             >
@@ -458,7 +548,7 @@ export function LeadQueueToolbar({
           ))}
           <Button
             variant="ghost"
-            size="xs"
+            className="h-11"
             onClick={() => onApply(clearLeadQueueFilters(params), null)}
           >
             Clear all
@@ -490,11 +580,13 @@ export function LeadQueueToolbar({
           <SheetFooter className="sticky bottom-0 border-t bg-background">
             <Button
               variant="outline"
+              className="h-11"
               onClick={() => setMobileDraft(clearLeadQueueFilters(mobileDraft))}
             >
               Clear filters
             </Button>
             <Button
+              className="h-11"
               onClick={() => {
                 onApply(mobileDraft, null);
                 setMobileFiltersOpen(false);

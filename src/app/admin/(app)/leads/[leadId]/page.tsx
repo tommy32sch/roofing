@@ -11,7 +11,6 @@ import {
   Mail,
   MapPin,
   Home,
-  Calendar,
   MessageSquare,
   PhoneCall,
   ArrowRightLeft,
@@ -28,16 +27,15 @@ import {
   PhoneOff,
   Navigation,
   DoorOpen,
+  Copy,
+  Ban,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatDistanceToNow, format } from 'date-fns';
 import { formatPhone, mapsUrl } from '@/lib/utils/format';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Button, buttonVariants } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Separator } from '@/components/ui/separator';
 import {
   Select,
   SelectContent,
@@ -74,6 +72,7 @@ import { DataErrorState } from '@/components/layout/data-error-state';
 import { AppointmentOutcomeActions, type RecordableAppointmentOutcome } from '@/components/leads/AppointmentOutcomeActions';
 import { appointmentOutcomeLabel, canRecordAppointmentOutcome } from '@/lib/leads/appointment-outcomes';
 import { saveAppointmentOutcome } from '@/lib/leads/appointment-outcome-client';
+import { cn } from '@/lib/utils';
 
 const SETTER_ALLOWED_STATUSES = new Set(['new', 'contacted', 'appointment_set', 'lost']);
 const CLOSER_ALLOWED_STATUSES = new Set(['sold', 'lost']);
@@ -94,6 +93,57 @@ const ACTIVITY_TYPE_OPTIONS: { value: ActivityType; label: string }[] = [
   { value: 'email', label: 'Email' },
   { value: 'visit', label: 'Visit' },
 ];
+
+function WorkSectionHeading({
+  index,
+  title,
+  description,
+  actions,
+  id,
+}: {
+  index: string;
+  title: string;
+  description?: string;
+  actions?: React.ReactNode;
+  id?: string;
+}) {
+  return (
+    <div className="flex flex-wrap items-end justify-between gap-3 border-b border-border/80 pb-3">
+      <div>
+        <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+          {index}
+        </p>
+        <h2 id={id} className="mt-1 text-lg font-semibold tracking-[-0.02em]">{title}</h2>
+        {description && <p className="mt-1 text-sm text-muted-foreground">{description}</p>}
+      </div>
+      {actions}
+    </div>
+  );
+}
+
+function RailHeading({
+  icon: Icon,
+  children,
+}: {
+  icon: React.ElementType;
+  children: React.ReactNode;
+}) {
+  return (
+    <h2 className="flex items-center gap-2 font-mono text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+      <Icon className="h-3.5 w-3.5" />
+      {children}
+    </h2>
+  );
+}
+
+function FactRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex items-start justify-between gap-4 py-2.5 text-sm">
+      <dt className="shrink-0 text-muted-foreground">{label}</dt>
+      <dd className="min-w-0 text-right font-medium">{children}</dd>
+    </div>
+  );
+}
 
 export default function LeadDetailPage({ params }: { params: Promise<{ leadId: string }> }) {
   const { user } = useAppShell();
@@ -424,11 +474,50 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
 
   if (loading) {
     return (
-      <div className="space-y-6">
-        <Skeleton className="h-8 w-56" />
-        <Skeleton className="h-[4.5rem] w-full max-w-lg rounded-lg" />
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-56 w-full rounded-lg" />)}
+      <div className="space-y-5 pb-8">
+        <div className="border-b border-border/80 pb-5">
+          <Skeleton className="h-11 w-28" />
+          <Skeleton className="mt-5 h-9 w-64" />
+          <Skeleton className="mt-3 h-4 w-full max-w-md" />
+          <div className="mt-5 flex flex-wrap gap-2">
+            {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-11 w-28" />)}
+          </div>
+        </div>
+        <div className="grid gap-px border-y border-border bg-border sm:grid-cols-2 xl:grid-cols-3">
+          {[...Array(3)].map((_, i) => (
+            <div key={i} className="bg-background px-4 py-4">
+              <Skeleton className="h-3 w-20" />
+              <Skeleton className="mt-2 h-11 w-full" />
+            </div>
+          ))}
+        </div>
+        <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_22rem]">
+          <div className="space-y-8">
+            {[...Array(2)].map((_, i) => (
+              <div key={i}>
+                <Skeleton className="h-6 w-40" />
+                <div className="mt-3 divide-y border-y border-border">
+                  {[...Array(3)].map((__, row) => (
+                    <div key={row} className="flex gap-4 py-5">
+                      <Skeleton className="h-11 w-11 shrink-0" />
+                      <div className="w-full space-y-2">
+                        <Skeleton className="h-4 w-2/3" />
+                        <Skeleton className="h-3 w-1/2" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="space-y-6 border-t border-border pt-6 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
+            {[...Array(4)].map((_, i) => (
+              <div key={i} className="border-b border-border pb-6">
+                <Skeleton className="h-3 w-24" />
+                <Skeleton className="mt-4 h-24 w-full" />
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     );
@@ -450,13 +539,26 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
   if (!lead) return null;
 
   // The upload this lead arrived in, when it came from a file. Embedded by the
-  // detail route so the Source card can name the list.
+  // detail route so the source section can name the list.
   const importBatch =
     (lead.lead_import_batches as { filename?: string; uploaded_by_name?: string } | null) ?? null;
 
   const fullAddress = [lead.address_street, lead.address_city, lead.address_state, lead.address_zip]
     .filter(Boolean)
     .join(', ');
+  const primaryPhone = lead.phone || lead.phone2 || lead.phone3;
+  const primaryEmail = lead.email || lead.email2;
+  const directionsUrl = mapsUrl(lead);
+  const isAbsentee = Boolean(
+    lead.mailing_street
+      && fullAddress
+      && lead.mailing_street.toLowerCase() !== lead.address_street?.toLowerCase()
+  );
+  const calculatedRoofEstimate = estimateRoofValue({
+    sqft: lead.sqft,
+    stories: lead.stories,
+    roof_type: lead.roof_type,
+  });
 
   const contactHistory = [
     ...(lead.lead_knocks ?? []).map((knock) => ({
@@ -477,78 +579,174 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
     })),
   ].sort((a, b) => Date.parse(b.occurredAt) - Date.parse(a.occurredAt));
 
+  const timelineEvents = [
+    ...contactHistory.map((event) => ({
+      kind: 'contact' as const,
+      key: event.key,
+      occurredAt: event.occurredAt,
+      event,
+    })),
+    ...(lead.lead_activities ?? []).map((activity) => ({
+      kind: 'activity' as const,
+      key: `activity-${activity.id}`,
+      occurredAt: activity.created_at,
+      activity,
+    })),
+  ].sort((a, b) => Date.parse(b.occurredAt) - Date.parse(a.occurredAt));
+
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-start justify-between">
-        <div className="flex items-center gap-3">
-          <Link href="/admin/leads">
-            <Button variant="ghost" size="icon">
-              <ArrowLeft className="h-4 w-4" />
-            </Button>
+    <div className="space-y-5 pb-8">
+      <header className="border-b border-border/80 pb-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <Link
+            href="/admin/leads"
+            className={cn(buttonVariants({ variant: 'ghost' }), 'h-11 px-2 text-muted-foreground')}
+          >
+            <ArrowLeft />
+            Lead queue
           </Link>
-          <div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="text-2xl font-semibold tracking-tight">
-                {lead.first_name} {lead.last_name}
-              </h1>
-              {lead.is_dnc && (
-                <span className="inline-flex items-center gap-1 rounded-full border border-red-300 bg-red-50 px-2 py-0.5 text-xs font-semibold text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300">
-                  <PhoneOff className="h-3 w-3" />
-                  Do Not Call
-                </span>
-              )}
-            </div>
-            {fullAddress && (
-              <p className="text-sm text-muted-foreground flex items-center gap-1 mt-0.5">
-                <MapPin className="h-3 w-3" />
-                {fullAddress}
-              </p>
+          <div className="flex items-center gap-2">
+            {userRole !== 'closer' && (
+              <Link
+                href={`/admin/leads/${leadId}/edit`}
+                className={cn(buttonVariants({ variant: 'outline' }), 'h-11 px-3')}
+              >
+                <Edit2 />
+                Edit record
+              </Link>
+            )}
+            {userRole === 'admin' && (
+              <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+                <DialogTrigger
+                  aria-label={`Delete ${lead.first_name} ${lead.last_name}`}
+                  className={cn(buttonVariants({ variant: 'destructive', size: 'icon' }), 'h-11 w-11')}
+                >
+                  <Trash2 />
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Delete Lead</DialogTitle>
+                  </DialogHeader>
+                  <p className="text-sm text-muted-foreground">
+                    Are you sure you want to delete {lead.first_name} {lead.last_name}? This action cannot be undone.
+                  </p>
+                  <DialogFooter>
+                    <Button variant="outline" onClick={() => setDeleteOpen(false)}>Cancel</Button>
+                    <Button variant="destructive" onClick={handleDelete}>Delete</Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
             )}
           </div>
         </div>
-        <div className="flex gap-2">
-          {userRole !== 'closer' && (
-            <Link href={`/admin/leads/${leadId}/edit`}>
-              <Button variant="outline" size="sm">
-                <Edit2 className="h-4 w-4 mr-1" />
-                Edit
-              </Button>
-            </Link>
-          )}
-          {userRole === 'admin' && (
-          <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-            <DialogTrigger
-              className="inline-flex items-center justify-center rounded-md bg-destructive px-3 py-1.5 text-sm text-white hover:bg-destructive/90"
-            >
-              <Trash2 className="h-4 w-4" />
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Delete Lead</DialogTitle>
-              </DialogHeader>
-              <p className="text-sm text-muted-foreground">
-                Are you sure you want to delete {lead.first_name} {lead.last_name}? This action cannot be undone.
-              </p>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setDeleteOpen(false)}>Cancel</Button>
-                <Button variant="destructive" onClick={handleDelete}>Delete</Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+
+        <div className="mt-5 max-w-4xl">
+          <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.16em] text-primary">
+            Homeowner record
+          </p>
+          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-2">
+            <h1 className="text-3xl font-semibold leading-tight tracking-[-0.04em] sm:text-4xl">
+              {lead.first_name} {lead.last_name}
+            </h1>
+            <span className="border-l border-border pl-3 text-sm font-medium capitalize text-muted-foreground">
+              {LEAD_STATUS_OPTIONS.find((option) => option.value === lead.status)?.label ?? lead.status}
+            </span>
+          </div>
+          {fullAddress && (
+            <p className="mt-2 flex items-start gap-2 text-sm text-muted-foreground">
+              <MapPin className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>{fullAddress}</span>
+            </p>
           )}
         </div>
-      </div>
 
-      {/* Quick actions */}
-      <div className="flex flex-wrap gap-3">
-        {/* Lead controls. Grouped into one labelled surface so status, priority and
-          follow-up read as a toolbar for this record rather than three loose
-          inputs, and each control gets a real label above it instead of an
-          inline "Status:" prefix. */}
-      <div className="flex flex-wrap items-end gap-x-6 gap-y-3 rounded-lg border bg-card px-4 py-3">
-        <div className="space-y-1">
-          <label className="block text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        {(lead.is_dnc || lead.do_not_knock || lead.is_flagged_duplicate) && (
+          <div className="mt-4 flex flex-wrap gap-2" aria-label="Lead restrictions and warnings">
+            {lead.is_dnc && (
+              <span className="inline-flex min-h-8 items-center gap-1.5 border border-destructive/30 bg-destructive/10 px-2.5 text-xs font-semibold text-destructive">
+                <PhoneOff className="h-3.5 w-3.5" />
+                Do Not Call
+              </span>
+            )}
+            {lead.do_not_knock && (
+              <span className="inline-flex min-h-8 items-center gap-1.5 border border-destructive/30 bg-destructive/10 px-2.5 text-xs font-semibold text-destructive">
+                <Ban className="h-3.5 w-3.5" />
+                Do Not Knock
+              </span>
+            )}
+            {lead.is_flagged_duplicate && (
+              <span className="inline-flex min-h-8 items-center gap-1.5 border border-amber-500/30 bg-amber-500/10 px-2.5 text-xs font-semibold text-amber-700 dark:text-amber-300">
+                <Copy className="h-3.5 w-3.5" />
+                Flagged duplicate
+              </span>
+            )}
+          </div>
+        )}
+
+        <nav
+          aria-label="Lead record actions"
+          className="mt-5 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center"
+        >
+          {primaryPhone && !lead.is_dnc && (
+            <>
+              <a
+                href={`tel:${primaryPhone}`}
+                className={cn(buttonVariants(), 'h-11 px-4')}
+              >
+                <Phone />
+                Call
+              </a>
+              <a
+                href={`sms:${primaryPhone}`}
+                className={cn(buttonVariants({ variant: 'outline' }), 'h-11 px-4')}
+              >
+                <MessageSquare />
+                Text
+              </a>
+            </>
+          )}
+          {directionsUrl && (
+            <a
+              href={directionsUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={cn(buttonVariants({ variant: 'outline' }), 'h-11 px-4')}
+            >
+              <Navigation />
+              Directions
+            </a>
+          )}
+          {primaryEmail && (
+            <a
+              href={`mailto:${primaryEmail}`}
+              className={cn(buttonVariants({ variant: 'outline' }), 'h-11 px-4')}
+            >
+              <Mail />
+              Email
+            </a>
+          )}
+          <Button type="button" variant="outline" className="h-11 px-4" onClick={openAddAppointment}>
+            <CalendarClock />
+            Schedule
+          </Button>
+        </nav>
+
+        {lead.is_dnc && (
+          <p className="mt-3 border-l-2 border-destructive/60 pl-3 text-xs text-muted-foreground">
+            Do not call this lead. Door knocking is still allowed unless the property is also marked Do Not Knock.
+          </p>
+        )}
+      </header>
+
+      <section
+        aria-label="Lead record controls"
+        className={cn(
+          'grid gap-px border-y border-border bg-border sm:grid-cols-2',
+          userRole !== 'closer' && 'xl:grid-cols-3'
+        )}
+      >
+        <div className="bg-background px-4 py-4">
+          <label className="font-mono text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
             Status
           </label>
           <Select
@@ -556,56 +754,55 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
             onValueChange={handleStatusChange}
             disabled={userRole === 'setter' && lead.status === 'sold'}
           >
-            <SelectTrigger className="h-9 w-[160px]">
+            <SelectTrigger className="mt-2 h-11 w-full rounded-md">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {LEAD_STATUS_OPTIONS.filter(opt =>
-                userRole === 'admin' ? true :
-                userRole === 'setter' ? SETTER_ALLOWED_STATUSES.has(opt.value) :
-                CLOSER_ALLOWED_STATUSES.has(opt.value)
-              ).map((opt) => (
-                <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+              {LEAD_STATUS_OPTIONS.filter((option) =>
+                userRole === 'admin'
+                  ? true
+                  : userRole === 'setter'
+                    ? SETTER_ALLOWED_STATUSES.has(option.value)
+                    : CLOSER_ALLOWED_STATUSES.has(option.value)
+              ).map((option) => (
+                <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
               ))}
             </SelectContent>
           </Select>
         </div>
 
-        <div className="space-y-1">
-          <label className="block text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        <div className="bg-background px-4 py-4">
+          <label className="font-mono text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
             Priority
           </label>
           <Select value={lead.priority} onValueChange={handlePriorityChange}>
-            <SelectTrigger className="h-9 w-[130px]">
+            <SelectTrigger className="mt-2 h-11 w-full rounded-md">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {LEAD_PRIORITY_OPTIONS.map((opt) => (
-                <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+              {LEAD_PRIORITY_OPTIONS.map((option) => (
+                <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
               ))}
             </SelectContent>
           </Select>
         </div>
 
         {userRole !== 'closer' && (
-          <div className="space-y-1">
+          <div className="bg-background px-4 py-4">
             <label
               htmlFor="follow_up_date"
-              className="block text-xs font-medium uppercase tracking-wide text-muted-foreground"
+              className="font-mono text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground"
             >
               Follow-up
             </label>
-            <div className="flex items-center gap-1.5">
+            <div className="mt-2 flex gap-2 [&_[data-slot=button]]:h-11">
               <Input
                 id="follow_up_date"
                 type="date"
                 value={lead.follow_up_date || ''}
-                onChange={(e) => handleFollowUpChange(e.target.value)}
-                className="h-9 w-[165px] text-sm"
+                onChange={(event) => handleFollowUpChange(event.target.value)}
+                className="h-11 min-w-0 flex-1 text-sm"
               />
-              {/* The picker handles an exact date; the menu handles what a rep
-                  actually reaches for ("next week") and owns clearing, so there
-                  aren't two separate clear affordances. */}
               <FollowUpMenu
                 leadId={leadId}
                 followUpDate={lead.follow_up_date}
@@ -615,659 +812,530 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
             </div>
           </div>
         )}
-      </div>
-      </div>
+      </section>
 
-      <Tabs defaultValue="overview">
-        <TabsList>
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="activity">
-            Activity ({lead.lead_activities?.length || 0})
-          </TabsTrigger>
-        </TabsList>
+      <div className="grid gap-8 pt-2 lg:grid-cols-[minmax(0,1fr)_22rem] lg:gap-10">
+        <main className="min-w-0 space-y-10">
+          <section aria-labelledby="appointments-heading">
+            <WorkSectionHeading
+              index="01 / Schedule"
+              title="Appointments"
+              description="Upcoming work and recorded results for this homeowner."
+              id="appointments-heading"
+              actions={(
+                <Button variant="outline" className="h-11 px-3" onClick={openAddAppointment}>
+                  <Plus />
+                  Add appointment
+                </Button>
+              )}
+            />
 
-        <TabsContent value="overview" className="space-y-4 mt-4">
-          {/* Enrichment badge */}
-          {lead.enriched_at && (
-            <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/50 rounded-md px-3 py-1.5 w-fit">
-              <Sparkles className="h-3 w-3" />
-              Enriched via {lead.enrichment_source || 'unknown'} on {format(new Date(lead.enriched_at), 'MMM d, yyyy')}
-            </div>
-          )}
+            {!lead.lead_appointments || lead.lead_appointments.length === 0 ? (
+              <EmptyState
+                icon={CalendarClock}
+                title="No appointments scheduled"
+                description="Add one here, or set this lead's status to Appointment Set."
+                className="border-b border-border py-10"
+              />
+            ) : (
+              <div className="divide-y divide-border border-b border-border">
+                {lead.lead_appointments.map((appt) => {
+                  const when = new Date(appt.scheduled_at);
+                  const past = when.getTime() < Date.now();
+                  const outcome = appt.outcome ?? 'scheduled';
+                  const canRecordResult = canRecordAppointmentOutcome({
+                    role: user.role,
+                    userId: user.id,
+                    leadAssignedSetterId: lead.assigned_setter_id ?? null,
+                    leadAssignedCloserId: lead.assigned_closer_id ?? null,
+                    existingOutcomeBy: appt.outcome_by ?? null,
+                  });
+                  const pendingOutcome = appointmentOutcomePending[appt.id] ?? null;
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Contact */}
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">Contact</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                {lead.is_dnc && (
-                  <div className="flex items-start gap-2 rounded-md border border-red-200 bg-red-50 p-2 text-xs text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300">
-                    <PhoneOff className="h-4 w-4 shrink-0 mt-0.5" />
-                    <span>
-                      <span className="font-semibold">Do not call this lead.</span> Door knocking
-                      is still allowed unless the property is also marked Do Not Knock.
-                    </span>
-                  </div>
-                )}
-                {[lead.phone, lead.phone2, lead.phone3].map((p, i) =>
-                  p && !lead.is_dnc ? (
-                    <div key={`phone-${i}`} className="flex items-center justify-between gap-2">
-                      <a href={`tel:${p}`} className="flex items-center gap-2 text-sm hover:text-primary min-w-0">
-                        <Phone className="h-4 w-4 text-muted-foreground shrink-0" />
-                        <span className="tabular-nums truncate">{formatPhone(p)}</span>
-                        {i > 0 && <span className="text-xs text-muted-foreground shrink-0">({i + 1})</span>}
-                      </a>
-                      <span className="flex gap-1 shrink-0">
-                        <a
-                          href={`tel:${p}`}
-                          className="inline-flex h-7 items-center rounded-md border px-2 text-xs hover:bg-accent"
-                        >
-                          Call
-                        </a>
-                        <a
-                          href={`sms:${p}`}
-                          className="inline-flex h-7 items-center rounded-md border px-2 text-xs hover:bg-accent"
-                        >
-                          Text
-                        </a>
-                      </span>
-                    </div>
-                  ) : null
-                )}
-                {[lead.email, lead.email2].map((e, i) =>
-                  e ? (
-                    <a
-                      key={`email-${i}`}
-                      href={`mailto:${e}`}
-                      className="flex items-center gap-2 text-sm hover:text-primary min-w-0"
+                  return (
+                    <article
+                      key={appt.id}
+                      className="grid gap-4 py-5 sm:grid-cols-[7.5rem_minmax(0,1fr)_auto] sm:items-start"
                     >
-                      <Mail className="h-4 w-4 text-muted-foreground shrink-0" />
-                      <span className="truncate">{e}</span>
-                      {i > 0 && <span className="text-xs text-muted-foreground shrink-0">(2)</span>}
-                    </a>
-                  ) : null
-                )}
-                {!lead.phone && !lead.email && !lead.is_dnc && (
-                  <p className="text-sm text-muted-foreground">No contact info</p>
-                )}
-              </CardContent>
-            </Card>
+                      <div>
+                        <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                          <time dateTime={appt.scheduled_at}>{format(when, 'EEE · MMM d')}</time>
+                        </p>
+                        <p className="mt-1 text-xl font-semibold tracking-tight tabular-nums">
+                          {format(when, 'h:mm a')}
+                        </p>
+                      </div>
 
-            {/* Property */}
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">Property</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2 text-sm">
-                {fullAddress && (
-                  <div className="flex items-start justify-between gap-2">
-                    <span className="flex items-start gap-2 min-w-0">
-                      <MapPin className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-                      <span>{fullAddress}</span>
-                    </span>
-                    {mapsUrl(lead) && (
-                      <a
-                        href={mapsUrl(lead)!}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex h-7 shrink-0 items-center rounded-md border px-2 text-xs hover:bg-accent"
-                      >
-                        <Navigation className="h-3 w-3 mr-1" />
-                        Directions
-                      </a>
-                    )}
-                  </div>
-                )}
-                {lead.home_value && (
-                  <div className="flex items-center gap-2">
-                    <Home className="h-4 w-4 text-muted-foreground" />
-                    Est. ${Number(lead.home_value).toLocaleString()}
-                  </div>
-                )}
-                {lead.assessed_value && (
-                  <div className="flex items-center gap-2">
-                    <Building className="h-4 w-4 text-muted-foreground" />
-                    Assessed ${Number(lead.assessed_value).toLocaleString()}
-                  </div>
-                )}
-                {lead.year_built && (
-                  <div className="flex items-center gap-2">
-                    <Calendar className="h-4 w-4 text-muted-foreground" />
-                    Built {lead.year_built}
-                  </div>
-                )}
-                <Separator />
-                <div className="grid grid-cols-2 gap-1">
-                  {lead.sqft && <div><span className="text-muted-foreground">Sqft:</span> {Number(lead.sqft).toLocaleString()}</div>}
-                  {lead.lot_size && <div><span className="text-muted-foreground">Lot:</span> {lead.lot_size} sqft</div>}
-                  {lead.bedrooms && <div><span className="text-muted-foreground">Beds:</span> {lead.bedrooms}</div>}
-                  {lead.bathrooms && <div><span className="text-muted-foreground">Baths:</span> {lead.bathrooms}</div>}
-                  {lead.stories && <div><span className="text-muted-foreground">Stories:</span> {lead.stories}</div>}
-                  {lead.owner_type && <div><span className="text-muted-foreground">Type:</span> {lead.owner_type}</div>}
-                  {markets.length > 1 && (
-                    <div><span className="text-muted-foreground">Market:</span>{' '}
-                      {markets.find((m) => m.id === lead.market_id)?.name ?? 'Unassigned'}
-                    </div>
-                  )}
-                  {lead.apn && <div className="col-span-2"><span className="text-muted-foreground">APN:</span> {lead.apn}</div>}
-                  {lead.last_sale_date && <div><span className="text-muted-foreground">Last sold:</span> {lead.last_sale_date}</div>}
-                  {lead.last_sale_price && <div><span className="text-muted-foreground">Sale price:</span> ${Number(lead.last_sale_price).toLocaleString()}</div>}
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Structured contact results. Kept in Overview so a manager does
-                not have to infer real knocks/calls from generic activity rows. */}
-            <Card className="md:col-span-2">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm font-medium text-muted-foreground">
-                  Contact Activity
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <div className="rounded-lg border p-3">
-                    <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                      <DoorOpen className="h-3.5 w-3.5" />
-                      Door Knocks
-                    </div>
-                    <p className="mt-1 text-2xl font-semibold tabular-nums">
-                      {lead.knock_count.toLocaleString()}
-                    </p>
-                    {lead.lead_knocks?.[0] ? (
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        Last: {knockLabel(lead.lead_knocks[0].disposition)} ·{' '}
-                        {formatDistanceToNow(new Date(lead.lead_knocks[0].knocked_at), {
-                          addSuffix: true,
-                        })}
-                        {lead.lead_knocks[0].admin_users?.name
-                          ? ` · ${lead.lead_knocks[0].admin_users.name}`
-                          : ''}
-                      </p>
-                    ) : (
-                      <p className="mt-1 text-xs text-muted-foreground">No knocks recorded</p>
-                    )}
-                  </div>
-
-                  <div className="rounded-lg border p-3">
-                    <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                      <PhoneCall className="h-3.5 w-3.5" />
-                      Cold Calls
-                    </div>
-                    <p className="mt-1 text-2xl font-semibold tabular-nums">
-                      {lead.call_count.toLocaleString()}
-                    </p>
-                    {lead.lead_calls?.[0] ? (
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        Last: {callLabel(lead.lead_calls[0].disposition)} ·{' '}
-                        {formatDistanceToNow(new Date(lead.lead_calls[0].called_at), {
-                          addSuffix: true,
-                        })}
-                        {lead.lead_calls[0].admin_users?.name
-                          ? ` · ${lead.lead_calls[0].admin_users.name}`
-                          : ''}
-                      </p>
-                    ) : (
-                      <p className="mt-1 text-xs text-muted-foreground">No cold calls recorded</p>
-                    )}
-                  </div>
-                </div>
-
-                {contactHistory.length > 0 ? (
-                  <div>
-                    <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                      Full History
-                    </p>
-                    <div className="max-h-80 divide-y overflow-y-auto pr-1">
-                      {contactHistory.map((event) => {
-                        const Icon = event.channel === 'knock' ? DoorOpen : PhoneCall;
-                        return (
-                          <div key={event.key} className="flex gap-3 py-3">
-                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted">
-                              <Icon className="h-4 w-4 text-muted-foreground" />
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
-                                <p className="text-sm font-medium">
-                                  {event.channel === 'knock' ? 'Door knock' : 'Cold call'} ·{' '}
-                                  {event.label}
-                                </p>
-                                <p className="text-xs text-muted-foreground">
-                                  {event.accountName ? `${event.accountName} · ` : ''}
-                                  {format(new Date(event.occurredAt), 'MMM d, yyyy · h:mm a')}
-                                </p>
-                              </div>
-                              {event.notes && (
-                                <p className="mt-0.5 text-sm text-muted-foreground">
-                                  {event.notes}
-                                </p>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ) : (
-                  <p className="text-sm text-muted-foreground">
-                    No door knocks or cold calls have been recorded for this lead.
-                  </p>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Mailing Address (absentee owner indicator) */}
-            {lead.mailing_street && (
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1">
-                    <MailOpen className="h-3.5 w-3.5" />
-                    Mailing Address
-                    {fullAddress && lead.mailing_street.toLowerCase() !== lead.address_street?.toLowerCase() && (
-                      <span className="text-xs bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-200 px-1.5 py-0.5 rounded ml-1">Absentee</span>
-                    )}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="text-sm">
-                  <p>{lead.mailing_street}</p>
-                  <p>{[lead.mailing_city, lead.mailing_state, lead.mailing_zip].filter(Boolean).join(', ')}</p>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Roof */}
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">Roof</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {!lead.roof_type && !lead.roof_age && lead.roof_score === null && lead.estimated_roof_value == null ? (
-                  <EmptyState
-                    icon={Home}
-                    title="No roof details yet"
-                    description="Roof type, age and estimated value fill in from enrichment or when you edit the lead."
-                    className="py-6"
-                  />
-                ) : (
-                <div className="grid grid-cols-2 gap-2 text-sm">
-                  <div>
-                    <span className="text-muted-foreground">Type:</span>{' '}
-                    {!lead.roof_type || lead.roof_type === 'unknown' ? '-' : lead.roof_type.replace('_', ' ')}
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">Age:</span>{' '}
-                    {lead.roof_age ? `${lead.roof_age} yrs` : '-'}
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">Score:</span>{' '}
-                    {lead.roof_score !== null ? `${lead.roof_score}/100` : '-'}
-                  </div>
-                  <div className="col-span-2">
-                    <span className="text-muted-foreground">Est. value:</span>{' '}
-                    {lead.estimated_roof_value != null ? (
-                      <>
-                        <span className="font-medium">${Number(lead.estimated_roof_value).toLocaleString()}</span>
-                        {(() => {
-                          const est = estimateRoofValue({ sqft: lead.sqft, stories: lead.stories, roof_type: lead.roof_type });
-                          return est ? (
-                            <span className="text-muted-foreground"> (~{est.squares} squares)</span>
-                          ) : null;
-                        })()}
-                      </>
-                    ) : (
-                      '-'
-                    )}
-                  </div>
-                  {lead.roof_material_notes && (
-                    <div className="col-span-2">
-                      <span className="text-muted-foreground">Notes:</span>{' '}
-                      {lead.roof_material_notes}
-                    </div>
-                  )}
-                </div>
-                )}
-              </CardContent>
-            </Card>
-
-            <LeadPhotos leadId={leadId} />
-
-            {/* Appointments */}
-            <Card>
-              <CardHeader className="pb-2">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1">
-                    <CalendarClock className="h-3.5 w-3.5" />
-                    Appointments
-                  </CardTitle>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-7 text-xs"
-                    aria-label="Add appointment"
-                    onClick={openAddAppointment}
-                  >
-                    <Plus className="h-3 w-3 mr-1" />
-                    Add appointment
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent>
-                {!lead.lead_appointments || lead.lead_appointments.length === 0 ? (
-                  <EmptyState
-                    icon={CalendarClock}
-                    title="No appointments scheduled"
-                    description="Add one here, or set this lead's status to Appointment Set."
-                    className="py-8"
-                  />
-                ) : (
-                  <div className="space-y-2">
-                    {lead.lead_appointments.map((appt) => {
-                      const when = new Date(appt.scheduled_at);
-                      const past = when.getTime() < Date.now();
-                      const outcome = appt.outcome ?? 'scheduled';
-                      const canRecordResult = canRecordAppointmentOutcome({
-                        role: user.role,
-                        userId: user.id,
-                        leadAssignedSetterId: lead.assigned_setter_id ?? null,
-                        leadAssignedCloserId: lead.assigned_closer_id ?? null,
-                        existingOutcomeBy: appt.outcome_by ?? null,
-                      });
-                      const pendingOutcome = appointmentOutcomePending[appt.id] ?? null;
-                      return (
-                        <div
-                          key={appt.id}
-                          className="rounded-lg border p-3 text-sm"
-                        >
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="min-w-0">
-                              <p className="font-medium">
-                                <time dateTime={appt.scheduled_at}>
-                                  {format(when, 'EEE, MMM d · h:mm a')}
-                                </time>
-                                <span className="ml-2 text-xs font-normal capitalize text-muted-foreground">
-                                  {appt.appointment_type}
-                                </span>
-                              </p>
-                              {appt.notes && (
-                                <p className="mt-0.5 text-xs text-muted-foreground">{appt.notes}</p>
-                              )}
-                              {outcome !== 'scheduled' && (
-                                <span className={`mt-2 inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${
-                                  outcome === 'completed'
-                                    ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
-                                    : outcome === 'no_show'
-                                      ? 'border-destructive/25 bg-destructive/10 text-destructive'
-                                      : 'border-border bg-muted text-muted-foreground'
-                                }`}>
-                                  {appointmentOutcomeLabel(outcome)}
-                                </span>
-                              )}
-                            </div>
-                            <div className="flex shrink-0 gap-1">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-8 w-8 p-0"
-                                aria-label="Edit appointment"
-                                onClick={() => openEditAppointment(appt)}
-                              >
-                                <Edit2 className="h-3.5 w-3.5" />
-                              </Button>
-                              {user.role === 'admin' && (
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-8 w-8 p-0 text-destructive"
-                                  aria-label="Delete appointment permanently"
-                                  onClick={() => setDeleteAppointmentTarget(appt)}
-                                >
-                                  <Trash2 className="h-3.5 w-3.5" />
-                                </Button>
-                              )}
-                            </div>
-                          </div>
-                          {outcome === 'scheduled' && past && canRecordResult && (
-                            <AppointmentOutcomeActions
-                              label={`${format(when, 'MMM d at h:mm a')} appointment`}
-                              pending={pendingOutcome}
-                              onSelect={(nextOutcome) => handleAppointmentOutcome(appt, nextOutcome)}
-                              className="mt-3"
-                            />
-                          )}
-                          {outcome === 'scheduled' && past && !canRecordResult && (
-                            <p className="mt-3 rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
-                              Awaiting result from the appointment owner.
-                            </p>
-                          )}
-                          {outcome === 'scheduled' && !past && canRecordResult && (
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              className="mt-2 h-10 px-0 text-xs text-muted-foreground hover:bg-transparent hover:text-destructive"
-                              disabled={pendingOutcome !== null}
-                              onClick={() => handleAppointmentOutcome(appt, 'cancelled')}
-                            >
-                              {pendingOutcome === 'cancelled' ? 'Saving cancellation…' : 'Mark appointment cancelled'}
-                            </Button>
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="text-sm font-semibold capitalize">{appt.appointment_type}</p>
+                          {outcome !== 'scheduled' && (
+                            <span className={cn(
+                              'inline-flex border px-2 py-0.5 text-xs font-medium',
+                              outcome === 'completed'
+                                ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+                                : outcome === 'no_show'
+                                  ? 'border-destructive/25 bg-destructive/10 text-destructive'
+                                  : 'border-border bg-muted text-muted-foreground'
+                            )}>
+                              {appointmentOutcomeLabel(outcome)}
+                            </span>
                           )}
                         </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+                        {appt.notes ? (
+                          <p className="mt-1 text-sm text-muted-foreground">{appt.notes}</p>
+                        ) : (
+                          <p className="mt-1 text-sm text-muted-foreground/70">No appointment notes</p>
+                        )}
+                      </div>
 
-            {/* Storm Data (conditional) */}
-            {(lead.hail_date || lead.hail_size_inches) && (
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1">
-                    <CloudRain className="h-3.5 w-3.5" />
-                    Storm Data
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-2 gap-2 text-sm">
-                    {lead.hail_date && (
-                      <div><span className="text-muted-foreground">Hail date:</span> {lead.hail_date}</div>
-                    )}
-                    {lead.hail_size_inches && (
-                      <div><span className="text-muted-foreground">Hail size:</span> {lead.hail_size_inches}&quot;</div>
-                    )}
-                    {lead.storm_id && (
-                      <div className="col-span-2"><span className="text-muted-foreground">Storm ID:</span> {lead.storm_id}</div>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
+                      <div className="flex gap-2 sm:justify-end">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-11 w-11 border border-border"
+                          aria-label="Edit appointment"
+                          onClick={() => openEditAppointment(appt)}
+                        >
+                          <Edit2 />
+                        </Button>
+                        {user.role === 'admin' && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-11 w-11 border border-border text-destructive"
+                            aria-label="Delete appointment permanently"
+                            onClick={() => setDeleteAppointmentTarget(appt)}
+                          >
+                            <Trash2 />
+                          </Button>
+                        )}
+                      </div>
+
+                      <div className="sm:col-span-2 sm:col-start-2">
+                        {outcome === 'scheduled' && past && canRecordResult && (
+                          <AppointmentOutcomeActions
+                            label={`${format(when, 'MMM d at h:mm a')} appointment`}
+                            pending={pendingOutcome}
+                            onSelect={(nextOutcome) => handleAppointmentOutcome(appt, nextOutcome)}
+                          />
+                        )}
+                        {outcome === 'scheduled' && past && !canRecordResult && (
+                          <p className="border-l-2 border-border pl-3 text-xs text-muted-foreground">
+                            Awaiting result from the appointment owner.
+                          </p>
+                        )}
+                        {outcome === 'scheduled' && !past && canRecordResult && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            className="h-11 px-0 text-xs text-muted-foreground hover:bg-transparent hover:text-destructive"
+                            disabled={pendingOutcome !== null}
+                            onClick={() => handleAppointmentOutcome(appt, 'cancelled')}
+                          >
+                            {pendingOutcome === 'cancelled' ? 'Saving cancellation…' : 'Mark appointment cancelled'}
+                          </Button>
+                        )}
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
             )}
+          </section>
 
-            {/* Source */}
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">Source</CardTitle>
-              </CardHeader>
-              <CardContent className="text-sm">
-                {/* Vendor channel when one is set, otherwise who brought it in.
-                    For an uploaded list "where did this come from" IS "who
-                    uploaded it", and this card said "Unknown" while the answer
-                    was sitting one table away. Only genuinely unattributed
-                    leads — the ones predating tracking — still say Unknown. */}
-                <p>
-                  {(lead.lead_sources as { display_name: string } | undefined)?.display_name ||
-                    lead.created_by_name ||
-                    'Unknown'}
-                </p>
-                {lead.source_notes && (
-                  <p className="text-muted-foreground mt-1">{lead.source_notes}</p>
-                )}
-                {/* Named separately when a vendor source is ALSO set, so the two
-                    facts never overwrite each other. */}
-                {lead.created_by_name && (lead.lead_sources as { display_name: string } | undefined)?.display_name && (
-                  <p className="text-muted-foreground mt-1">
-                    Added by{' '}
-                    <span className={isMachineAttribution(lead.created_by_name) ? 'italic' : ''}>
-                      {lead.created_by_name}
-                    </span>
+          <section aria-labelledby="activity-timeline-heading">
+            <WorkSectionHeading
+              index="02 / History"
+              title="Activity timeline"
+              description="Calls, knocks, notes, visits, email, and record changes in one sequence."
+              id="activity-timeline-heading"
+            />
+
+            <form onSubmit={handleAddActivity} className="grid gap-2 border-b border-border py-4 sm:grid-cols-[8rem_minmax(0,1fr)_auto] sm:items-start">
+              <Select value={activityType} onValueChange={(value) => value && setActivityType(value as ActivityType)}>
+                <SelectTrigger className="h-11 w-full rounded-md">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {ACTIVITY_TYPE_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Textarea
+                aria-label="Activity details"
+                placeholder="Add a note, call summary, or update..."
+                value={activityContent}
+                onChange={(event) => setActivityContent(event.target.value)}
+                rows={2}
+                className="min-h-11"
+              />
+              <Button type="submit" className="h-11 px-4" disabled={activityLoading || !activityContent.trim()}>
+                <Plus />
+                {activityLoading ? 'Adding…' : 'Add update'}
+              </Button>
+            </form>
+
+            <div className="grid divide-y divide-border border-b border-border sm:grid-cols-2 sm:divide-x sm:divide-y-0">
+              <div className="px-1 py-4 sm:pr-5">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    <DoorOpen className="h-3.5 w-3.5" />
+                    Door knocks
                   </p>
-                )}
-                {importBatch?.filename && (
-                  <p className="text-muted-foreground mt-1 break-all">
-                    From <span className="text-foreground">{importBatch.filename}</span>
+                  <p className="text-2xl font-semibold tabular-nums">{lead.knock_count.toLocaleString()}</p>
+                </div>
+                {lead.lead_knocks?.[0] ? (
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Last: {knockLabel(lead.lead_knocks[0].disposition)} ·{' '}
+                    {formatDistanceToNow(new Date(lead.lead_knocks[0].knocked_at), { addSuffix: true })}
+                    {lead.lead_knocks[0].admin_users?.name ? ` · ${lead.lead_knocks[0].admin_users.name}` : ''}
                   </p>
+                ) : (
+                  <p className="mt-2 text-xs text-muted-foreground">No knocks recorded</p>
                 )}
-                <p className="text-muted-foreground mt-2">
-                  Created {format(new Date(lead.created_at), 'MMM d, yyyy')}
-                </p>
-              </CardContent>
-            </Card>
-
-            {/* Assignment & Deal Value */}
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1">
-                  <UserCheck className="h-3.5 w-3.5" />
-                  Assignment &amp; Deal
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3 text-sm">
-                <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground">Setter</p>
-                  {userRole === 'admin' ? (
-                    <Select
-                      value={lead.assigned_setter_id || 'none'}
-                      onValueChange={(v) => handleAssignment('assigned_setter_id', v === 'none' ? null : v)}
-                    >
-                      <SelectTrigger className="h-8">
-                        <SelectValue placeholder="Unassigned" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">Unassigned</SelectItem>
-                        {users.filter(u => u.role === 'setter' || u.role === 'admin').map(u => (
-                          <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  ) : (
-                    <p>{users.find(u => u.id === lead.assigned_setter_id)?.name || <span className="text-muted-foreground">Unassigned</span>}</p>
-                  )}
-                </div>
-                <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground">Closer</p>
-                  {userRole === 'admin' ? (
-                    <Select
-                      value={lead.assigned_closer_id || 'none'}
-                      onValueChange={(v) => handleAssignment('assigned_closer_id', v === 'none' ? null : v)}
-                    >
-                      <SelectTrigger className="h-8">
-                        <SelectValue placeholder="Unassigned" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">Unassigned</SelectItem>
-                        {users.filter(u => u.role === 'closer' || u.role === 'admin').map(u => (
-                          <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  ) : (
-                    <p>{users.find(u => u.id === lead.assigned_closer_id)?.name || <span className="text-muted-foreground">Unassigned</span>}</p>
-                  )}
-                </div>
-                <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground flex items-center gap-1">
-                    <DollarSign className="h-3 w-3" />
-                    Deal Value
+              </div>
+              <div className="px-1 py-4 sm:pl-5">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    <PhoneCall className="h-3.5 w-3.5" />
+                    Cold calls
                   </p>
-                  {userRole === 'admin' || userRole === 'closer' ? (
-                    <div className="flex gap-2">
-                      <Input
-                        type="number"
-                        min="0"
-                        step="100"
-                        placeholder="0.00"
-                        value={dealValueInput}
-                        onChange={(e) => setDealValueInput(e.target.value)}
-                        onBlur={handleDealValueSave}
-                        onKeyDown={(e) => { if (e.key === 'Enter') handleDealValueSave(); }}
-                        className="h-8"
-                      />
-                    </div>
-                  ) : (
-                    <p>
-                      {lead.deal_value != null
-                        ? `$${Number(lead.deal_value).toLocaleString()}`
-                        : <span className="text-muted-foreground">Not set</span>}
-                    </p>
-                  )}
+                  <p className="text-2xl font-semibold tabular-nums">{lead.call_count.toLocaleString()}</p>
                 </div>
-              </CardContent>
-            </Card>
-          </div>
-        </TabsContent>
+                {lead.lead_calls?.[0] ? (
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Last: {callLabel(lead.lead_calls[0].disposition)} ·{' '}
+                    {formatDistanceToNow(new Date(lead.lead_calls[0].called_at), { addSuffix: true })}
+                    {lead.lead_calls[0].admin_users?.name ? ` · ${lead.lead_calls[0].admin_users.name}` : ''}
+                  </p>
+                ) : (
+                  <p className="mt-2 text-xs text-muted-foreground">No cold calls recorded</p>
+                )}
+              </div>
+            </div>
 
-        <TabsContent value="activity" className="space-y-4 mt-4">
-          {/* Add activity form */}
-          <Card>
-            <CardContent className="pt-4">
-              <form onSubmit={handleAddActivity} className="space-y-3">
-                <div className="flex gap-2">
-                  <Select value={activityType} onValueChange={(v) => v && setActivityType(v as ActivityType)}>
-                    <SelectTrigger className="w-[120px]">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {ACTIVITY_TYPE_OPTIONS.map((opt) => (
-                        <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Button type="submit" size="sm" disabled={activityLoading || !activityContent.trim()}>
-                    <Plus className="h-4 w-4 mr-1" />
-                    Add
-                  </Button>
-                </div>
-                <Textarea
-                  placeholder="Add a note, call summary, or update..."
-                  value={activityContent}
-                  onChange={(e) => setActivityContent(e.target.value)}
-                  rows={2}
-                />
-              </form>
-            </CardContent>
-          </Card>
+            <p className="mt-5 font-mono text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+              Full History
+            </p>
+            {timelineEvents.length > 0 ? (
+              <div className="mt-2 divide-y divide-border border-y border-border">
+                {timelineEvents.map((entry) => {
+                  if (entry.kind === 'contact') {
+                    const event = entry.event;
+                    const Icon = event.channel === 'knock' ? DoorOpen : PhoneCall;
+                    return (
+                      <article key={entry.key} className="grid gap-3 py-4 sm:grid-cols-[2.25rem_minmax(0,1fr)_auto] sm:items-start">
+                        <div className="flex h-9 w-9 items-center justify-center border border-border bg-muted/50">
+                          <Icon className="h-4 w-4 text-muted-foreground" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium">
+                            {event.channel === 'knock' ? 'Door knock' : 'Cold call'} · {event.label}
+                          </p>
+                          {event.notes && <p className="mt-1 text-sm text-muted-foreground">{event.notes}</p>}
+                          {event.accountName && (
+                            <p className="mt-1 text-xs text-muted-foreground">Recorded by {event.accountName}</p>
+                          )}
+                        </div>
+                        <time dateTime={event.occurredAt} className="text-xs text-muted-foreground sm:text-right">
+                          {format(new Date(event.occurredAt), 'MMM d, yyyy · h:mm a')}
+                        </time>
+                      </article>
+                    );
+                  }
 
-          {/* Activity feed */}
-          <div className="space-y-1">
-            {lead.lead_activities?.map((activity: LeadActivity) => {
-              const Icon = ACTIVITY_ICONS[activity.activity_type] || MessageSquare;
-              return (
-                <div key={activity.id} className="flex gap-3 py-3">
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted">
-                    <Icon className="h-4 w-4 text-muted-foreground" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm">{activity.content}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      {formatDistanceToNow(new Date(activity.created_at), { addSuffix: true })}
-                    </p>
-                  </div>
-                </div>
-              );
-            })}
-            {(!lead.lead_activities || lead.lead_activities.length === 0) && (
+                  const activity: LeadActivity = entry.activity;
+                  const Icon = ACTIVITY_ICONS[activity.activity_type] || MessageSquare;
+                  return (
+                    <article key={entry.key} className="grid gap-3 py-4 sm:grid-cols-[2.25rem_minmax(0,1fr)_auto] sm:items-start">
+                      <div className="flex h-9 w-9 items-center justify-center border border-border bg-muted/50">
+                        <Icon className="h-4 w-4 text-muted-foreground" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm">{activity.content || 'Activity recorded'}</p>
+                        <p className="mt-1 text-xs capitalize text-muted-foreground">
+                          {activity.activity_type.replace('_', ' ')}
+                        </p>
+                      </div>
+                      <time dateTime={activity.created_at} className="text-xs text-muted-foreground sm:text-right">
+                        {formatDistanceToNow(new Date(activity.created_at), { addSuffix: true })}
+                      </time>
+                    </article>
+                  );
+                })}
+              </div>
+            ) : (
               <EmptyState
                 icon={MessageSquare}
                 title="No activity yet"
                 description="Log a call, note or visit above and it will show up here."
-                className="py-8"
+                className="border-y border-border py-10"
               />
             )}
+          </section>
+        </main>
+
+        <aside className="min-w-0 border-t border-border pt-6 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
+          <section className="border-b border-border pb-6">
+            <RailHeading icon={Phone}>Contact details</RailHeading>
+            <div className="mt-3 space-y-3">
+              {lead.is_dnc && (
+                <p className="border-l-2 border-destructive/60 pl-3 text-xs text-destructive">
+                  Phone actions are blocked for this record.
+                </p>
+              )}
+              {[lead.phone, lead.phone2, lead.phone3].map((phone, index) =>
+                phone && !lead.is_dnc ? (
+                  <div key={`phone-${index}`} className="border-t border-border pt-3 first:border-t-0 first:pt-0">
+                    <p className="font-mono text-sm tabular-nums">{formatPhone(phone)}</p>
+                    <div className="mt-2 grid grid-cols-2 gap-2">
+                      <a href={`tel:${phone}`} className={cn(buttonVariants({ variant: 'outline' }), 'h-11')}>
+                        <Phone />
+                        Call{index > 0 ? ` ${index + 1}` : ''}
+                      </a>
+                      <a href={`sms:${phone}`} className={cn(buttonVariants({ variant: 'outline' }), 'h-11')}>
+                        <MessageSquare />
+                        Text{index > 0 ? ` ${index + 1}` : ''}
+                      </a>
+                    </div>
+                  </div>
+                ) : null
+              )}
+              {[lead.email, lead.email2].map((email, index) =>
+                email ? (
+                  <a
+                    key={`email-${index}`}
+                    href={`mailto:${email}`}
+                    className="flex min-h-11 items-center gap-2 border-t border-border pt-3 text-sm hover:text-primary"
+                  >
+                    <Mail className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    <span className="min-w-0 break-all">{email}</span>
+                  </a>
+                ) : null
+              )}
+              {!primaryPhone && !primaryEmail && !lead.is_dnc && (
+                <p className="text-sm text-muted-foreground">No contact info</p>
+              )}
+            </div>
+          </section>
+
+          <section className="border-b border-border py-6">
+            <RailHeading icon={UserCheck}>Ownership and deal</RailHeading>
+            <div className="mt-4 space-y-4">
+              <div>
+                <p className="text-xs text-muted-foreground">Setter</p>
+                {userRole === 'admin' ? (
+                  <Select
+                    value={lead.assigned_setter_id || 'none'}
+                    onValueChange={(value) => handleAssignment('assigned_setter_id', value === 'none' ? null : value)}
+                  >
+                    <SelectTrigger className="mt-1.5 h-11 w-full rounded-md">
+                      <SelectValue placeholder="Unassigned" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Unassigned</SelectItem>
+                      {users.filter((member) => member.role === 'setter' || member.role === 'admin').map((member) => (
+                        <SelectItem key={member.id} value={member.id}>{member.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <p className="mt-1 text-sm font-medium">
+                    {users.find((member) => member.id === lead.assigned_setter_id)?.name
+                      || <span className="text-muted-foreground">Unassigned</span>}
+                  </p>
+                )}
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Closer</p>
+                {userRole === 'admin' ? (
+                  <Select
+                    value={lead.assigned_closer_id || 'none'}
+                    onValueChange={(value) => handleAssignment('assigned_closer_id', value === 'none' ? null : value)}
+                  >
+                    <SelectTrigger className="mt-1.5 h-11 w-full rounded-md">
+                      <SelectValue placeholder="Unassigned" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Unassigned</SelectItem>
+                      {users.filter((member) => member.role === 'closer' || member.role === 'admin').map((member) => (
+                        <SelectItem key={member.id} value={member.id}>{member.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <p className="mt-1 text-sm font-medium">
+                    {users.find((member) => member.id === lead.assigned_closer_id)?.name
+                      || <span className="text-muted-foreground">Unassigned</span>}
+                  </p>
+                )}
+              </div>
+              <div>
+                <p className="flex items-center gap-1 text-xs text-muted-foreground">
+                  <DollarSign className="h-3 w-3" />
+                  Deal value
+                </p>
+                {userRole === 'admin' || userRole === 'closer' ? (
+                  <Input
+                    aria-label="Deal value"
+                    type="number"
+                    min="0"
+                    step="100"
+                    placeholder="0.00"
+                    value={dealValueInput}
+                    onChange={(event) => setDealValueInput(event.target.value)}
+                    onBlur={handleDealValueSave}
+                    onKeyDown={(event) => { if (event.key === 'Enter') handleDealValueSave(); }}
+                    className="mt-1.5 h-11"
+                  />
+                ) : (
+                  <p className="mt-1 text-sm font-medium">
+                    {lead.deal_value != null
+                      ? `$${Number(lead.deal_value).toLocaleString()}`
+                      : <span className="text-muted-foreground">Not set</span>}
+                  </p>
+                )}
+              </div>
+            </div>
+          </section>
+
+          <section className="border-b border-border py-6">
+            <RailHeading icon={Home}>Property</RailHeading>
+            {fullAddress && (
+              <div className="mt-4">
+                <p className="text-sm leading-6">{fullAddress}</p>
+                {directionsUrl && (
+                  <a
+                    href={directionsUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={cn(buttonVariants({ variant: 'outline' }), 'mt-3 h-11 w-full')}
+                  >
+                    <Navigation />
+                    Get directions
+                  </a>
+                )}
+              </div>
+            )}
+            <dl className="mt-3 divide-y divide-border">
+              {lead.home_value && <FactRow label="Est. home value">${Number(lead.home_value).toLocaleString()}</FactRow>}
+              {lead.assessed_value && <FactRow label="Assessed">${Number(lead.assessed_value).toLocaleString()}</FactRow>}
+              {lead.year_built && <FactRow label="Built">{lead.year_built}</FactRow>}
+              {lead.sqft && <FactRow label="Living area">{Number(lead.sqft).toLocaleString()} sqft</FactRow>}
+              {lead.lot_size && <FactRow label="Lot">{Number(lead.lot_size).toLocaleString()} sqft</FactRow>}
+              {lead.bedrooms && <FactRow label="Beds">{lead.bedrooms}</FactRow>}
+              {lead.bathrooms && <FactRow label="Baths">{lead.bathrooms}</FactRow>}
+              {lead.stories && <FactRow label="Stories">{lead.stories}</FactRow>}
+              {lead.owner_type && <FactRow label="Owner type">{lead.owner_type}</FactRow>}
+              {markets.length > 1 && (
+                <FactRow label="Market">{markets.find((market) => market.id === lead.market_id)?.name ?? 'Unassigned'}</FactRow>
+              )}
+              {lead.apn && <FactRow label="APN"><span className="break-all font-mono text-xs">{lead.apn}</span></FactRow>}
+              {lead.last_sale_date && <FactRow label="Last sold">{lead.last_sale_date}</FactRow>}
+              {lead.last_sale_price && <FactRow label="Sale price">${Number(lead.last_sale_price).toLocaleString()}</FactRow>}
+            </dl>
+          </section>
+
+          <section className="border-b border-border py-6">
+            <RailHeading icon={Building}>Roof</RailHeading>
+            {!lead.roof_type && !lead.roof_age && lead.roof_score === null && lead.estimated_roof_value == null ? (
+              <EmptyState
+                icon={Home}
+                title="No roof details yet"
+                description="Roof type, age and estimated value fill in from enrichment or when you edit the lead."
+                className="py-6"
+              />
+            ) : (
+              <dl className="mt-3 divide-y divide-border">
+                <FactRow label="Type">
+                  {!lead.roof_type || lead.roof_type === 'unknown' ? '-' : lead.roof_type.replace('_', ' ')}
+                </FactRow>
+                <FactRow label="Age">{lead.roof_age ? `${lead.roof_age} yrs` : '-'}</FactRow>
+                <FactRow label="Score">{lead.roof_score !== null ? `${lead.roof_score}/100` : '-'}</FactRow>
+                <FactRow label="Est. value">
+                  {lead.estimated_roof_value != null ? (
+                    <>
+                      ${Number(lead.estimated_roof_value).toLocaleString()}
+                      {calculatedRoofEstimate ? (
+                        <span className="block text-xs font-normal text-muted-foreground">
+                          About {calculatedRoofEstimate.squares} squares
+                        </span>
+                      ) : null}
+                    </>
+                  ) : '-'}
+                </FactRow>
+                {lead.roof_material_notes && <FactRow label="Notes">{lead.roof_material_notes}</FactRow>}
+              </dl>
+            )}
+          </section>
+
+          {lead.mailing_street && (
+            <section className="border-b border-border py-6">
+              <RailHeading icon={MailOpen}>Mailing address</RailHeading>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                {isAbsentee && (
+                  <span className="border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-xs font-semibold text-amber-700 dark:text-amber-300">
+                    Absentee
+                  </span>
+                )}
+              </div>
+              <p className="mt-3 text-sm">{lead.mailing_street}</p>
+              <p className="text-sm text-muted-foreground">
+                {[lead.mailing_city, lead.mailing_state, lead.mailing_zip].filter(Boolean).join(', ')}
+              </p>
+            </section>
+          )}
+
+          <div className="border-b border-border py-6 [&_[data-slot=card]]:rounded-none [&_[data-slot=card]]:border-0 [&_[data-slot=card]]:bg-transparent [&_[data-slot=card]]:py-0 [&_[data-slot=card-content]]:px-0 [&_[data-slot=card-header]]:px-0">
+            <LeadPhotos leadId={leadId} />
           </div>
-        </TabsContent>
-      </Tabs>
+
+          <section className="border-b border-border py-6">
+            <RailHeading icon={FileText}>Source</RailHeading>
+            <p className="mt-3 text-sm font-medium">
+              {(lead.lead_sources as { display_name: string } | undefined)?.display_name
+                || lead.created_by_name
+                || 'Unknown'}
+            </p>
+            {lead.source_notes && <p className="mt-1 text-sm text-muted-foreground">{lead.source_notes}</p>}
+            {lead.created_by_name && (lead.lead_sources as { display_name: string } | undefined)?.display_name && (
+              <p className="mt-2 text-xs text-muted-foreground">
+                Added by{' '}
+                <span className={isMachineAttribution(lead.created_by_name) ? 'italic' : ''}>
+                  {lead.created_by_name}
+                </span>
+              </p>
+            )}
+            {importBatch?.filename && (
+              <p className="mt-2 break-all text-xs text-muted-foreground">
+                From <span className="text-foreground">{importBatch.filename}</span>
+              </p>
+            )}
+            {lead.enriched_at && (
+              <p className="mt-2 flex items-start gap-1.5 text-xs text-muted-foreground">
+                <Sparkles className="mt-0.5 h-3 w-3 shrink-0" />
+                Enriched via {lead.enrichment_source || 'unknown'} on {format(new Date(lead.enriched_at), 'MMM d, yyyy')}
+              </p>
+            )}
+            <p className="mt-2 text-xs text-muted-foreground">
+              Created {format(new Date(lead.created_at), 'MMM d, yyyy')}
+            </p>
+          </section>
+
+          {(lead.hail_date || lead.hail_size_inches) && (
+            <section className="border-b border-border py-6">
+              <RailHeading icon={CloudRain}>Storm data</RailHeading>
+              <dl className="mt-3 divide-y divide-border">
+                {lead.hail_date && <FactRow label="Hail date">{lead.hail_date}</FactRow>}
+                {lead.hail_size_inches && <FactRow label="Hail size">{lead.hail_size_inches}&quot;</FactRow>}
+                {lead.storm_id && <FactRow label="Storm ID"><span className="break-all font-mono text-xs">{lead.storm_id}</span></FactRow>}
+              </dl>
+            </section>
+          )}
+        </aside>
+      </div>
       <WonLeadModal
         leadId={leadId}
         open={wonModalOpen}
@@ -1281,7 +1349,7 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
         currentCloserId={lead.assigned_closer_id}
         onSuccess={() => { toast.success('Appointment set!'); fetchLead(); }}
       />
-      {/* Add / edit appointment from the Appointments card */}
+      {/* Add or edit an appointment from the schedule section. */}
       <Dialog open={addApptOpen} onOpenChange={setAddApptOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>

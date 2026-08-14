@@ -175,7 +175,7 @@ export function LeadSavedViews({
 
   if (loadError) {
     return (
-      <Button variant="outline" size="sm" onClick={() => void loadViews()}>
+      <Button variant="outline" className="h-11" onClick={() => void loadViews()}>
         <RefreshCw />
         Retry saved views
       </Button>
@@ -198,7 +198,7 @@ export function LeadSavedViews({
             if (view) onApply(leadQueueParamsFromDefinition(view.definition), view.id);
           }}
         >
-          <SelectTrigger className="min-w-0 sm:w-[180px]" aria-label="Saved view">
+          <SelectTrigger className="min-w-0 rounded-none border-0 border-b bg-transparent px-0 shadow-none data-[size=default]:h-11 sm:w-[180px]" aria-label="Saved view">
             <Bookmark className="h-4 w-4 shrink-0 text-muted-foreground" />
             <SelectValue>
               {loading
@@ -211,18 +211,18 @@ export function LeadSavedViews({
             </SelectValue>
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="__all">All leads</SelectItem>
+            <SelectItem value="__all" className="min-h-11">All leads</SelectItem>
             {!selectedView && hasCustomState && (
-              <SelectItem value="__custom" disabled>Custom view</SelectItem>
+              <SelectItem value="__custom" className="min-h-11" disabled>Custom view</SelectItem>
             )}
             {sortedViews.map((view) => (
-              <SelectItem key={view.id} value={view.id}>{view.name}</SelectItem>
+              <SelectItem key={view.id} value={view.id} className="min-h-11">{view.name}</SelectItem>
             ))}
           </SelectContent>
         </Select>
 
         {modified && (
-          <Button variant="secondary" size="sm" disabled={saving} onClick={() => void updateDefinition()}>
+          <Button variant="secondary" className="h-11" disabled={saving} onClick={() => void updateDefinition()}>
             <Save />
             <span className="hidden lg:inline">Update</span>
           </Button>
@@ -230,7 +230,7 @@ export function LeadSavedViews({
 
         <Button
           variant="outline"
-          size="sm"
+          className="h-11"
           disabled={loading}
           onClick={() => openNameDialog('create')}
         >
@@ -243,17 +243,17 @@ export function LeadSavedViews({
           <DropdownMenu>
             <DropdownMenuTrigger
               aria-label={`Manage ${selectedView.name}`}
-              className="inline-flex size-7 items-center justify-center rounded-lg text-muted-foreground outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50"
+              className="inline-flex size-11 items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50"
             >
               <Ellipsis />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-44">
-              <DropdownMenuItem onClick={() => openNameDialog('rename')}>
+              <DropdownMenuItem className="min-h-11" onClick={() => openNameDialog('rename')}>
                 <Pencil />
                 Rename
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem variant="destructive" onClick={() => setDeleteOpen(true)}>
+              <DropdownMenuItem className="min-h-11" variant="destructive" onClick={() => setDeleteOpen(true)}>
                 <Trash2 />
                 Delete view
               </DropdownMenuItem>
@@ -278,6 +278,7 @@ export function LeadSavedViews({
               id="lead-view-name"
               value={name}
               maxLength={LEAD_VIEW_NAME_MAX_LENGTH}
+              className="h-11"
               autoFocus
               placeholder="Hot leads in Arizona"
               onChange={(event) => setName(event.target.value)}
@@ -287,8 +288,8 @@ export function LeadSavedViews({
             />
           </div>
           <DialogFooter>
-            <Button variant="outline" disabled={saving} onClick={() => setNameDialog(null)}>Cancel</Button>
-            <Button disabled={saving || !name.trim()} onClick={() => void saveName()}>
+            <Button variant="outline" className="h-11" disabled={saving} onClick={() => setNameDialog(null)}>Cancel</Button>
+            <Button className="h-11" disabled={saving || !name.trim()} onClick={() => void saveName()}>
               {saving ? 'Saving…' : nameDialog === 'rename' ? 'Rename' : 'Save view'}
             </Button>
           </DialogFooter>
@@ -304,8 +305,8 @@ export function LeadSavedViews({
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" disabled={saving} onClick={() => setDeleteOpen(false)}>Cancel</Button>
-            <Button variant="destructive" disabled={saving} onClick={() => void deleteView()}>
+            <Button variant="outline" className="h-11" disabled={saving} onClick={() => setDeleteOpen(false)}>Cancel</Button>
+            <Button variant="destructive" className="h-11" disabled={saving} onClick={() => void deleteView()}>
               {saving ? 'Deleting…' : 'Delete view'}
             </Button>
           </DialogFooter>

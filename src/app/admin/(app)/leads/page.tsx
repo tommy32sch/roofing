@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { ArrowDown, ArrowUp, ChevronsUpDown, Search, Upload, Sparkles, Download, CalendarClock, MapPin, UserCheck, UserMinus, PhoneOff, CopyCheck, Navigation, Phone } from 'lucide-react';
+import { ArrowDown, ArrowUp, ChevronRight, ChevronsUpDown, Search, Upload, Sparkles, Download, CalendarClock, MapPin, UserCheck, UserMinus, PhoneOff, CopyCheck, Navigation, Phone, MessageSquare } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatPhone, formatAddress, mapsUrl } from '@/lib/utils/format';
 import { PageHeader } from '@/components/layout/page-header';
@@ -80,7 +80,7 @@ function SortableTableHead({
     >
       <button
         type="button"
-        className="-ml-2 inline-flex h-8 items-center gap-1 rounded-md px-2 font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+        className="-ml-2 inline-flex h-11 items-center gap-1 px-2 font-mono text-[10px] font-semibold uppercase tracking-wide text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
         onClick={() => onSort(column, initialOrder)}
       >
         {label}
@@ -91,6 +91,43 @@ function SortableTableHead({
           : <ChevronsUpDown className="h-3.5 w-3.5 text-muted-foreground/60" />}
       </button>
     </TableHead>
+  );
+}
+
+const leadActionClass = 'inline-flex size-11 shrink-0 items-center justify-center rounded-md border border-transparent text-muted-foreground transition-colors hover:border-border hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50';
+const leadLedgerHeadClass = 'font-mono text-[10px] font-semibold uppercase tracking-wide text-muted-foreground';
+
+function LeadQuickActions({ lead }: { lead: LeadWithSource }) {
+  const directions = mapsUrl(lead);
+  const leadName = `${lead.first_name} ${lead.last_name}`.trim();
+
+  return (
+    <div className="flex shrink-0 items-center justify-end gap-0.5" onClick={(event) => event.stopPropagation()}>
+      {!lead.is_dnc && lead.phone && (
+        <>
+          <a href={`tel:${lead.phone}`} aria-label={`Call ${leadName}`} className={leadActionClass}>
+            <Phone className="h-4 w-4" />
+          </a>
+          <a href={`sms:${lead.phone}`} aria-label={`Text ${leadName}`} className={leadActionClass}>
+            <MessageSquare className="h-4 w-4" />
+          </a>
+        </>
+      )}
+      {directions && (
+        <a
+          href={directions}
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label={`Directions to ${leadName}`}
+          className={leadActionClass}
+        >
+          <Navigation className="h-4 w-4" />
+        </a>
+      )}
+      <Link href={`/admin/leads/${lead.id}`} aria-label={`Open ${leadName}`} className={leadActionClass}>
+        <ChevronRight className="h-4 w-4" />
+      </Link>
+    </div>
   );
 }
 
@@ -158,8 +195,9 @@ function LeadsListContent() {
   const showAddedBy = leads.some((l) => l.created_by_name);
   const showEstValue = sort === 'estimated_roof_value' || leads.some((l) => l.estimated_roof_value != null);
   const showDealValue = sort === 'deal_value' || leads.some((l) => l.deal_value != null);
+  // +1 for the quick-action column. Optional data stays quiet until this page
+  // has something useful to show in it.
   const columnCount =
-    // +2 for the always-on Setter and Closer columns.
     (isAdmin ? 1 : 0) + 9 + [showSource, showAddedBy, showEstValue, showDealValue].filter(Boolean).length;
 
   const applyQueue = useCallback((params: LeadQueueParams, viewId?: string | null) => {
@@ -350,35 +388,51 @@ function LeadsListContent() {
   }
 
   return (
-    <div className="space-y-4">
-      <PageHeader
-        title="Leads"
-        description={loading ? undefined : `${total.toLocaleString()} lead${total !== 1 ? 's' : ''}${selectedStreets.length > 0 ? ` · ${selectedStreets.length} street${selectedStreets.length !== 1 ? 's' : ''}` : ''}`}
-        actions={
-          <>
+    <div className="space-y-8">
+      <header className="border-b pb-5">
+        <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-4">
+          <div>
+            <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.16em] text-primary">
+              Lead book
+            </p>
+            <div className="mt-1 flex flex-wrap items-baseline gap-x-4 gap-y-1">
+              <h1 className="text-3xl font-semibold tracking-[-0.04em] sm:text-4xl">Leads</h1>
+              {!loading && (
+                <p className="text-sm text-muted-foreground">
+                  {total.toLocaleString()} record{total !== 1 ? 's' : ''}
+                  {selectedStreets.length > 0
+                    ? ` · ${selectedStreets.length} street${selectedStreets.length !== 1 ? 's' : ''}`
+                    : ''}
+                </p>
+              )}
+            </div>
+          </div>
+
+          <div className="flex w-full flex-wrap items-center gap-2 xl:w-auto">
             {isAdmin && (
               <Button
                 variant={selectedStreets.length > 0 ? 'default' : 'outline'}
-                size="sm"
+                className="h-11"
                 onClick={() => setStreetsOpen(true)}
+                aria-label="Choose leads by street"
               >
-                <MapPin className="h-4 w-4 sm:mr-1" />
+                <MapPin className="h-4 w-4" />
                 <span className="hidden sm:inline">
-                  By Street{selectedStreets.length > 0 ? ` (${selectedStreets.length})` : ''}
+                  By street{selectedStreets.length > 0 ? ` (${selectedStreets.length})` : ''}
                 </span>
               </Button>
             )}
             {isAdmin && (
-              <Button variant="outline" size="sm" className="hidden sm:inline-flex" onClick={() => setRecheckOpen(true)}>
-                <CopyCheck className="h-4 w-4 mr-1" />
-                Re-check dupes
+              <Button variant="outline" className="hidden h-11 sm:inline-flex" onClick={() => setRecheckOpen(true)}>
+                <CopyCheck className="h-4 w-4" />
+                Re-check duplicates
               </Button>
             )}
             {/* Admin-only: the CSV carries names, phones, emails and addresses
                 for every matching lead. The route enforces this too. */}
             {isAdmin && (
-              <Button variant="outline" size="sm" className="hidden sm:inline-flex" onClick={handleExport}>
-                <Download className="h-4 w-4 mr-1" />
+              <Button variant="outline" className="hidden h-11 sm:inline-flex" onClick={handleExport}>
+                <Download className="h-4 w-4" />
                 Export
               </Button>
             )}
@@ -386,15 +440,14 @@ function LeadsListContent() {
               render={<Link href="/admin/leads/import" />}
               nativeButton={false}
               variant="outline"
-              size="sm"
-              className="hidden sm:inline-flex"
+              className="h-11"
             >
-              <Upload className="h-4 w-4 mr-1" />
+              <Upload className="h-4 w-4" />
               Import
             </Button>
-          </>
-        }
-      />
+          </div>
+        </div>
+      </header>
 
       <LeadQueueToolbar
         params={queueParams}
@@ -409,21 +462,20 @@ function LeadsListContent() {
 
       {/* Do Not Call banner */}
       {isAdmin && dncCount > 0 && (
-        <div className="flex items-center justify-between gap-3 rounded-md border border-destructive/30 bg-destructive/5 px-4 py-2.5 text-sm flex-wrap">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-y border-destructive/30 py-3 text-sm">
           <span className="flex items-center gap-2">
             <PhoneOff className="h-4 w-4 text-destructive" />
             <span>
-              <strong>{dncCount}</strong> lead{dncCount !== 1 ? 's' : ''} flagged{' '}
-              <span className="font-medium">Do Not Call</span>
+              <strong>{dncCount}</strong> Do Not Call record{dncCount !== 1 ? 's need' : ' needs'} safe handling
             </span>
           </span>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={() => patchQueue({ is_dnc: dncOnly ? undefined : 'true' })}>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" className="h-11" onClick={() => patchQueue({ is_dnc: dncOnly ? undefined : 'true' })}>
               {dncOnly ? 'Show all leads' : 'Show only DNC'}
             </Button>
-            <Button variant="destructive" size="sm" onClick={() => setDncScrubOpen(true)}>
-              <PhoneOff className="h-4 w-4 mr-1" />
-              Remove phone #s
+            <Button variant="destructive" className="h-11" onClick={() => setDncScrubOpen(true)}>
+              <PhoneOff className="h-4 w-4" />
+              Remove phone numbers
             </Button>
           </div>
         </div>
@@ -441,19 +493,168 @@ function LeadsListContent() {
       <p className="sr-only" aria-live="polite">
         {loading ? 'Updating lead results' : `${total.toLocaleString()} lead results`}
       </p>
-      <div id="lead-results" className={`rounded-xl border bg-card transition-opacity ${loading && leads.length > 0 ? 'opacity-70' : ''}`}>
-        <Table aria-busy={loading}>
-          <TableHeader>
+      <section
+        id="lead-results"
+        className={`space-y-4 transition-opacity ${loading && leads.length > 0 ? 'opacity-70' : ''}`}
+        aria-labelledby="lead-results-heading"
+      >
+        <header className="flex items-start justify-between gap-4 border-t-2 border-foreground/80 pt-4">
+          <div>
+            <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.16em] text-primary">
+              Current queue
+            </p>
+            <h2 id="lead-results-heading" className="mt-1 text-lg font-semibold tracking-tight">
+              Lead results
+            </h2>
+            {!loading && total > 0 && (
+              <p className="mt-1 text-xs text-muted-foreground">
+                Showing {((page - 1) * 25 + 1).toLocaleString()}–{Math.min(page * 25, total).toLocaleString()}
+              </p>
+            )}
+          </div>
+          <div className="text-right">
+            <p className="text-3xl font-semibold leading-none tabular-nums">{loading && leads.length === 0 ? '—' : total.toLocaleString()}</p>
+            <p className="mt-1 font-mono text-[10px] uppercase tracking-wide text-muted-foreground">Results</p>
+          </div>
+        </header>
+
+        {/* Phone rows are work cards, not a squeezed desktop table. */}
+        <div className="border-y md:hidden" aria-busy={loading} aria-label="Lead results">
+          {isAdmin && leads.length > 0 && (
+            <div className="flex min-h-11 items-center gap-2 border-b px-1 text-xs text-muted-foreground">
+              <Checkbox
+                checked={pageAllSelected}
+                indeterminate={pageSomeSelected}
+                onCheckedChange={(checked) =>
+                  setSelected(leads.map((lead) => ({ id: lead.id, value: lead.estimated_roof_value })), checked === true)
+                }
+                className="after:-inset-3.5 data-indeterminate:border-primary data-indeterminate:bg-primary/30"
+                aria-label="Select all on page"
+              />
+              Select this page
+            </div>
+          )}
+
+          {loading && leads.length === 0 ? (
+            [...Array(5)].map((_, index) => (
+              <div key={index} className="space-y-3 py-4">
+                <Skeleton className="h-4 w-40" />
+                <Skeleton className="h-3 w-56" />
+                <Skeleton className="h-11 w-full" />
+              </div>
+            ))
+          ) : error && leads.length === 0 ? (
+            <div className="py-4">
+              <DataErrorState title="Leads did not load" description={error} onRetry={fetchLeads} />
+            </div>
+          ) : leads.length === 0 ? (
+            hasFilters ? (
+              <EmptyState
+                icon={Search}
+                title="No leads match your filters"
+                description="Try a different search, or clear the filters to see everything."
+              />
+            ) : (
+              <EmptyState
+                icon={Upload}
+                title={isAdmin ? 'No leads yet' : 'No leads assigned to you yet'}
+                description={isAdmin
+                  ? 'Import a list to get started — CSV and Excel both work, and Do Not Call numbers are handled automatically.'
+                  : 'An admin can assign existing leads to you, or you can import a new list for your role.'}
+                action={
+                  <Button
+                    render={<Link href="/admin/leads/import" />}
+                    nativeButton={false}
+                    className="h-11"
+                  >
+                    <Upload className="h-4 w-4" />
+                    Import leads
+                  </Button>
+                }
+              />
+            )
+          ) : (
+            <div className="divide-y">
+              {leads.map((lead) => (
+                <article
+                  key={lead.id}
+                  className={`py-4 ${selection.has(lead.id) ? 'bg-primary/[0.04]' : ''}`}
+                >
+                  <div className="flex min-w-0 items-start gap-2">
+                    {isAdmin && (
+                      <div className="flex h-11 w-8 shrink-0 items-center justify-start">
+                        <Checkbox
+                          checked={selection.has(lead.id)}
+                          className="after:-inset-3.5"
+                          onCheckedChange={(checked) =>
+                            setSelected([{ id: lead.id, value: lead.estimated_roof_value }], checked === true)
+                          }
+                          aria-label={`Select ${lead.first_name} ${lead.last_name}`}
+                        />
+                      </div>
+                    )}
+                    <Link href={`/admin/leads/${lead.id}`} className="min-w-0 flex-1 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <h3 className="min-w-0 flex-1 truncate text-sm font-semibold">
+                          {lead.first_name} {lead.last_name}
+                        </h3>
+                        <span className="shrink-0"><LeadStatusBadge status={lead.status} /></span>
+                      </div>
+                      <p className="mt-1 truncate text-xs text-muted-foreground">
+                        {formatAddress(lead) || 'No property address'}
+                      </p>
+                    </Link>
+                  </div>
+
+                  <div className={`mt-3 min-w-0 text-xs text-muted-foreground ${isAdmin ? 'pl-10' : ''}`}>
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                        <LeadPriorityBadge priority={lead.priority} />
+                        {lead.is_dnc && (
+                          <span className="font-semibold text-destructive">DNC · knock only</span>
+                        )}
+                        {lead.enriched_at && (
+                          <span className="inline-flex items-center gap-1">
+                            <Sparkles className="h-3 w-3 text-status-stale" /> Enriched
+                          </span>
+                        )}
+                      </div>
+                      <p className="mt-1 truncate">
+                        Setter {lead.assigned_setter?.name ? assigneeLabel(lead.assigned_setter.name) : 'unassigned'}
+                        {' · '}Closer {lead.assigned_closer?.name ? assigneeLabel(lead.assigned_closer.name) : 'unassigned'}
+                      </p>
+                      {lead.follow_up_date && (() => {
+                        const followUp = new Date(`${lead.follow_up_date}T00:00:00`);
+                        const overdue = isPast(followUp) && !isToday(followUp);
+                        return (
+                          <p className={`mt-1 inline-flex items-center gap-1 ${overdue ? 'font-medium text-destructive' : ''}`}>
+                            <CalendarClock className="h-3 w-3" />
+                            Follow-up {lead.follow_up_date}{overdue ? ' · overdue' : ''}
+                          </p>
+                        );
+                      })()}
+                  </div>
+                  <div className={`mt-1 flex justify-end ${isAdmin ? 'pl-10' : ''}`}>
+                    <LeadQuickActions lead={lead} />
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="hidden border-y md:block [&_[data-slot=table-container]]:max-h-[calc(100dvh-13rem)] [&_[data-slot=table-container]]:overflow-auto">
+          <Table aria-busy={loading} aria-label="Lead results" className="min-w-[1180px]">
+          <TableHeader className="sticky top-0 z-10 bg-background">
             <TableRow>
               {isAdmin && (
-                <TableHead className="w-10">
+                <TableHead className={`w-12 ${leadLedgerHeadClass}`}>
                   <Checkbox
                     checked={pageAllSelected}
                     indeterminate={pageSomeSelected}
                     onCheckedChange={(checked) =>
                       setSelected(leads.map((l) => ({ id: l.id, value: l.estimated_roof_value })), checked === true)
                     }
-                    className="data-indeterminate:border-primary data-indeterminate:bg-primary/30"
+                    className="after:-inset-3.5 data-indeterminate:border-primary data-indeterminate:bg-primary/30"
                     aria-label="Select all on page"
                   />
                 </TableHead>
@@ -466,8 +667,8 @@ function LeadsListContent() {
                 activeOrder={order}
                 onSort={handleSort}
               />
-              <TableHead className="hidden md:table-cell">Address</TableHead>
-              <TableHead className="hidden md:table-cell">Phone</TableHead>
+              <TableHead className={leadLedgerHeadClass}>Property</TableHead>
+              <TableHead className={leadLedgerHeadClass}>Phone</TableHead>
               <SortableTableHead
                 label="Status"
                 column="status"
@@ -485,8 +686,8 @@ function LeadsListContent() {
                 className="hidden sm:table-cell"
                 onSort={handleSort}
               />
-              {showSource && <TableHead className="hidden lg:table-cell">Source</TableHead>}
-              {showAddedBy && <TableHead className="hidden lg:table-cell">Added by</TableHead>}
+              {showSource && <TableHead className={leadLedgerHeadClass}>Source</TableHead>}
+              {showAddedBy && <TableHead className={leadLedgerHeadClass}>Added by</TableHead>}
               {showEstValue && (
                 <SortableTableHead
                   label="Est. Value"
@@ -494,7 +695,6 @@ function LeadsListContent() {
                   initialOrder="desc"
                   activeSort={sort}
                   activeOrder={order}
-                  className="hidden lg:table-cell"
                   onSort={handleSort}
                 />
               )}
@@ -505,15 +705,14 @@ function LeadsListContent() {
                   initialOrder="desc"
                   activeSort={sort}
                   activeOrder={order}
-                  className="hidden lg:table-cell"
                   onSort={handleSort}
                 />
               )}
               {/* Always shown, unlike the columns above, which appear only when
                   some row has data. An empty assignment column is the point:
                   "nobody owns this" is the state worth seeing. */}
-              <TableHead className="hidden lg:table-cell">Setter</TableHead>
-              <TableHead className="hidden lg:table-cell">Closer</TableHead>
+              <TableHead className={leadLedgerHeadClass}>Setter</TableHead>
+              <TableHead className={leadLedgerHeadClass}>Closer</TableHead>
               <SortableTableHead
                 label="Added"
                 column="created_at"
@@ -523,25 +722,27 @@ function LeadsListContent() {
                 className="hidden md:table-cell"
                 onSort={handleSort}
               />
+              <TableHead className={`w-48 text-right ${leadLedgerHeadClass}`}>Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {loading && leads.length === 0 ? (
               [...Array(5)].map((_, i) => (
                 <TableRow key={i}>
-                  {isAdmin && <TableCell className="w-10"><Skeleton className="h-4 w-4" /></TableCell>}
+                  {isAdmin && <TableCell className="w-12"><Skeleton className="h-4 w-4" /></TableCell>}
                   <TableCell><Skeleton className="h-4 w-32" /></TableCell>
                   <TableCell className="hidden md:table-cell"><Skeleton className="h-4 w-32" /></TableCell>
                   <TableCell className="hidden md:table-cell"><Skeleton className="h-4 w-24" /></TableCell>
                   <TableCell><Skeleton className="h-5 w-16" /></TableCell>
                   <TableCell className="hidden sm:table-cell"><Skeleton className="h-5 w-14" /></TableCell>
-                  {showSource && <TableCell className="hidden lg:table-cell"><Skeleton className="h-4 w-20" /></TableCell>}
-                  {showAddedBy && <TableCell className="hidden lg:table-cell"><Skeleton className="h-4 w-20" /></TableCell>}
-                  {showEstValue && <TableCell className="hidden lg:table-cell"><Skeleton className="h-4 w-16" /></TableCell>}
-                  {showDealValue && <TableCell className="hidden lg:table-cell"><Skeleton className="h-4 w-16" /></TableCell>}
-                  <TableCell className="hidden lg:table-cell"><Skeleton className="h-4 w-20" /></TableCell>
-                  <TableCell className="hidden lg:table-cell"><Skeleton className="h-4 w-20" /></TableCell>
+                  {showSource && <TableCell><Skeleton className="h-4 w-20" /></TableCell>}
+                  {showAddedBy && <TableCell><Skeleton className="h-4 w-20" /></TableCell>}
+                  {showEstValue && <TableCell><Skeleton className="h-4 w-16" /></TableCell>}
+                  {showDealValue && <TableCell><Skeleton className="h-4 w-16" /></TableCell>}
+                  <TableCell><Skeleton className="h-4 w-20" /></TableCell>
+                  <TableCell><Skeleton className="h-4 w-20" /></TableCell>
                   <TableCell className="hidden md:table-cell"><Skeleton className="h-4 w-16" /></TableCell>
+                  <TableCell><Skeleton className="ml-auto h-11 w-44" /></TableCell>
                 </TableRow>
               ))
             ) : error && leads.length === 0 ? (
@@ -584,13 +785,14 @@ function LeadsListContent() {
               leads.map((lead) => (
                 <TableRow
                   key={lead.id}
-                  className="cursor-pointer hover:bg-muted/50"
+                  className={`group cursor-pointer border-border/70 hover:bg-muted/40 ${selection.has(lead.id) ? 'bg-primary/[0.04]' : ''}`}
                   onClick={() => router.push(`/admin/leads/${lead.id}`)}
                 >
                   {isAdmin && (
-                    <TableCell className="w-10" onClick={(e) => e.stopPropagation()}>
+                    <TableCell className="w-12" onClick={(e) => e.stopPropagation()}>
                       <Checkbox
                         checked={selection.has(lead.id)}
+                        className="after:-inset-3.5"
                         onCheckedChange={(checked) =>
                           setSelected([{ id: lead.id, value: lead.estimated_roof_value }], checked === true)
                         }
@@ -598,12 +800,12 @@ function LeadsListContent() {
                       />
                     </TableCell>
                   )}
-                  <TableCell>
-                    <div>
-                      <p className="font-medium text-sm flex items-center gap-1">
+                  <TableCell className="py-3.5">
+                    <div className="min-w-[11rem]">
+                      <p className="flex items-center gap-1 text-sm font-semibold">
                         <Link
                           href={`/admin/leads/${lead.id}`}
-                          className="rounded-sm hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                          className="rounded-sm hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
                           onClick={(event) => event.stopPropagation()}
                         >
                           {lead.first_name} {lead.last_name}
@@ -616,7 +818,6 @@ function LeadsListContent() {
                             DNC
                           </span>
                         )}
-                        {lead.enriched_at && <span title="Enriched"><Sparkles className="h-3 w-3 text-status-stale" /></span>}
                         {lead.follow_up_date && (() => {
                           const d = new Date(lead.follow_up_date + 'T00:00:00');
                           const overdue = isPast(d) && !isToday(d);
@@ -627,57 +828,20 @@ function LeadsListContent() {
                           );
                         })()}
                       </p>
-                      {/* Mobile: the row carries everything a rep needs at the door */}
-                      <div className="md:hidden mt-1 space-y-1.5">
-                        <p className="text-xs text-muted-foreground">
-                          {formatAddress(lead) || 'No address'}
+                      {lead.enriched_at && (
+                        <p className="mt-1 flex items-center gap-1 font-mono text-[10px] uppercase tracking-wide text-muted-foreground">
+                          <Sparkles className="h-3 w-3 text-status-stale" /> Enriched record
                         </p>
-                        <div className="flex flex-wrap items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
-                          {lead.is_dnc ? (
-                            <span className="inline-flex h-7 items-center rounded-md border border-destructive/40 px-2 text-xs text-destructive">
-                              <PhoneOff className="h-3 w-3 mr-1" />
-                              Knock only
-                            </span>
-                          ) : lead.phone ? (
-                            <a
-                              href={`tel:${lead.phone}`}
-                              className="inline-flex h-7 items-center rounded-md border px-2 text-xs tabular-nums active:bg-accent"
-                            >
-                              <Phone className="h-3 w-3 mr-1" />
-                              {formatPhone(lead.phone)}
-                            </a>
-                          ) : null}
-                          {mapsUrl(lead) && (
-                            <a
-                              href={mapsUrl(lead)!}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex h-7 items-center rounded-md border px-2 text-xs active:bg-accent"
-                            >
-                              <Navigation className="h-3 w-3 mr-1" />
-                              Directions
-                            </a>
-                          )}
-                        </div>
-                      </div>
+                      )}
                     </div>
                   </TableCell>
-                  <TableCell className="hidden md:table-cell text-sm">
-                    {lead.address_street ? (
-                      <span className="text-foreground/90">{lead.address_street}</span>
-                    ) : (
-                      <span className="text-muted-foreground">
-                        {[lead.address_city, lead.address_state].filter(Boolean).join(', ') || '—'}
-                      </span>
-                    )}
-                    {lead.address_street && (lead.address_city || lead.address_state) && (
-                      <span className="text-muted-foreground">
-                        {' · '}
-                        {[lead.address_city, lead.address_state].filter(Boolean).join(', ')}
-                      </span>
-                    )}
+                  <TableCell className="hidden max-w-[20rem] py-3.5 text-sm md:table-cell">
+                    <p className="truncate text-foreground/90">{lead.address_street || 'No street address'}</p>
+                    <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                      {[lead.address_city, lead.address_state].filter(Boolean).join(', ') || 'Location unavailable'}
+                    </p>
                   </TableCell>
-                  <TableCell className="hidden md:table-cell text-sm" onClick={(e) => e.stopPropagation()}>
+                  <TableCell className="hidden py-3.5 text-sm md:table-cell" onClick={(e) => e.stopPropagation()}>
                     {lead.is_dnc ? (
                       <span className="text-xs text-destructive/80">Do not call</span>
                     ) : lead.phone ? (
@@ -688,19 +852,19 @@ function LeadsListContent() {
                       <span className="text-muted-foreground">—</span>
                     )}
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="py-3.5">
                     <LeadStatusBadge status={lead.status} />
                   </TableCell>
-                  <TableCell className="hidden sm:table-cell">
+                  <TableCell className="hidden py-3.5 sm:table-cell">
                     <LeadPriorityBadge priority={lead.priority} />
                   </TableCell>
                   {showSource && (
-                    <TableCell className="hidden lg:table-cell text-sm text-muted-foreground">
+                    <TableCell className="py-3.5 text-sm text-muted-foreground">
                       {(lead.lead_sources as { display_name: string } | undefined)?.display_name || '—'}
                     </TableCell>
                   )}
                   {showAddedBy && (
-                    <TableCell className="hidden lg:table-cell text-sm text-muted-foreground">
+                    <TableCell className="py-3.5 text-sm text-muted-foreground">
                       {lead.created_by_name ? (
                         <span
                           className={
@@ -717,53 +881,67 @@ function LeadsListContent() {
                     </TableCell>
                   )}
                   {showEstValue && (
-                    <TableCell className="hidden lg:table-cell text-sm text-muted-foreground tabular-nums">
+                    <TableCell className="py-3.5 text-sm text-muted-foreground tabular-nums">
                       {lead.estimated_roof_value != null
                         ? `$${Number(lead.estimated_roof_value).toLocaleString()}`
                         : '—'}
                     </TableCell>
                   )}
                   {showDealValue && (
-                    <TableCell className="hidden lg:table-cell text-sm font-medium tabular-nums">
+                    <TableCell className="py-3.5 text-sm font-medium tabular-nums">
                       {lead.deal_value != null ? `$${Number(lead.deal_value).toLocaleString()}` : '—'}
                     </TableCell>
                   )}
                   {/* Unowned is styled as absence, not as a value: a muted dash
                       scans as a gap so a column of them reads as a problem. */}
-                  <TableCell className="hidden lg:table-cell text-sm">
+                  <TableCell className="py-3.5 text-sm">
                     {lead.assigned_setter?.name ? (
                       <span className="text-foreground">{assigneeLabel(lead.assigned_setter.name)}</span>
                     ) : (
                       <span className="text-muted-foreground/60">—</span>
                     )}
                   </TableCell>
-                  <TableCell className="hidden lg:table-cell text-sm">
+                  <TableCell className="py-3.5 text-sm">
                     {lead.assigned_closer?.name ? (
                       <span className="text-foreground">{assigneeLabel(lead.assigned_closer.name)}</span>
                     ) : (
                       <span className="text-muted-foreground/60">—</span>
                     )}
                   </TableCell>
-                  <TableCell className="hidden md:table-cell text-sm text-muted-foreground">
-                    {formatDistanceToNow(new Date(lead.created_at), { addSuffix: true })}
+                  <TableCell className="hidden py-3.5 text-sm text-muted-foreground md:table-cell">
+                    <p>{formatDistanceToNow(new Date(lead.created_at), { addSuffix: true })}</p>
+                    {lead.follow_up_date && (() => {
+                      const followUp = new Date(`${lead.follow_up_date}T00:00:00`);
+                      const overdue = isPast(followUp) && !isToday(followUp);
+                      return (
+                        <p className={`mt-1 flex items-center gap-1 text-xs ${overdue ? 'font-medium text-destructive' : ''}`}>
+                          <CalendarClock className="h-3 w-3" />
+                          {lead.follow_up_date}{overdue ? ' · overdue' : ''}
+                        </p>
+                      );
+                    })()}
+                  </TableCell>
+                  <TableCell className="py-2">
+                    <LeadQuickActions lead={lead} />
                   </TableCell>
                 </TableRow>
               ))
             )}
           </TableBody>
-        </Table>
-      </div>
+          </Table>
+        </div>
+      </section>
 
       {/* Pagination */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 border-t pt-4 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm text-muted-foreground">
           Showing {total === 0 ? 0 : (page - 1) * 25 + 1}–{Math.min(page * 25, total)} of {total} lead{total !== 1 ? 's' : ''}
         </p>
         {totalPages > 1 && (
-          <div className="flex gap-2">
+          <div className="flex items-center gap-2">
             <Button
               variant="outline"
-              size="sm"
+              className="h-11"
               disabled={page <= 1}
               onClick={() => goToPage(page - 1)}
             >
@@ -774,7 +952,7 @@ function LeadsListContent() {
             </span>
             <Button
               variant="outline"
-              size="sm"
+              className="h-11"
               disabled={page >= totalPages}
               onClick={() => goToPage(page + 1)}
             >
@@ -786,11 +964,11 @@ function LeadsListContent() {
 
       {/* Bulk selection action bar */}
       {isAdmin && selection.size > 0 && (
-        <div className="fixed bottom-[calc(3.75rem+env(safe-area-inset-bottom))] left-2 right-2 z-40 flex items-center gap-3 overflow-x-auto rounded-lg border bg-background px-4 py-2.5 shadow-lg md:bottom-4 md:left-1/2 md:right-auto md:-translate-x-1/2">
+        <div className="fixed bottom-[calc(3.75rem+env(safe-area-inset-bottom))] left-2 right-2 z-40 flex items-center gap-3 overflow-x-auto border border-white/10 bg-[#121722] px-4 py-3 text-white shadow-xl md:bottom-4 md:left-1/2 md:right-auto md:-translate-x-1/2">
           <p className="text-sm whitespace-nowrap">
             <span className="font-medium">{selection.size}</span> selected
             {selectionTotal > 0 && (
-              <span className="text-muted-foreground"> · ${selectionTotal.toLocaleString()} est.</span>
+              <span className="text-white/60"> · ${selectionTotal.toLocaleString()} est.</span>
             )}
           </p>
           {selection.size > LIMITS.BULK_ASSIGN_MAX && (
@@ -799,7 +977,7 @@ function LeadsListContent() {
             </p>
           )}
           <Button
-            size="sm"
+            className="h-11"
             onClick={() => { setAssignMode('assign'); setAssignOpen(true); }}
             disabled={selection.size > LIMITS.BULK_ASSIGN_MAX}
           >
@@ -810,15 +988,15 @@ function LeadsListContent() {
               clearing a bad assignment is a distinct job from making one, and
               the operator should not have to pick a person to discard. */}
           <Button
-            size="sm"
             variant="outline"
+            className="h-11 border-white/20 bg-white/5 text-white hover:bg-white/10 hover:text-white dark:border-white/20 dark:bg-white/5 dark:hover:bg-white/10"
             onClick={() => { setAssignMode('unassign'); setAssignOpen(true); }}
             disabled={selection.size > LIMITS.BULK_ASSIGN_MAX}
           >
             <UserMinus className="h-4 w-4 mr-1" />
             Unassign
           </Button>
-          <Button size="sm" variant="ghost" onClick={() => setSelection(new Map())}>
+          <Button className="h-11 text-white hover:bg-white/10 hover:text-white dark:hover:bg-white/10" variant="ghost" onClick={() => setSelection(new Map())}>
             Clear
           </Button>
         </div>
@@ -857,10 +1035,10 @@ function LeadsListContent() {
                 are removed. This can&apos;t be undone.
               </p>
               <DialogFooter>
-                <Button variant="outline" onClick={() => setDncScrubOpen(false)} disabled={dncScrubbing}>
+                <Button variant="outline" className="h-11" onClick={() => setDncScrubOpen(false)} disabled={dncScrubbing}>
                   Cancel
                 </Button>
-                <Button variant="destructive" onClick={handleScrubDnc} disabled={dncScrubbing}>
+                <Button variant="destructive" className="h-11" onClick={handleScrubDnc} disabled={dncScrubbing}>
                   {dncScrubbing ? 'Removing...' : 'Remove numbers'}
                 </Button>
               </DialogFooter>
@@ -878,10 +1056,10 @@ function LeadsListContent() {
                 lead at an address is always kept as the original. No leads are deleted.
               </p>
               <DialogFooter>
-                <Button variant="outline" onClick={() => setRecheckOpen(false)} disabled={rechecking}>
+                <Button variant="outline" className="h-11" onClick={() => setRecheckOpen(false)} disabled={rechecking}>
                   Cancel
                 </Button>
-                <Button onClick={handleRecheckDuplicates} disabled={rechecking}>
+                <Button className="h-11" onClick={handleRecheckDuplicates} disabled={rechecking}>
                   {rechecking ? 'Checking...' : 'Re-check duplicates'}
                 </Button>
               </DialogFooter>
