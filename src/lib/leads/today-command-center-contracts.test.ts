@@ -43,6 +43,14 @@ describe('Today command center contracts', () => {
     expect(page).toMatch(/visibilitychange/);
   });
 
+  it('establishes the device-local day after hydration', () => {
+    expect(page).toContain('useState<DayBounds | null>(null)');
+    expect(page).toMatch(/setDay\(localDayBounds\(deviceNow\)\)/);
+    expect(page).toMatch(/if \(!day \|\| loading\)/);
+    expect(page.match(/if \(!day\) return;/g) ?? []).toHaveLength(2);
+    expect(page).not.toContain('useState<DayBounds>(() => localDayBounds(new Date()))');
+  });
+
   it('records all three visible results by PATCH and never DELETE', () => {
     for (const label of ['Completed', 'No-show', 'Cancelled']) expect(actions).toContain(label);
     expect(page).toMatch(/saveAppointmentOutcome\(/);

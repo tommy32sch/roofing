@@ -173,7 +173,7 @@ function TodayHeader({
   day,
   actions,
 }: {
-  day: DayBounds;
+  day: DayBounds | null;
   actions?: React.ReactNode;
 }) {
   return (
@@ -186,7 +186,11 @@ function TodayHeader({
           <div className="mt-1 flex flex-wrap items-baseline gap-x-4 gap-y-1">
             <h1 className="text-3xl font-semibold tracking-[-0.04em] sm:text-4xl">Today</h1>
             <p className="text-sm text-muted-foreground">
-              {format(new Date(day.start), 'EEEE · MMMM d')}
+              {day ? (
+                format(new Date(day.start), 'EEEE · MMMM d')
+              ) : (
+                <span aria-hidden="true" className="inline-block w-36">&nbsp;</span>
+              )}
             </p>
           </div>
         </div>
@@ -204,14 +208,24 @@ export default function TodayPage() {
   const [scope, setScope] = useState<TodayScope>(() => defaultScope(user.role));
   const { markets, homeMarketId, loading: marketsLoading } = useMarkets();
   const [market, setMarket] = useState('');
-  const [day, setDay] = useState<DayBounds>(() => localDayBounds(new Date()));
+  const [day, setDay] = useState<DayBounds | null>(null);
   const [nowIso, setNowIso] = useState(() => new Date().toISOString());
   const [serverClockOffsetMs, setServerClockOffsetMs] = useState(0);
   const [pendingById, setPendingById] = useState<Record<string, AppointmentOutcome | undefined>>({});
   const [outcomeErrors, setOutcomeErrors] = useState<Record<string, string | undefined>>({});
   const marketValue = market || (homeMarketId != null ? String(homeMarketId) : ALL_MARKETS);
 
+  // The browser owns the field rep's local day. Vercel renders in UTC, so
+  // reading the clock during SSR can produce different text and day bounds at
+  // hydration time. Establish the device day only after the page mounts.
+  useEffect(() => {
+    const deviceNow = new Date();
+    setDay(localDayBounds(deviceNow));
+    setNowIso(deviceNow.toISOString());
+  }, []);
+
   const fetchToday = useCallback(async (signal?: AbortSignal) => {
+    if (!day) return;
     const params = new URLSearchParams({ start: day.start, end: day.end, date: day.date, scope });
     if (market) params.set('market_id', market);
     setError('');
@@ -243,6 +257,8 @@ export default function TodayPage() {
   // device's local midnight; the minute clock moves a passed stop into the
   // result queue without requiring a reload.
   useEffect(() => {
+    if (!day) return;
+
     const refreshClock = () => {
       const now = new Date(Date.now() + serverClockOffsetMs);
       const nextDay = localDayBounds(now);
@@ -261,7 +277,7 @@ export default function TodayPage() {
       window.clearInterval(interval);
       document.removeEventListener('visibilitychange', onVisibility);
     };
-  }, [day.date, serverClockOffsetMs]);
+  }, [day, serverClockOffsetMs]);
 
   const commandCenter = useMemo(
     () =>
@@ -318,7 +334,7 @@ export default function TodayPage() {
     }
   }, [fetchToday]);
 
-  if (loading) {
+  if (!day || loading) {
     return (
       <div className="space-y-8">
         <TodayHeader day={day} />
