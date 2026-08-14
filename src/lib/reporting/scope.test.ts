@@ -57,6 +57,7 @@ describe('report scope URL contract', () => {
     const today = localReportPeriodBounds('today', now);
     const week = localReportPeriodBounds('week', now);
     const month = localReportPeriodBounds('month', now);
+    const year = localReportPeriodBounds('year', now);
 
     expect(new Date(today.from).getHours()).toBe(0);
     expect(new Date(today.to).getDate()).toBe(15);
@@ -64,6 +65,12 @@ describe('report scope URL contract', () => {
     expect(new Date(week.from).getDate()).toBe(10);
     expect(new Date(month.from).getDate()).toBe(1);
     expect(new Date(month.to).getMonth()).toBe(8);
+    expect(new Date(year.from).getMonth()).toBe(0);
+    expect(new Date(year.from).getDate()).toBe(1);
+    expect(new Date(year.from).getFullYear()).toBe(2026);
+    expect(new Date(year.to).getFullYear()).toBe(2027);
+    expect(new Date(year.to).getMonth()).toBe(0);
+    expect(new Date(year.to).getDate()).toBe(1);
     expect(today.localDate).toBe('2026-08-14');
   });
 
@@ -135,6 +142,27 @@ describe('server report scope resolution', () => {
     expect(
       resolveReportScope(rawScope({ period: 'today', from: '2026-08-01T00:00:00Z', to: '2026-09-01T00:00:00Z' }), input)
     ).toMatchObject({ ok: false, status: 400 });
+    expect(
+      resolveReportScope(
+        rawScope({
+          period: 'month',
+          from: '2026-07-01',
+          to: '2026-09-01T07:00:00.000Z',
+        }),
+        input
+      )
+    ).toMatchObject({ ok: false, status: 400 });
+    expect(
+      resolveReportScope(
+        rawScope({
+          period: 'year',
+          from: '2026-01-01T07:00:00.000Z',
+          to: '2027-01-01T07:00:00.000Z',
+          localDate: '2026-08-14',
+        }),
+        input
+      )
+    ).toMatchObject({ ok: true });
   });
 
   it('rejects an inaccessible market and a nonexistent calendar date', () => {

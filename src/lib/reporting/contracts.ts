@@ -1,6 +1,6 @@
 import type { LeadStatus, UserRole } from '@/types';
 
-export const REPORT_PERIODS = ['today', 'week', 'month', 'custom'] as const;
+export const REPORT_PERIODS = ['today', 'week', 'month', 'year', 'custom'] as const;
 
 export type ReportPeriod = (typeof REPORT_PERIODS)[number];
 

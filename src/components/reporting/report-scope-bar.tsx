@@ -22,13 +22,19 @@ const PERIODS: { value: Exclude<ReportPeriod, 'custom'>; label: string }[] = [
   { value: 'today', label: 'Today' },
   { value: 'week', label: 'Week' },
   { value: 'month', label: 'Month' },
+  { value: 'year', label: 'Year' },
 ];
 
 function periodRange(scope: ReportScopeSelection): string {
   const start = new Date(scope.from);
   const end = new Date(Date.parse(scope.to) - 1);
   if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return 'Invalid range';
-  const formatter = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' });
+  const includeYear = start.getFullYear() !== end.getFullYear() || scope.period === 'year';
+  const formatter = new Intl.DateTimeFormat(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: includeYear ? 'numeric' : undefined,
+  });
   const startLabel = formatter.format(start);
   const endLabel = formatter.format(end);
   return startLabel === endLabel ? startLabel : `${startLabel} – ${endLabel}`;

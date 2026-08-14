@@ -24,7 +24,7 @@ describe('contact activity tracking contracts', () => {
   });
 
   it('offers Today, Week and Month plus account filtering and lead links', () => {
-    for (const period of ["'today'", "'week'", "'month'"]) {
+    for (const period of ["'today'", "'week'", "'month'", "'year'"]) {
       expect(reportScope).toContain(period);
     }
     expect(reportScope).toContain('All team');

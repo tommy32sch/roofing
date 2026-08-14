@@ -14,6 +14,8 @@ const NAMED_PERIOD_HOURS = {
   today: { min: 22, max: 26 },
   week: { min: 166, max: 170 },
   month: { min: 670, max: 746 },
+  // A device-local calendar year is 365 or 366 days. Keep a small DST margin.
+  year: { min: 8736, max: 8808 },
 } as const;
 
 export interface ReportingRequestActor {

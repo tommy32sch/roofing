@@ -65,6 +65,11 @@ describe('durable Audit Log contracts', () => {
     expect(page).toContain('router.replace(');
     expect(page).toContain('applyMobileFilters');
     expect(page).toContain('Apply filters');
+    expect(page).toContain("defaultPeriod: AUDIT_DEFAULT_PERIOD");
+    expect(page).toContain("AUDIT_DEFAULT_PERIOD: Exclude<ReportPeriod, 'custom'> = 'year'");
+    expect(page).toContain('applyDateRange');
+    expect(page).toContain("period: 'custom'");
+    expect(page).toContain('No events in this range');
   });
 
   it('shows one expandable receipt while preserving direct lead links', () => {

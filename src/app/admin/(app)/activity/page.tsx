@@ -64,6 +64,7 @@ import { useAppShell } from '@/components/providers/app-shell-provider';
 import { cn } from '@/lib/utils';
 import { ReportScopeBar } from '@/components/reporting/report-scope-bar';
 import type {
+  ReportActorScope,
   ReportMemberOption,
   ReportPeriod,
   ReportScopeSelection,
@@ -160,6 +161,9 @@ interface MobileFilters {
   to: string;
 }
 
+const AUDIT_DEFAULT_PERIOD: Exclude<ReportPeriod, 'custom'> = 'year';
+const CUSTOM_RANGE_MAX_MS = 366 * 24 * 3_600_000;
+
 function dateInputToInstant(value: string, endExclusive = false): string | null {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
   if (!match) return null;
@@ -173,6 +177,32 @@ function dateInputToInstant(value: string, endExclusive = false): string | null 
   }
   if (endExclusive) date.setDate(date.getDate() + 1);
   return date.toISOString();
+}
+
+function customRangeFromDates(
+  fromDate: string,
+  toDate: string
+): Pick<ReportScopeSelection, 'period' | 'from' | 'to'> | null {
+  let from = dateInputToInstant(fromDate);
+  let to = dateInputToInstant(toDate, true);
+  if (!from || !to) return null;
+  if (Date.parse(to) <= Date.parse(from)) {
+    from = dateInputToInstant(toDate);
+    to = dateInputToInstant(fromDate, true);
+  }
+  if (!from || !to || Date.parse(to) <= Date.parse(from)) return null;
+  if (Date.parse(to) - Date.parse(from) > CUSTOM_RANGE_MAX_MS) {
+    to = new Date(Date.parse(from) + CUSTOM_RANGE_MAX_MS).toISOString();
+  }
+  return { period: 'custom', from, to };
+}
+
+function actorFromFilterParam(value: string): ReportActorScope | null {
+  if (!value) return null;
+  if (value === 'all' || value === 'mine' || value.startsWith('member:')) {
+    return actorScopeFromParam(value);
+  }
+  return actorScopeFromParam(`member:${value}`);
 }
 
 function dateGroupLabel(value: string): string {
@@ -224,7 +254,7 @@ function ActivityPageContent() {
     market: '',
     type: '',
     actor: 'all',
-    period: 'month',
+    period: AUDIT_DEFAULT_PERIOD,
     from: '',
     to: '',
   });
@@ -242,12 +272,12 @@ function ActivityPageContent() {
       parseReportScopeUrl(new URLSearchParams(searchParamsString)),
       {
         role: user.role,
-        homeMarketId,
+        homeMarketId: null,
         now: deviceAnchor,
-        defaultPeriod: 'month',
+        defaultPeriod: AUDIT_DEFAULT_PERIOD,
       }
     ),
-    [deviceAnchor, homeMarketId, searchParamsString, user.role]
+    [deviceAnchor, searchParamsString, user.role]
   );
   const scopeKey = reportScopeKey(scope);
   const actorFilter = actorScopeToParam(scope.actor);
@@ -353,11 +383,15 @@ function ActivityPageContent() {
   }, [items]);
 
   const totalPages = Math.ceil(total / limit);
+  const defaultActor = actorScopeToParam(defaultReportActor(user.role));
+  const narrowedPeriod = scope.period !== AUDIT_DEFAULT_PERIOD && scope.period !== 'custom'
+    ? scope.period
+    : '';
   const activeFilterCount = [
     typeFilter,
-    scope.period === 'custom' ? 'custom' : '',
-    scope.marketId !== homeMarketId ? marketValue : '',
-    actorFilter !== actorScopeToParam(defaultReportActor(user.role)) ? actorFilter : '',
+    scope.period === 'custom' ? 'custom' : narrowedPeriod,
+    scope.marketId != null ? marketValue : '',
+    actorFilter !== defaultActor ? actorFilter : '',
   ].filter(Boolean).length;
 
   function submitSearch(event: FormEvent) {
@@ -377,19 +411,37 @@ function ActivityPageContent() {
     setMobileFiltersOpen(true);
   }
 
+  function applyDateRange(nextFromDate: string, nextToDate: string) {
+    const range = customRangeFromDates(nextFromDate, nextToDate);
+    if (!range) return;
+    navigateScope({
+      ...scope,
+      ...range,
+    });
+  }
+
   function applyMobileFilters() {
     const marketId = !mobileFilters.market || mobileFilters.market === ALL_MARKETS
       ? null
       : Number(mobileFilters.market);
-    const actor = actorScopeFromParam(mobileFilters.actor) ?? defaultReportActor(user.role);
-    const periodPart = mobileFilters.period === 'custom'
+    const actor = actorFromFilterParam(mobileFilters.actor) ?? defaultReportActor(user.role);
+    const namedPeriod = mobileFilters.period === 'custom'
+      ? AUDIT_DEFAULT_PERIOD
+      : mobileFilters.period;
+    const named = localReportPeriodBounds(namedPeriod, deviceAnchor);
+    const namedFrom = format(new Date(named.from), 'yyyy-MM-dd');
+    const namedTo = format(new Date(Date.parse(named.to) - 1), 'yyyy-MM-dd');
+    const datesChanged = Boolean(
+      mobileFilters.from &&
+      mobileFilters.to &&
+      (mobileFilters.from !== namedFrom || mobileFilters.to !== namedTo)
+    );
+    const periodPart = datesChanged
       ? {
-          period: 'custom' as const,
-          from: dateInputToInstant(mobileFilters.from) ?? scope.from,
-          to: dateInputToInstant(mobileFilters.to, true) ?? scope.to,
+          ...(customRangeFromDates(mobileFilters.from, mobileFilters.to) ?? named),
           localDate: scope.localDate,
         }
-      : localReportPeriodBounds(mobileFilters.period, deviceAnchor);
+      : named;
     navigateScope({
       ...periodPart,
       marketId: Number.isInteger(marketId) && marketId! > 0 ? marketId : null,
@@ -400,10 +452,10 @@ function ActivityPageContent() {
   }
 
   function clearFilters() {
-    const defaults = localReportPeriodBounds('month', deviceAnchor);
+    const defaults = localReportPeriodBounds(AUDIT_DEFAULT_PERIOD, deviceAnchor);
     navigateScope({
       ...defaults,
-      marketId: homeMarketId,
+      marketId: null,
       actor: defaultReportActor(user.role),
     });
     replaceParams({ type: null, q: null, page: null });
@@ -412,7 +464,7 @@ function ActivityPageContent() {
       market: '',
       type: '',
       actor: 'all',
-      period: 'month',
+      period: AUDIT_DEFAULT_PERIOD,
       from: '',
       to: '',
     });
@@ -568,7 +620,9 @@ function ActivityPageContent() {
             <Input
               type="date"
               value={fromDate}
-              onChange={(event) => replaceParams({ from: event.target.value || null })}
+              onChange={(event) => {
+                if (event.target.value) applyDateRange(event.target.value, toDate);
+              }}
               className="w-[140px]"
               aria-label="Start date"
             />
@@ -576,7 +630,9 @@ function ActivityPageContent() {
             <Input
               type="date"
               value={toDate}
-              onChange={(event) => replaceParams({ to: event.target.value || null })}
+              onChange={(event) => {
+                if (event.target.value) applyDateRange(fromDate, event.target.value);
+              }}
               className="w-[140px]"
               aria-label="End date"
             />
@@ -608,19 +664,19 @@ function ActivityPageContent() {
             title={
               activeFilterCount > 0 || query
                 ? 'No events match these filters'
-                : 'No activity yet'
+                : 'No events in this range'
             }
             description={
               activeFilterCount > 0 || query
-                ? 'Clear a filter or search for a different lead, person, or note.'
-                : permissions.canViewTeamData
-                  ? 'Calls, notes, visits, assignments, and status changes will appear here.'
-                  : 'Your calls, notes, visits, and status changes will appear here.'
+                ? `Nothing matches from ${format(new Date(scope.from), 'MMM d, yyyy')} to ${format(new Date(Date.parse(scope.to) - 1), 'MMM d, yyyy')}. Clear a filter or search for a different lead, person, or note.`
+                : `Nothing is recorded from ${format(new Date(scope.from), 'MMM d, yyyy')} to ${format(new Date(Date.parse(scope.to) - 1), 'MMM d, yyyy')}. Calls, notes, visits, assignments, and status changes will appear here.`
             }
             action={
-              activeFilterCount > 0 || query
-                ? <Button variant="outline" onClick={clearFilters}>Clear filters</Button>
-                : undefined
+              <Button variant="outline" onClick={clearFilters}>
+                {scope.period === AUDIT_DEFAULT_PERIOD && !query && !typeFilter
+                  ? 'Reset range'
+                  : 'Show this year'}
+              </Button>
             }
           />
         </div>
@@ -938,7 +994,7 @@ function ActivityPageContent() {
                   market: '',
                   type: '',
                   actor: 'all',
-                  period: 'month',
+                  period: AUDIT_DEFAULT_PERIOD,
                   from: '',
                   to: '',
                 })}

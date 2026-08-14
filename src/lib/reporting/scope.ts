@@ -56,12 +56,15 @@ export function localReportPeriodBounds(
     start.setDate(start.getDate() - daysSinceMonday);
   } else if (period === 'month') {
     start.setDate(1);
+  } else if (period === 'year') {
+    start.setMonth(0, 1);
   }
 
   const end = new Date(start);
   if (period === 'today') end.setDate(end.getDate() + 1);
   if (period === 'week') end.setDate(end.getDate() + 7);
   if (period === 'month') end.setMonth(end.getMonth() + 1);
+  if (period === 'year') end.setFullYear(end.getFullYear() + 1);
 
   return {
     period,
