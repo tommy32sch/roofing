@@ -1386,6 +1386,21 @@ Architectural decisions:
   Not deployed. Existing unassigned leads stay admin-only until an admin
   assigns them. Signed-in production role checks remain after deploy.
 
+## Assign the current book to C. Simmons
+
+- [x] Read live users, markets, territories, and assignment counts
+- [x] Backup production
+- [x] Assign every Arizona lead to C. Simmons as setter
+- [x] Leave closer empty (no real closer; almost no appointments)
+
+Review:
+- Before: 883 unassigned, 82 on the demo Setter account, 2 on C. Simmons.
+  After a real-row read of all 967 leads: every `assigned_setter_id` is
+  C. Simmons (`csimmons@mytacheny.com`). Zero closer assignments.
+- Backup: `backups/backup-2026-08-13T22-41-22-477Z`.
+- No closer was invented. The one appointment-set lead still needs a closer
+  before that visit appears on a closer's Today screen.
+
 ## Product-specific admin interface
 
 Goal: replace the generic AI-dashboard appearance with a durable visual system
@@ -1430,3 +1445,514 @@ Architectural decisions:
 - Verification passed: 45 focused contracts, TypeScript, changed-file ESLint,
   `git diff --check`, and a real Turbopack production build with all 43 pages.
 - No database changes or migration are required for this redesign.
+
+## Lead workspace redesign
+
+Goal: make the lead book and homeowner record feel like one fast field-sales
+workflow, with the same product-specific hierarchy as Today.
+
+Architectural decisions:
+- Keep list and detail behavior in their existing routes and APIs. This phase is
+  an information-architecture and interaction redesign, not a data rewrite.
+- Treat the list as a work queue: search and common queue choices first;
+  advanced filtering and administrative maintenance stay available but quiet.
+- Treat the detail page as one homeowner record: immediate contact and next-step
+  actions first, live status controls second, then property and chronological
+  history. Do not hide the work history behind a tab.
+- Keep permissions, saved views, URL-backed filters, bulk actions, exports,
+  appointment rules, DNC handling, assignment rules, and mobile touch targets.
+- Use flat sections, ledgers, dividers, and sticky context. Do not recreate a
+  wall of interchangeable cards or add decorative gradients and glow.
+
+### Implementation
+- [x] Redesign the Leads list as a focused work queue
+- [x] Redesign Lead Detail as an action-first homeowner record
+- [x] Preserve responsive, accessible, role-aware behavior
+- [x] Add focused visual contracts for the new information architecture
+
+### Verification
+- [x] Run focused lead contracts, TypeScript, changed-file lint, and build
+- [x] Inspect list and detail at desktop, tablet, and phone widths
+- [x] Check empty, filtered, selected, DNC, and populated record states
+- [x] Record review results and any production verification still required
+
+### Review
+- Leads is now a work queue with primary search, saved views, sorting, URL-backed
+  presets, quiet advanced filters, mobile work rows, and a sticky desktop ledger.
+- Lead Detail is now one homeowner record with immediate contact actions, visible
+  safety cues, a flat status band, appointments, and one chronological activity
+  timeline. Existing mutations, permissions, and dialogs remain in place.
+- The responsive browser pass covered 1440 px, 1280 px, 768 px, and 390 px.
+  Empty, filtered, selected, DNC, and populated states had no page overflow or
+  new console warnings. All primary action targets remain at least 44 px.
+- Verification passed: 55 focused contracts, TypeScript, changed-file ESLint,
+  `git diff --check`, and a real Turbopack production build with all 43 pages.
+- No database changes or migration were required. Commit `5992d86` is live on
+  Vercel, and the signed-in production Leads queue passed its final check.
+
+## Map workspace redesign
+
+Goal: turn Map into a focused field-work workspace where the map stays primary
+while browsing leads, planning territories, selecting work, and canvassing.
+
+Architectural decisions:
+- Keep `LeadMap` as one stable, measured canvas. Preserve its layer order,
+  marker meanings, pure-freehand drawing, pointer cancellation, offline result
+  flow, and territory execution behavior.
+- Model Browse, Select Area, Draw Territory, Add House, and Execute Territory as
+  explicit workspace modes. Treat filters and storm data as view layers, not
+  competing modes.
+- Put role-aware work controls over the map on desktop. On phones, keep
+  Territories and Add House immediate and move secondary tools into a bottom
+  sheet so opening them never reduces map height.
+- Keep safety warnings above actions. Add Call, Text, Directions, and Open Lead
+  to the lead popup with 44 px targets; Do Not Call blocks phone actions only.
+- Clear selection and drawn selection areas whenever a lead-set filter changes,
+  so hidden leads cannot remain in an assignment.
+- Extend the existing role-scoped geo payload only with fields needed by the
+  approved actions. No database or migration change is required.
+
+### Implementation
+- [x] Replace the wrapping Map toolbar with the desktop command dock
+- [x] Add the mobile field-action row and non-shrinking tool sheet
+- [x] Add explicit mode context, compact map status, and overlay legend
+- [x] Upgrade lead popup identity, safety, contact, and navigation actions
+- [x] Align the bulk selection bar and clear stale selections on every filter
+- [x] Preserve all role, territory, storm, result, drawing, and offline behavior
+
+### Verification
+- [x] Add focused Map workspace and popup-action contracts
+- [x] Run focused Map tests, TypeScript, changed-file lint, and build
+- [x] Inspect desktop, tablet, and phone layouts in the signed-in browser
+- [x] Check browse, tools, filters, storm, selection, drawing, and territory states
+- [x] Record results and any production verification still required
+
+### Review
+- Map now keeps one full-height Leaflet canvas mounted while the workspace moves
+  between Browse, Select Area, Draw Territory, Add House, and Execute Territory.
+  Desktop controls use compact overlay docks; mobile and tablet controls use an
+  immediate action row and a bottom sheet that does not resize the map.
+- Lead popups now show homeowner identity and 44 px Call, Text, Directions, and
+  Open actions. The role-scoped geo response supplies only the needed contact
+  and address fields, and DNC still removes direct phone actions.
+- Selection and lasso state now clear when market, status, or priority changes.
+  The mobile bulk bar stays above the fixed navigation and keeps the existing
+  500-lead assignment limit.
+- Signed-in browser inspection passed at 1440, 1024, and 390 px. Browse, tool
+  sheet, filters, lead popup, storm layer, territory panel, add-house, drawing,
+  and selection states had no page overflow or new console warnings.
+- Verification passed: 199 focused Map and territory tests, TypeScript,
+  changed-file ESLint, `git diff --check`, and a real Turbopack production build
+  with all 43 pages.
+- No database change or migration was required. Commit `8b28416` is live on
+  Vercel. The signed-in production Map loaded 967 leads in Browse mode, exposed
+  the stable canvas and 44 px filter controls, and logged no browser errors.
+
+## Remaining product interface roadmap
+
+Phases 0–5 are implemented in the working tree. Settings, Performance, and
+Buyer Profiles remain later work. Migrations 032–034 are not yet on the live
+database — do not deploy this stack until they are applied.
+
+Goal: bring Dashboard, Calendar, Import, Activity, Integrations, Settings,
+Performance, and Analytics to the same workflow-based quality as Today, Leads,
+and Map.
+
+### Program decisions
+
+- Ship one complete phase at a time. Each phase must be useful on its own and
+  must not depend on an unfinished replacement.
+- Build one shared report scope for market, team member, and date range. Do not
+  let Dashboard, Performance, Activity, and Analytics create separate versions.
+- Keep scope in the URL so refresh, browser history, bookmarks, and shared links
+  preserve the current report.
+- Apply role limits on the server. Admins may use team scopes. Setters and
+  closers remain fixed to their own permitted records even if a URL is changed.
+- Use the device timezone to create explicit `from` and `to` instants. The
+  server must not guess the user's local day, week, or month.
+- Use flat ledgers, compact metric strips, clear sections, and action links.
+  Avoid a new wall of generic cards.
+- Keep 44 px touch targets for field actions. Use mobile sheets or agendas when
+  a desktop table or panel would become cramped.
+- Use route-specific response models. UI components must not know database row
+  shapes or repeat business rules.
+- Add a migration only when the current data model cannot support the durable
+  workflow. Do not use client-only grouping, temporary files, or duplicate
+  parsers as substitutes for a proper boundary.
+- Preserve existing permissions, DNC and DNK rules, appointment rules, market
+  scope, and audit history in every phase.
+
+### Phase 0 — Shared reporting foundation
+
+Objective: create the stable scope and presentation system used by every
+reporting page.
+
+#### Planned work
+
+- [x] Define one `ReportScope` contract with market, actor scope, named period,
+  explicit `from` and `to` instants, and an `asOf` timestamp.
+- [x] Define one URL parser and serializer for report scope.
+- [x] Define one server resolver that validates dates, market access, and team
+  access before any query runs.
+- [x] Keep admin choices for All Team, Mine, and one team member. Setters and
+  closers receive Mine only.
+- [x] Create shared product patterns for a report scope bar, compact metric
+  strip, exception ledger, report empty state, and drill-down link.
+- [x] Define one comparison contract so a metric always compares the selected
+  period with the immediately preceding period of equal length.
+- [x] Define loading, partial-error, empty, and stale-data states once.
+- [x] Add contract tests for URL round trips, local-day boundaries, invalid
+  ranges, and role enforcement.
+
+#### Exit criteria
+
+- Scope survives refresh and browser back/forward navigation.
+- The same URL cannot expose broader data to a setter or closer.
+- Dashboard, Performance, Activity, and Analytics can consume the same contract
+  without translating it into page-specific state.
+- No database migration is expected for this phase.
+
+### Phase 1 — Dashboard: Operations Overview
+
+Objective: replace the passive card wall with one management brief that answers
+what needs attention, what changed, and where to act.
+
+#### Planned experience
+
+- [x] Put urgent exceptions first: overdue follow-ups, unassigned leads,
+  appointments missing required ownership, and active deals with no recent work.
+- [ ] Define stalled-work thresholds in one tested domain module. Show the rule
+  that caused each exception instead of using an unexplained warning.
+- [ ] Add a compact KPI strip for new leads, contacts, appointments, sold jobs,
+  and revenue. Use the same selected period for every KPI.
+- [ ] Replace the large intake chart with a compact trend that supports the
+  current decision and does not dominate the first screen.
+- [ ] Show the current funnel as a ledger with counts, value, and direct links to
+  the matching Leads queue.
+- [ ] Show a team pulse for knocks, calls, appointments, outcomes, and sold jobs.
+- [ ] Keep Recent Leads only when it adds new information; otherwise link to the
+  Lead Book and use the space for exceptions.
+- [ ] Add clear `View work` links that open URL-filtered Leads, Calendar, or
+  Activity views.
+- [ ] Keep refresh and show the exact `asOf` time.
+
+#### Data and API plan
+
+- [ ] Add a dedicated operations-overview response model instead of expanding
+  the generic stats response without a boundary.
+- [ ] Reuse existing lead, appointment, knock, call, and contact-activity query
+  helpers so totals use the same policy as their source pages.
+- [ ] Return exceptions, metrics, funnel, team pulse, prior-period comparison,
+  and destination filter URLs in one scoped response.
+- [ ] Keep partial sections usable when one optional query fails.
+
+#### Exit criteria
+
+- A manager can identify the most important problem and open the affected work
+  without interpreting several unrelated cards.
+- Every period metric uses the same date window and prior comparison.
+- Admin, setter, and closer views pass the role matrix.
+- Desktop and mobile show the first actionable item without a long scroll.
+- No database migration is expected for this phase.
+
+### Phase 2 — Calendar: Schedule Desk
+
+Objective: make Calendar the operating schedule for inspections and adjuster
+visits instead of a passive date grid.
+
+#### Planned experience
+
+- [ ] Keep a desktop week schedule, use a compact month overview, and replace the
+  phone grid with a chronological agenda.
+- [ ] Add admin filters for All Team, one setter, and one closer. Keep reps fixed
+  to their permitted appointments.
+- [ ] Show appointment type, time, homeowner, address, setter, closer, status,
+  and outcome in a clear hierarchy.
+- [ ] Add 44 px Call, Directions, Open Lead, and Record Outcome actions.
+- [ ] Remove Call when the lead is DNC. Keep navigation and lead access.
+- [ ] Add an unscheduled-work rail for due follow-ups that need an appointment or
+  a new date.
+- [ ] Show conflicts, missing ownership, and overdue outcome recording as visible
+  schedule exceptions.
+- [ ] Preserve week and month navigation in the URL.
+
+#### Data and API plan
+
+- [ ] Extend the appointment query contract with validated team scope and the
+  display fields required by the schedule.
+- [ ] Return setter and closer names with the appointment instead of resolving
+  account IDs in the UI.
+- [ ] Reuse the existing appointment-outcome mutation and result dialogs.
+- [ ] Define one schedule-work response for follow-ups that are due but do not
+  already have a future appointment.
+
+#### Exit criteria
+
+- A field rep can move from agenda item to call, directions, lead, or outcome in
+  one tap.
+- An admin can understand one rep's day and the whole team's week.
+- The mobile agenda is fully usable at 390 px with no horizontal calendar grid.
+- Existing appointment visibility and outcome rules remain enforced.
+- No database migration is expected for this phase.
+
+### Phase 3 — Import: Durable Review and Confirm
+
+Objective: make imports safe, reviewable, resumable, and auditable before any
+lead is created.
+
+#### Planned architecture
+
+- [ ] Evolve `lead_import_batches` into a durable import-job state machine with
+  `uploaded`, `review_ready`, `processing`, `completed`, `failed`, and
+  `cancelled` states.
+- [ ] Store the original file in a private Supabase Storage bucket with a file
+  hash, uploader, market, row count, preview summary, and retention policy.
+- [ ] Use one server-side parser and validator for preview and commit. Do not
+  create a second client parser that can disagree with production import rules.
+- [ ] Make confirmation idempotent so a retry or double click cannot insert the
+  same job twice.
+- [ ] Keep the final batch as the durable receipt linked from imported leads.
+- [ ] Add a migration for job state, storage reference, file hash, confirmation
+  metadata, failure details, and structured preview counts.
+
+#### Planned experience
+
+- [ ] Step 1 — Upload: support file picker, real drag-and-drop, keyboard access,
+  file replacement, market selection, and clear file limits.
+- [ ] Step 2 — Review: show detected columns, mapped fields, valid rows, missing
+  required fields, duplicate candidates, DNC handling, and a bounded row sample.
+- [ ] Let the user cancel or replace the file before any lead is written.
+- [ ] Step 3 — Confirm: show an explicit summary of what will import and what
+  will be flagged or skipped.
+- [ ] Step 4 — Receipt: show uploader, market, filename, timestamps, counts,
+  errors, and direct links to the imported batch in Leads.
+- [ ] Add a recent-imports ledger so a refresh or another session can reopen the
+  receipt.
+
+#### Exit criteria
+
+- Preview creates no leads.
+- Refreshing during review restores the same job.
+- Confirming twice creates one result.
+- Duplicate and DNC counts match the committed batch.
+- Failed jobs keep actionable error details and never appear completed.
+- File cleanup and retention are documented and tested.
+
+### Phase 4 — Activity: Audit Log
+
+Objective: turn the noisy event feed into a trustworthy audit trail that can
+represent one bulk operation without hundreds of identical rows.
+
+#### Planned architecture
+
+- [ ] Add a durable `audit_operations` record for bulk actions with actor,
+  operation type, market, affected count, safe metadata, and timestamp.
+- [ ] Add `operation_id` to `lead_activities` so detailed per-lead history can
+  link to the parent operation.
+- [ ] Update bulk mutation routes to create one operation and link every affected
+  lead activity in the same transaction or server operation boundary.
+- [ ] Do not guess groups from matching text or nearby timestamps. Existing rows
+  without an operation ID remain honest legacy events.
+- [ ] Add indexes for operation, date, actor, type, and lead access patterns.
+
+#### Planned experience
+
+- [ ] Rename the navigation label to Audit Log while keeping the current route
+  stable.
+- [ ] Group results by calendar date and show both relative and absolute time.
+- [ ] Render one summary row for a bulk operation with an expandable lead sample
+  and affected count.
+- [ ] Add lead or address search, date range, event type, market, and user scope.
+- [ ] Store all filters and pagination in the URL.
+- [ ] Use a mobile filter sheet and a flat desktop ledger.
+- [ ] Preserve the deleted-leads panel and its separate permission boundary.
+
+#### API plan and exit criteria
+
+- [ ] Extend the API with validated `q`, `from`, `to`, scope, operation, and
+  cursor or page parameters.
+- [ ] Return operation summaries and individual events as explicit union types.
+- A bulk assignment produces one audit summary, while each lead retains its own
+  linked history.
+- Search and filters cannot reveal leads outside the caller's visibility.
+- Old events remain readable without false grouping.
+
+### Phase 5 — Integrations: Connection Health Console
+
+Objective: show whether each inbound connection is configured, working, stale,
+or failing, and give the admin one place to fix it.
+
+#### Planned architecture
+
+- [ ] Define one `IntegrationConnection` response model with provider, state,
+  last attempt, last success, last failure, expected cadence, recent volume,
+  configuration state, and safe error summary.
+- [ ] Build provider adapters for webhook API keys, email import, and Regrid.
+  Keep provider secrets in their existing secure storage.
+- [ ] Add durable integration health state so status does not depend on only the
+  last 50 visible log rows.
+- [ ] Update each provider path to record attempts, successes, failures, and
+  consecutive failures at the source of truth.
+- [ ] Define health rules for Not configured, Healthy, Stale, Failing, and
+  Paused. A connection without an expected cadence must not be called Stale.
+- [ ] Isolate provider failures so one failed request cannot hide every other
+  connection.
+
+#### Planned experience
+
+- [ ] Replace setup cards with a compact connection ledger and clear state.
+- [ ] Add provider detail panels with configuration, recent runs, error detail,
+  test connection, pause or resume, and setup guidance.
+- [ ] Move Regrid and email-import configuration out of Settings and into the
+  relevant integration detail.
+- [ ] Keep API-key reveal behavior safe: show a new secret once and never return
+  the full stored key later.
+- [ ] Add in-app stale or failure warnings. External alert delivery remains a
+  separate decision until owned email delivery is enabled.
+
+#### Exit criteria
+
+- An admin can tell whether lead intake is working without reading raw logs.
+- One provider failure leaves the remaining providers usable.
+- Health state has a documented reason and timestamp.
+- Tests cover secret handling, role access, state transitions, and partial
+  failures.
+
+### Phase 6 — Settings: Structured Administration
+
+Objective: replace the long card stack with stable, deep-linkable settings
+areas and remove integration setup from general company configuration.
+
+#### Planned information architecture
+
+- [ ] Create internal settings navigation for Company, Markets, Lead Rules,
+  Mapping, and Notifications.
+- [ ] Use stable nested routes or URL sections so a link opens the exact setting.
+- [ ] Keep Regrid, webhook, and email-import setup in Integrations only.
+- [ ] Keep storm delivery thresholds and recipients under Notifications.
+- [ ] Keep roof pricing and default lead behavior under Lead Rules.
+- [ ] Keep office region and geocoding defaults under Markets and Mapping.
+
+#### Planned behavior
+
+- [ ] Give each section its own loading and error boundary.
+- [ ] Track saved and changed values. Warn before leaving a section with unsaved
+  changes.
+- [ ] Use one clear save action per section and confirm which fields changed.
+- [ ] Mask secret fields and never place saved secrets back into normal text
+  inputs.
+- [ ] Keep all settings routes admin-only on both the page and API.
+- [ ] Replace long setup code blocks with a short summary and an expandable copy
+  panel only where setup code is still required.
+
+#### Exit criteria
+
+- An admin can reach any setting directly without scrolling through unrelated
+  configuration.
+- Moving integration settings does not duplicate state or create two save paths.
+- Unsaved changes cannot be lost without a warning.
+- No database migration is expected beyond any health-state migration already
+  completed for Integrations.
+
+### Phase 7 — Performance: Team Scoreboard
+
+Objective: show each role the metrics it controls, the pace toward its goals,
+and the work behind each result.
+
+#### Planned experience
+
+- [ ] Use the shared market, team, and period scope.
+- [ ] Replace repeated rep cards with a sortable desktop ledger and mobile rep
+  rows.
+- [ ] Add Setter, Closer, and All Team views for admins.
+- [ ] Setter metrics: knocks, calls, appointments set, set rate, show rate, and
+  overdue follow-through.
+- [ ] Closer metrics: appointments held, inspections, proposals, sold jobs,
+  close rate, revenue, and average deal value.
+- [ ] Give reps only their own scorecard and trend.
+- [ ] Open a rep detail panel with the existing 12-week trend, goal pace, and
+  direct links to the supporting work.
+- [ ] Explain every denominator and retain a dash when a rate is not defined.
+
+#### Data and goals plan
+
+- [ ] Replace broad in-memory row loading with a stable aggregate query boundary
+  that can scale beyond the current lead count.
+- [ ] Add effective-dated performance targets by role, market, metric, and
+  period. Do not hard-code one target forever in the UI.
+- [ ] Add a migration for targets with uniqueness and effective-date rules.
+- [ ] Compute pace and prior-period comparison on the server from the same
+  explicit date window as the scoreboard.
+
+#### Exit criteria
+
+- Setter and closer scorecards contain no irrelevant headline metrics.
+- Sorting, scope, and period survive refresh.
+- Every displayed total can drill into visible supporting records.
+- Goal changes preserve history rather than rewriting past expectations.
+
+### Phase 8 — Analytics: Buyer Profiles, data-gated
+
+Objective: show honest patterns in won customers without presenting a small
+sample as a confident advertising recommendation.
+
+#### Planned experience
+
+- [ ] Rename the product surface to Buyer Profiles.
+- [ ] Replace nine repeated cards with one ranked profile workspace and
+  attribute navigation.
+- [ ] Show sample size beside every result and define visible confidence bands.
+- [ ] Use Observed, Directional, and Established labels with documented minimum
+  sample sizes.
+- [ ] Never combine separate top categories into a synthetic customer profile
+  unless the joint distribution supports that combination.
+- [ ] Remove the Facebook targeting claim. Present observed customer patterns
+  and let the user decide how to use them.
+- [ ] Add a data-readiness state that shows how many completed demographic
+  profiles are needed and which fields are missing most often.
+- [ ] Use the shared market and date scope after enough data exists.
+
+#### Data plan and release gate
+
+- [ ] Return per-attribute non-null sample sizes, distributions, and joint
+  combinations from the analytics response.
+- [ ] Define and test confidence thresholds in one domain module.
+- [ ] Keep the full profile workspace behind a minimum useful sample gate.
+- [ ] Release the readiness state now only if it helps data collection; release
+  recommendations after production has enough won profiles.
+- No database migration is expected because the demographic fields already
+  exist.
+
+### Shared definition of done for every phase
+
+- [ ] Existing role, market, DNC, DNK, and lead-visibility contracts pass.
+- [ ] New business rules have focused unit or contract tests.
+- [ ] URL scope, refresh, back/forward, loading, empty, partial-error, and retry
+  behavior are verified.
+- [ ] Signed-in browser QA covers admin, setter, and closer behavior where the
+  surface differs by role.
+- [ ] Responsive QA covers 1440, 1280, 768, and 390 px with dark and light mode
+  where theme styling changes.
+- [ ] Primary mobile actions are at least 44 px and no page has horizontal
+  overflow.
+- [ ] TypeScript, changed-file ESLint, focused tests, `git diff --check`, and a
+  production build pass.
+- [ ] When deployment is authorized, push `main`, confirm it matches
+  `origin/main`, and verify a build-specific signature on the live page.
+- [ ] Document migrations, manual SQL, backup limits, and rollback steps before
+  any phase that changes data.
+
+### Delivery order and dependencies
+
+1. Phase 0 and Phase 1 together: shared reporting scope and Operations Overview.
+2. Phase 2: Schedule Desk. It can reuse the shared scope but does not depend on
+   later reporting work.
+3. Phase 3: Durable Import. Ship its migration and job workflow as one release.
+4. Phase 4: Audit Log. Ship operation IDs before changing bulk-event UI.
+5. Phase 5, then Phase 6: establish the Integrations boundary before removing
+   integration configuration from Settings.
+6. Phase 7: Team Scoreboard on the shared reporting scope.
+7. Phase 8: Buyer Profiles after the production sample reaches the defined gate.
+
+Do not start a later phase by adding a temporary version of a dependency that
+an earlier phase is designed to own.

@@ -16,7 +16,6 @@ const FILTERED_ROUTES = [
   'src/app/api/admin/leads/route.ts',
   'src/app/api/admin/leads/geo/route.ts',
   'src/app/api/admin/stats/route.ts',
-  'src/app/api/admin/activity/route.ts',
   'src/app/api/admin/contact-activity/route.ts',
   'src/app/api/admin/appointments/route.ts',
   'src/app/api/admin/performance/route.ts',
@@ -61,7 +60,7 @@ describe('lead visibility route contracts', () => {
   it('auto-assigns every rep-created lead through one helper', () => {
     for (const path of [
       'src/app/api/admin/leads/route.ts',
-      'src/app/api/admin/import/route.ts',
+      'src/app/api/admin/import/[jobId]/confirm/route.ts',
       'src/app/api/admin/leads/walk-up/route.ts',
     ]) {
       expect(read(path), path).toContain('assignmentForNewLead(');
@@ -96,8 +95,17 @@ describe('lead visibility route contracts', () => {
 
   it('keeps reps on their own global activity while admins may choose an account', () => {
     const activity = read('src/app/api/admin/activity/route.ts');
-    expect(activity).toContain('resolveContactActivityUser(');
-    expect(activity).toContain("query.eq('created_by', user.userId)");
+    const auditMigration = read('supabase/migrations/033_audit_operations.sql');
+    expect(activity).toContain('resolveReportScope(');
+    expect(activity).toContain('p_user_id: resolved.value.activityUserId');
+    expect(activity).toContain("'list_rep_audit_feed'");
+    expect(activity).toContain('p_actor_id: admin.sub');
+    expect(auditMigration).toContain(
+      "(p_actor_role = 'setter' AND lead.assigned_setter_id = p_actor_id)"
+    );
+    expect(auditMigration).toContain(
+      "(p_actor_role = 'closer' AND lead.assigned_closer_id = p_actor_id)"
+    );
   });
 
   it('requires uploader ownership before permanent photo deletion', () => {

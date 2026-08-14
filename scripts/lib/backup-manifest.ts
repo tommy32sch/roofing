@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { posix } from 'node:path';
 import { PHOTO_BUCKET } from '../../src/lib/leads/photos';
+import { IMPORT_STORAGE_BUCKET } from '../../src/lib/leads/import-job';
 
 /**
  * Tables are ordered parent-first so the data file is useful during a careful,
@@ -15,7 +16,10 @@ export const BACKUP_TABLES = [
   'lead_sources',
   'tags',
   'integration_api_keys',
+  'integration_connections',
+  'integration_runs',
   'lead_import_batches',
+  'audit_operations',
   'territories',
   'leads',
   'lead_activities',
@@ -41,7 +45,7 @@ export const BACKUP_TABLES = [
 ] as const;
 
 /** Private buckets whose object bytes are part of the application backup. */
-export const BACKUP_STORAGE_BUCKETS = [PHOTO_BUCKET] as const;
+export const BACKUP_STORAGE_BUCKETS = [PHOTO_BUCKET, IMPORT_STORAGE_BUCKET] as const;
 
 /**
  * Never place a Storage object name directly on the local filesystem. Object

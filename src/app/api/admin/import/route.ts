@@ -1,190 +1,197 @@
-import { NextRequest, NextResponse } from 'next/server';
 import { randomUUID } from 'crypto';
-import { db } from '@/lib/supabase/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getAuthenticatedAdmin } from '@/lib/auth/jwt';
-import { parseLeadCSV } from '@/lib/csv/parser';
 import { assignImportDuplicates } from '@/lib/leads/dedupe';
+import {
+  createImportPreview,
+  IMPORT_STORAGE_BUCKET,
+  ImportJobError,
+  importFileHash,
+  importLeadId,
+  importRetentionExpiry,
+  importStoragePath,
+  parseImportFile,
+  validateImportFilename,
+} from '@/lib/leads/import-job';
+import {
+  cleanupExpiredImportFiles,
+  IMPORT_JOB_SELECT,
+  importJobView,
+  loadImportJob,
+  markImportJobFailed,
+  previewDatabaseValues,
+  resolveImportMarket,
+  storageContentType,
+  type ImportJobDbRow,
+} from '@/lib/leads/import-job.server';
+import { db } from '@/lib/supabase/server';
 import { checkConfiguredRateLimit } from '@/lib/utils/rate-limit';
 import { LIMITS } from '@/lib/utils/validation';
-import * as XLSX from 'xlsx';
-import { assignmentForNewLead } from '@/lib/leads/lead-visibility';
 
-function excelToCSV(buffer: ArrayBuffer): string {
-  const workbook = XLSX.read(buffer, { type: 'array' });
-  const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-  return XLSX.utils.sheet_to_csv(firstSheet);
+function requestError(error: unknown, fallback = 'Import failed', job?: ReturnType<typeof importJobView>) {
+  if (error instanceof ImportJobError) {
+    return NextResponse.json(
+      { success: false, error: error.message, code: error.code, job },
+      { status: error.status }
+    );
+  }
+  return NextResponse.json({ success: false, error: fallback, job }, { status: 500 });
+}
+
+function requestedMarket(formData: FormData): number | null {
+  const value = formData.get('market_id');
+  if (value == null || value === '') return null;
+  if (typeof value !== 'string') {
+    throw new ImportJobError('invalid_market', 'Select a valid market.');
+  }
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new ImportJobError('invalid_market', 'Select a valid market.');
+  }
+  return parsed;
+}
+
+export async function GET() {
+  const admin = await getAuthenticatedAdmin();
+  if (!admin) {
+    return NextResponse.json({ success: false, error: 'Not authenticated' }, { status: 401 });
+  }
+
+  try {
+    const supabase = db();
+    await cleanupExpiredImportFiles(supabase).catch(() => 0);
+    const query = supabase
+      .from('lead_import_batches')
+      .select(IMPORT_JOB_SELECT)
+      .eq('uploaded_by', admin.sub)
+      .order('created_at', { ascending: false })
+      .limit(20);
+    const { data, error } = await query;
+    if (error) {
+      return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    }
+    return NextResponse.json({
+      success: true,
+      jobs: (data || []).map((row) => importJobView(row as unknown as ImportJobDbRow)),
+    });
+  } catch {
+    return NextResponse.json({ success: false, error: 'Could not load recent imports' }, { status: 500 });
+  }
 }
 
 export async function POST(request: NextRequest) {
+  const admin = await getAuthenticatedAdmin();
+  if (!admin) {
+    return NextResponse.json({ success: false, error: 'Not authenticated' }, { status: 401 });
+  }
+
+  // Bound spreadsheet parsing per account before reading the multipart body.
+  const rateLimit = await checkConfiguredRateLimit(admin.sub, 'lead-import', 5, '10 m');
+  if (!rateLimit.success) {
+    const retryAfter = Math.max(1, Math.ceil((rateLimit.reset - Date.now()) / 1000));
+    return NextResponse.json(
+      { success: false, error: 'Import limit reached. Try again later.' },
+      { status: 429, headers: { 'Retry-After': String(retryAfter) } }
+    );
+  }
+
+  let jobId: string | null = null;
   try {
-    const admin = await getAuthenticatedAdmin();
-    if (!admin) {
-      return NextResponse.json({ success: false, error: 'Not authenticated' }, { status: 401 });
-    }
-
-    // Parsing spreadsheets and normalizing up to 5,000 rows is intentionally
-    // available to every signed-in role, so bound that work per account before
-    // reading the multipart body. The existing limiter uses the application's
-    // shared Upstash budget and retains conservative protection if Redis fails.
-    const rateLimit = await checkConfiguredRateLimit(admin.sub, 'lead-import', 5, '10 m');
-    if (!rateLimit.success) {
-      const retryAfter = Math.max(1, Math.ceil((rateLimit.reset - Date.now()) / 1000));
-      return NextResponse.json(
-        { success: false, error: 'Import limit reached. Try again later.' },
-        { status: 429, headers: { 'Retry-After': String(retryAfter) } }
-      );
-    }
-
     const formData = await request.formData();
-    const file = formData.get('file') as File | null;
-
-    // Which office this list belongs to. Chosen on the import screen because it
-    // cannot be derived — street-only storm lists carry no city or state at all.
-    const rawMarket = formData.get('market_id');
-    const parsedMarket = rawMarket == null ? NaN : Number(rawMarket);
-    const marketId = Number.isInteger(parsedMarket) && parsedMarket > 0 ? parsedMarket : null;
-
-    if (!file) {
-      return NextResponse.json({ success: false, error: 'No file provided' }, { status: 400 });
+    const fileValue = formData.get('file');
+    if (!fileValue || typeof fileValue === 'string' || typeof fileValue.arrayBuffer !== 'function') {
+      throw new ImportJobError('file_required', 'Select a file to upload.');
+    }
+    const filename = fileValue.name.trim();
+    if (!filename) throw new ImportJobError('file_required', 'Select a file to upload.');
+    if (filename.length > 255) {
+      throw new ImportJobError('filename_too_long', 'The file name must be 255 characters or fewer.');
+    }
+    validateImportFilename(filename);
+    if (fileValue.size > LIMITS.CSV_FILE_SIZE) {
+      throw new ImportJobError('file_too_large', 'The file is larger than the 5 MB limit.');
     }
 
-    if (file.size > LIMITS.CSV_FILE_SIZE) {
-      return NextResponse.json({ success: false, error: 'File too large (max 5MB)' }, { status: 400 });
-    }
-
-    const fileName = file.name.toLowerCase();
-    let csvText: string;
-
-    if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
-      const buffer = await file.arrayBuffer();
-      csvText = excelToCSV(buffer);
-    } else {
-      csvText = await file.text();
-    }
-
-    const { leads, errors, skipped } = parseLeadCSV(csvText);
-
-    if (leads.length === 0) {
-      return NextResponse.json({
-        success: false,
-        error: 'No valid leads found',
-        errors,
-        imported: 0,
-        skipped,
-      }, { status: 400 });
-    }
-
-    if (leads.length > LIMITS.BULK_IMPORT_MAX) {
-      return NextResponse.json({
-        success: false,
-        error: `Too many rows (${leads.length}). Maximum is ${LIMITS.BULK_IMPORT_MAX}.`,
-      }, { status: 400 });
+    const bytes = new Uint8Array(await fileValue.arrayBuffer());
+    if (bytes.byteLength > LIMITS.CSV_FILE_SIZE) {
+      throw new ImportJobError('file_too_large', 'The file is larger than the 5 MB limit.');
     }
 
     const supabase = db();
-
-    // --- Duplicate detection ---
-    // A duplicate is the same PROPERTY, matched on a canonical street address
-    // (plus APN when the source provides one) by the shared assignDuplicates rule.
-    // Phone numbers are deliberately not a signal: skip-trace lists share numbers
-    // across relatives, and DNC-scrubbed leads have no phone at all.
-    //
-    // IDs are assigned before duplicate resolution so two copies inside the same
-    // file can point to one real parent instead of leaving duplicate_of_id null.
-    // The database RPC reads only indexed address/APN candidates, then the shared
-    // rule handles APN precedence and city/ZIP conflicts in input order.
-    const leadsWithIds = leads.map((lead) => ({ ...lead, id: randomUUID() }));
-    const assigned = await assignImportDuplicates(supabase, leadsWithIds);
-
-    // Record the upload itself before the leads, so every inserted row can point
-    // at it. The uploader's name is snapshotted onto the batch and each lead —
-    // this is an attribution trail, and it has to survive the account being
-    // renamed or removed.
+    const marketId = await resolveImportMarket(supabase, requestedMarket(formData));
+    jobId = randomUUID();
+    const storagePath = importStoragePath(admin.sub, jobId, filename);
+    const contentType = storageContentType(filename, fileValue.type);
     const uploaderName = admin.name?.trim() || admin.email;
-    const { data: importBatch } = await supabase
+    const { error: createError } = await supabase
       .from('lead_import_batches')
       .insert({
-        filename: file.name,
+        id: jobId,
+        status: 'uploaded',
+        filename,
         uploaded_by: admin.sub,
         uploaded_by_name: uploaderName,
+        uploaded_by_role: admin.role,
         market_id: marketId,
-        row_count: leads.length + skipped,
-      })
-      .select('id')
-      .single();
-    const batchId = (importBatch as { id?: string } | null)?.id ?? null;
+        storage_bucket: IMPORT_STORAGE_BUCKET,
+        storage_path: storagePath,
+        file_hash: importFileHash(bytes),
+        file_size_bytes: bytes.byteLength,
+        content_type: contentType,
+        retention_expires_at: importRetentionExpiry(),
+      });
+    if (createError) throw new Error(createError.message);
 
-    const annotatedLeads = leadsWithIds.map((lead) => {
-      const duplicateOfId = assigned.get(lead.id) ?? null;
-      return {
-        ...lead,
-        market_id: marketId,
-        ...assignmentForNewLead({ id: admin.sub, role: admin.role }),
-        created_by: admin.sub,
-        created_by_name: uploaderName,
-        import_batch_id: batchId,
-        is_flagged_duplicate: duplicateOfId !== null,
-        duplicate_of_id: duplicateOfId,
-      };
+    const upload = await supabase.storage.from(IMPORT_STORAGE_BUCKET).upload(storagePath, bytes, {
+      contentType,
+      upsert: false,
     });
+    if (upload.error) {
+      throw new ImportJobError(
+        'file_storage_failed',
+        'The private source file could not be stored. Try the upload again.',
+        500
+      );
+    }
 
-    // Insert leads in batches of 100
-    let imported = 0;
-    let flagged = 0;
-    let dnc = 0;
-    const batchSize = 100;
-    const importErrors: string[] = [...errors];
+    const parsed = parseImportFile(bytes, filename);
+    const leadsWithIds = parsed.leads.map((lead, index) => ({
+      ...lead,
+      id: importLeadId(jobId!, index),
+    }));
+    const assigned = await assignImportDuplicates(supabase, leadsWithIds);
+    const preview = createImportPreview(jobId, parsed, assigned);
+    const { error: previewError } = await supabase
+      .from('lead_import_batches')
+      .update(previewDatabaseValues(parsed, preview))
+      .eq('id', jobId)
+      .eq('status', 'uploaded');
+    if (previewError) throw new Error(previewError.message);
 
-    for (let i = 0; i < annotatedLeads.length; i += batchSize) {
-      const batch = annotatedLeads.slice(i, i + batchSize);
+    const { data: job, error: loadError } = await supabase
+      .from('lead_import_batches')
+      .select(IMPORT_JOB_SELECT)
+      .eq('id', jobId)
+      .single();
+    if (loadError || !job) throw new Error(loadError?.message || 'Import job was not saved');
 
-      const { data: insertedLeads, error } = await supabase
-        .from('leads')
-        .insert(batch)
-        .select('id, is_flagged_duplicate, is_dnc');
-
-      if (error) {
-        importErrors.push(`Batch ${Math.floor(i / batchSize) + 1}: ${error.message}`);
-      } else if (insertedLeads) {
-        imported += insertedLeads.length;
-        flagged += insertedLeads.filter(l => l.is_flagged_duplicate).length;
-        dnc += insertedLeads.filter(l => l.is_dnc).length;
-
-        // Create "created" activities for imported leads
-        const activities = insertedLeads.map((lead) => ({
-          lead_id: lead.id,
-          activity_type: 'created' as const,
-          content: lead.is_dnc
-            ? 'Imported from CSV (flagged Do Not Call)'
-            : lead.is_flagged_duplicate
-              ? 'Imported from CSV (flagged as duplicate)'
-              : 'Imported from CSV',
-          created_by: admin.sub,
-        }));
-
-        await supabase.from('lead_activities').insert(activities);
+    await cleanupExpiredImportFiles(supabase).catch(() => 0);
+    return NextResponse.json(
+      { success: true, job: importJobView(job as unknown as ImportJobDbRow) },
+      { status: 201 }
+    );
+  } catch (error) {
+    let failedJob: ReturnType<typeof importJobView> | undefined;
+    if (jobId) {
+      try {
+        const supabase = db();
+        await markImportJobFailed(supabase, jobId, error, 'uploaded');
+        const loaded = await loadImportJob(supabase, jobId);
+        if (loaded.job) failedJob = importJobView(loaded.job);
+      } catch {
+        // Preserve the original, actionable response when failure recording is unavailable.
       }
     }
-
-    // Backfill the batch with what actually landed, so the record matches the
-    // numbers the uploader was shown.
-    if (batchId) {
-      await supabase
-        .from('lead_import_batches')
-        .update({ imported_count: imported, duplicate_count: flagged, dnc_count: dnc })
-        .eq('id', batchId);
-    }
-
-    return NextResponse.json({
-      success: true,
-      imported,
-      skipped,
-      flagged,
-      dnc,
-      uploadedBy: uploaderName,
-      errors: importErrors,
-    });
-  } catch {
-    return NextResponse.json({ success: false, error: 'Internal server error' }, { status: 500 });
+    return requestError(error, 'The file could not be prepared for review.', failedJob);
   }
 }

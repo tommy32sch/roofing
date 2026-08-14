@@ -150,48 +150,51 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true, dry_run: true, updated: 0, skipped, assignments });
     }
 
-    // Apply updates per group, chunked; .select('id') returns rows actually written
-    const column = role === 'setter' ? 'assigned_setter_id' : 'assigned_closer_id';
-    let updated = 0;
-    const activityRows: { lead_id: string; activity_type: string; content: string; created_by: string }[] = [];
-
-    for (let i = 0; i < groups.length; i++) {
-      const group = groups[i];
+    // The assignment and every linked history row commit as one database
+    // operation. A partial write must never leave the Audit Log out of sync.
+    const items = groups.flatMap((group) => {
       const content = group.user_id
         ? `Bulk assigned ${role}: ${userMap.get(group.user_id)}`
         : `Bulk unassigned ${role}`;
-      let groupUpdated = 0;
-      for (const ids of chunk(group.lead_ids, IN_CHUNK_SIZE)) {
-        const { data, error } = await supabase
-          .from('leads')
-          .update({ [column]: group.user_id })
-          .in('id', ids)
-          .select('id');
-        if (error) {
-          return NextResponse.json({ success: false, error: error.message }, { status: 500 });
-        }
-        const writtenIds = (data || []).map((r) => r.id);
-        groupUpdated += writtenIds.length;
-        activityRows.push(
-          ...writtenIds.map((lead_id) => ({
-            lead_id,
-            activity_type: 'updated',
-            content,
-            created_by: admin.sub,
-          }))
-        );
+      return group.lead_ids.map((lead_id) => ({
+        lead_id,
+        user_id: group.user_id,
+        content,
+      }));
+    });
+
+    const { data: operation, error: operationError } = await supabase.rpc(
+      'apply_bulk_assignment_with_audit',
+      {
+        p_actor_id: admin.sub,
+        p_assignment_role: role,
+        p_items: items,
+        p_metadata: {
+          mode,
+          strategy,
+          assignments,
+        },
       }
-      updated += groupUpdated;
-      assignments[i].count = groupUpdated;
+    );
+    if (operationError) {
+      return NextResponse.json({ success: false, error: operationError.message }, { status: 500 });
     }
 
-    // One bulk activity insert; non-fatal on failure
-    if (activityRows.length > 0) {
-      const { error: activityError } = await supabase.from('lead_activities').insert(activityRows);
-      if (activityError) {
-        console.error('Bulk assign activity log failed:', activityError.message);
-      }
+    const operationResult = operation as {
+      operation_id?: string;
+      updated_count?: number;
+    } | null;
+    if (
+      !operationResult?.operation_id ||
+      operationResult.updated_count !== foundLeads.length
+    ) {
+      return NextResponse.json(
+        { success: false, error: 'Bulk assignment did not return a complete audit receipt' },
+        { status: 500 }
+      );
     }
+
+    const updated = operationResult.updated_count;
 
     return NextResponse.json({
       success: true,
@@ -199,6 +202,7 @@ export async function POST(request: NextRequest) {
       updated,
       skipped: leadIds.length - updated,
       assignments,
+      operation_id: operationResult.operation_id,
     });
   } catch {
     return NextResponse.json({ success: false, error: 'Internal server error' }, { status: 500 });

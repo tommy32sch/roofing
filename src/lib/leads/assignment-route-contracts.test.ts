@@ -60,7 +60,9 @@ describe('lead assignment page contract', () => {
   });
 
   it('refetches when either filter changes', () => {
-    expect(page).toMatch(/const fetchLeads = useCallback\([\s\S]*?\}, \[queueParams, page\]\);/);
+    expect(page).toMatch(
+      /const fetchLeads = useCallback\([\s\S]*?\}, \[queueParams, page, importBatchId\]\);/
+    );
   });
 
   it('offers unassign as its own action, not only a checkbox in the dialog', () => {

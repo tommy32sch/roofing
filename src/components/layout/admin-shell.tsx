@@ -10,6 +10,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuGroup,
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
@@ -205,12 +206,14 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
                   <ChevronDown className="hidden h-3.5 w-3.5 text-muted-foreground sm:block" />
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-56 rounded-[4px] p-1.5">
-                  <DropdownMenuLabel className="px-2 py-2">
-                    <span className="block truncate text-sm font-semibold text-foreground">{user.name}</span>
-                    <span className="mt-0.5 block truncate text-[11px] font-normal text-muted-foreground">
-                      {user.email}
-                    </span>
-                  </DropdownMenuLabel>
+                  <DropdownMenuGroup>
+                    <DropdownMenuLabel className="px-2 py-2">
+                      <span className="block truncate text-sm font-semibold text-foreground">{user.name}</span>
+                      <span className="mt-0.5 block truncate text-[11px] font-normal text-muted-foreground">
+                        {user.email}
+                      </span>
+                    </DropdownMenuLabel>
+                  </DropdownMenuGroup>
                   <DropdownMenuSeparator />
                   {permissions.canManageSettings && (
                     <>

@@ -2466,3 +2466,1041 @@ GRANT EXECUTE ON FUNCTION public.record_appointment_outcome(
   BOOLEAN
 ) TO service_role;
 
+-- ------------------------------------------------------------
+-- 032_durable_import_jobs.sql
+-- ------------------------------------------------------------
+-- Durable, review-first lead imports.
+--
+-- The existing lead_import_batches row remains the permanent receipt linked by
+-- leads.import_batch_id. New columns let that same row own the uploaded file,
+-- preview, confirmation claim, final counts, and any actionable failure.
+
+ALTER TABLE lead_import_batches
+  ADD COLUMN status TEXT NOT NULL DEFAULT 'completed',
+  ADD COLUMN uploaded_by_role TEXT,
+  ADD COLUMN storage_bucket TEXT,
+  ADD COLUMN storage_path TEXT,
+  ADD COLUMN file_hash TEXT,
+  ADD COLUMN file_size_bytes BIGINT,
+  ADD COLUMN content_type TEXT,
+  ADD COLUMN source_columns JSONB NOT NULL DEFAULT '[]'::JSONB,
+  ADD COLUMN field_mappings JSONB NOT NULL DEFAULT '[]'::JSONB,
+  ADD COLUMN preview_summary JSONB NOT NULL DEFAULT '{}'::JSONB,
+  ADD COLUMN preview_sample JSONB NOT NULL DEFAULT '[]'::JSONB,
+  ADD COLUMN preview_errors JSONB NOT NULL DEFAULT '[]'::JSONB,
+  ADD COLUMN confirmation_plan JSONB,
+  ADD COLUMN confirmation_plan_ready BOOLEAN NOT NULL DEFAULT false,
+  ADD COLUMN skipped_count INTEGER NOT NULL DEFAULT 0,
+  ADD COLUMN confirmed_by UUID REFERENCES admin_users(id) ON DELETE SET NULL,
+  ADD COLUMN confirmed_by_name TEXT,
+  ADD COLUMN confirmed_at TIMESTAMPTZ,
+  ADD COLUMN processing_started_at TIMESTAMPTZ,
+  ADD COLUMN completed_at TIMESTAMPTZ,
+  ADD COLUMN failed_at TIMESTAMPTZ,
+  ADD COLUMN cancelled_at TIMESTAMPTZ,
+  ADD COLUMN failure_code TEXT,
+  ADD COLUMN failure_detail TEXT,
+  ADD COLUMN retention_expires_at TIMESTAMPTZ,
+  ADD COLUMN file_deleted_at TIMESTAMPTZ,
+  ADD COLUMN updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+-- Rows created before this migration already represent completed imports.
+UPDATE lead_import_batches
+SET
+  completed_at = COALESCE(created_at, NOW()),
+  updated_at = COALESCE(created_at, NOW())
+WHERE status = 'completed';
+
+ALTER TABLE lead_import_batches
+  ALTER COLUMN status SET DEFAULT 'uploaded',
+  ADD CONSTRAINT lead_import_batches_status_check
+    CHECK (status IN (
+      'uploaded',
+      'review_ready',
+      'processing',
+      'completed',
+      'failed',
+      'cancelled'
+    )),
+  ADD CONSTRAINT lead_import_batches_uploader_role_check
+    CHECK (uploaded_by_role IS NULL OR uploaded_by_role IN ('admin', 'setter', 'closer')),
+  ADD CONSTRAINT lead_import_batches_file_size_check
+    CHECK (file_size_bytes IS NULL OR file_size_bytes BETWEEN 0 AND 5242880),
+  ADD CONSTRAINT lead_import_batches_hash_check
+    CHECK (file_hash IS NULL OR file_hash ~ '^[0-9a-f]{64}$'),
+  ADD CONSTRAINT lead_import_batches_counts_check
+    CHECK (
+      row_count >= 0
+      AND imported_count >= 0
+      AND duplicate_count >= 0
+      AND dnc_count >= 0
+      AND skipped_count >= 0
+    ),
+  ADD CONSTRAINT lead_import_batches_storage_pair_check
+    CHECK ((storage_bucket IS NULL) = (storage_path IS NULL)),
+  ADD CONSTRAINT lead_import_batches_terminal_time_check
+    CHECK (
+      (status <> 'completed' OR completed_at IS NOT NULL)
+      AND (status <> 'failed' OR failed_at IS NOT NULL)
+      AND (status <> 'cancelled' OR cancelled_at IS NOT NULL)
+    );
+
+CREATE UNIQUE INDEX idx_lead_import_batches_storage_path
+  ON lead_import_batches(storage_bucket, storage_path)
+  WHERE storage_path IS NOT NULL;
+
+CREATE INDEX idx_lead_import_batches_uploader_recent
+  ON lead_import_batches(uploaded_by, created_at DESC);
+
+CREATE INDEX idx_lead_import_batches_open_jobs
+  ON lead_import_batches(uploaded_by, updated_at DESC)
+  WHERE status IN ('uploaded', 'review_ready', 'processing');
+
+CREATE INDEX idx_lead_import_batches_file_retention
+  ON lead_import_batches(retention_expires_at)
+  WHERE storage_path IS NOT NULL AND file_deleted_at IS NULL;
+
+CREATE TRIGGER update_lead_import_batches_updated_at
+  BEFORE UPDATE ON lead_import_batches
+  FOR EACH ROW
+  EXECUTE FUNCTION update_updated_at_column();
+
+-- Source files are server-only. The application uses the service-role client;
+-- no browser policy is created on storage.objects. Files expire after 30 days.
+-- The import service removes expired objects in bounded batches, then records
+-- file_deleted_at while retaining the database receipt indefinitely.
+INSERT INTO storage.buckets (id, name, public, file_size_limit)
+VALUES ('lead-imports', 'lead-imports', false, 5242880)
+ON CONFLICT (id) DO UPDATE SET
+  public = false,
+  file_size_limit = 5242880;
+
+COMMENT ON COLUMN lead_import_batches.confirmation_plan IS
+  'Server-only deterministic lead-id to duplicate-parent plan used to resume confirmation safely.';
+
+COMMENT ON COLUMN lead_import_batches.retention_expires_at IS
+  'Private source-file expiry. The receipt and imported leads do not expire.';
+
+-- ------------------------------------------------------------
+-- 033_audit_operations.sql
+-- ------------------------------------------------------------
+-- Durable, grouped audit operations.
+--
+-- A bulk change is one business action, even when it changes hundreds of
+-- leads. Store that action once and link its per-lead history rows so the Audit
+-- Log can show a concise operation without losing each lead's timeline.
+
+CREATE TABLE audit_operations (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  operation_type TEXT NOT NULL CHECK (operation_type IN ('bulk_assignment')),
+  actor_id UUID REFERENCES admin_users(id) ON DELETE SET NULL,
+  actor_name TEXT NOT NULL,
+  market_id INTEGER REFERENCES markets(id) ON DELETE SET NULL,
+  affected_count INTEGER NOT NULL CHECK (affected_count > 0),
+  metadata JSONB NOT NULL DEFAULT '{}'::JSONB CHECK (jsonb_typeof(metadata) = 'object'),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE audit_operations ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Service role full access"
+  ON audit_operations
+  FOR ALL
+  USING (auth.role() = 'service_role')
+  WITH CHECK (auth.role() = 'service_role');
+
+ALTER TABLE lead_activities
+  ADD COLUMN operation_id UUID REFERENCES audit_operations(id) ON DELETE SET NULL;
+
+CREATE INDEX idx_audit_operations_created_at
+  ON audit_operations(created_at DESC);
+
+CREATE INDEX idx_audit_operations_actor_created
+  ON audit_operations(actor_id, created_at DESC);
+
+CREATE INDEX idx_audit_operations_type_created
+  ON audit_operations(operation_type, created_at DESC);
+
+CREATE INDEX idx_audit_operations_market_created
+  ON audit_operations(market_id, created_at DESC)
+  WHERE market_id IS NOT NULL;
+
+CREATE INDEX idx_lead_activities_operation
+  ON lead_activities(operation_id)
+  WHERE operation_id IS NOT NULL;
+
+CREATE INDEX idx_lead_activities_actor_created
+  ON lead_activities(created_by, created_at DESC);
+
+CREATE INDEX idx_lead_activities_type_created
+  ON lead_activities(activity_type, created_at DESC);
+
+-- Apply a full bulk assignment and its audit trail in one transaction. A
+-- concurrent lead deletion or invalid target fails the entire operation.
+CREATE OR REPLACE FUNCTION public.apply_bulk_assignment_with_audit(
+  p_actor_id UUID,
+  p_assignment_role TEXT,
+  p_items JSONB,
+  p_metadata JSONB DEFAULT '{}'::JSONB
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_actor_name TEXT;
+  v_expected INTEGER;
+  v_updated INTEGER;
+  v_operation_id UUID;
+  v_market_id INTEGER;
+BEGIN
+  IF auth.role() IS DISTINCT FROM 'service_role' THEN
+    RAISE EXCEPTION 'apply_bulk_assignment_with_audit requires service role';
+  END IF;
+
+  IF p_assignment_role NOT IN ('setter', 'closer') THEN
+    RAISE EXCEPTION 'Invalid assignment role';
+  END IF;
+
+  IF jsonb_typeof(p_items) IS DISTINCT FROM 'array' THEN
+    RAISE EXCEPTION 'Assignment items must be an array';
+  END IF;
+
+  v_expected := jsonb_array_length(p_items);
+  IF v_expected < 1 OR v_expected > 500 THEN
+    RAISE EXCEPTION 'Assignment items must contain 1-500 rows';
+  END IF;
+
+  IF p_metadata IS NULL OR jsonb_typeof(p_metadata) IS DISTINCT FROM 'object' THEN
+    RAISE EXCEPTION 'Operation metadata must be an object';
+  END IF;
+
+  SELECT name INTO v_actor_name
+  FROM admin_users
+  WHERE id = p_actor_id;
+
+  IF v_actor_name IS NULL THEN
+    RAISE EXCEPTION 'Audit actor not found';
+  END IF;
+
+  -- The application deduplicates lead IDs. Keep the database boundary strict
+  -- so another service caller cannot create conflicting assignments.
+  IF (
+    SELECT COUNT(DISTINCT item.lead_id)
+    FROM jsonb_to_recordset(p_items) AS item(lead_id UUID, user_id UUID, content TEXT)
+  ) <> v_expected THEN
+    RAISE EXCEPTION 'Assignment items contain duplicate lead IDs';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM jsonb_to_recordset(p_items) AS item(lead_id UUID, user_id UUID, content TEXT)
+    LEFT JOIN admin_users target ON target.id = item.user_id
+    WHERE item.user_id IS NOT NULL
+      AND (
+        target.id IS NULL OR
+        (target.role::TEXT <> p_assignment_role AND target.role::TEXT <> 'admin')
+      )
+  ) THEN
+    RAISE EXCEPTION 'One or more assignment targets are not eligible';
+  END IF;
+
+  SELECT CASE
+    WHEN COUNT(DISTINCT leads.market_id) = 1
+      AND COUNT(*) FILTER (WHERE leads.market_id IS NULL) = 0
+    THEN MIN(leads.market_id)
+    ELSE NULL
+  END
+  INTO v_market_id
+  FROM jsonb_to_recordset(p_items) AS item(lead_id UUID, user_id UUID, content TEXT)
+  JOIN leads ON leads.id = item.lead_id;
+
+  INSERT INTO audit_operations (
+    operation_type,
+    actor_id,
+    actor_name,
+    market_id,
+    affected_count,
+    metadata
+  )
+  VALUES (
+    'bulk_assignment',
+    p_actor_id,
+    v_actor_name,
+    v_market_id,
+    v_expected,
+    p_metadata || jsonb_build_object('assignment_role', p_assignment_role)
+  )
+  RETURNING id INTO v_operation_id;
+
+  IF p_assignment_role = 'setter' THEN
+    WITH input AS (
+      SELECT item.lead_id, item.user_id, item.content
+      FROM jsonb_to_recordset(p_items) AS item(lead_id UUID, user_id UUID, content TEXT)
+    ),
+    updated AS (
+      UPDATE leads
+      SET assigned_setter_id = input.user_id
+      FROM input
+      WHERE leads.id = input.lead_id
+      RETURNING leads.id, input.content
+    ),
+    logged AS (
+      INSERT INTO lead_activities (
+        lead_id,
+        activity_type,
+        content,
+        created_by,
+        operation_id
+      )
+      SELECT id, 'updated', content, p_actor_id, v_operation_id
+      FROM updated
+      RETURNING id
+    )
+    SELECT COUNT(*) INTO v_updated FROM logged;
+  ELSE
+    WITH input AS (
+      SELECT item.lead_id, item.user_id, item.content
+      FROM jsonb_to_recordset(p_items) AS item(lead_id UUID, user_id UUID, content TEXT)
+    ),
+    updated AS (
+      UPDATE leads
+      SET assigned_closer_id = input.user_id
+      FROM input
+      WHERE leads.id = input.lead_id
+      RETURNING leads.id, input.content
+    ),
+    logged AS (
+      INSERT INTO lead_activities (
+        lead_id,
+        activity_type,
+        content,
+        created_by,
+        operation_id
+      )
+      SELECT id, 'updated', content, p_actor_id, v_operation_id
+      FROM updated
+      RETURNING id
+    )
+    SELECT COUNT(*) INTO v_updated FROM logged;
+  END IF;
+
+  IF v_updated <> v_expected THEN
+    RAISE EXCEPTION 'One or more leads changed before assignment';
+  END IF;
+
+  RETURN jsonb_build_object(
+    'operation_id', v_operation_id,
+    'updated_count', v_updated
+  );
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.apply_bulk_assignment_with_audit(
+  UUID,
+  TEXT,
+  JSONB,
+  JSONB
+) FROM PUBLIC, anon, authenticated;
+
+GRANT EXECUTE ON FUNCTION public.apply_bulk_assignment_with_audit(
+  UUID,
+  TEXT,
+  JSONB,
+  JSONB
+) TO service_role;
+
+-- Return a single, paginated stream for the admin Audit Log. New bulk
+-- operations are grouped; legacy and single-record activities remain events.
+CREATE OR REPLACE FUNCTION public.list_admin_audit_feed(
+  p_limit INTEGER DEFAULT 50,
+  p_offset INTEGER DEFAULT 0,
+  p_market_id INTEGER DEFAULT NULL,
+  p_user_id UUID DEFAULT NULL,
+  p_type TEXT DEFAULT NULL,
+  p_from TIMESTAMPTZ DEFAULT NULL,
+  p_to TIMESTAMPTZ DEFAULT NULL,
+  p_query TEXT DEFAULT NULL
+)
+RETURNS TABLE (
+  item_kind TEXT,
+  item_id UUID,
+  activity_type TEXT,
+  content TEXT,
+  old_status TEXT,
+  new_status TEXT,
+  created_at TIMESTAMPTZ,
+  actor_name TEXT,
+  lead JSONB,
+  operation JSONB,
+  total_count BIGINT
+)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  WITH feed AS (
+    SELECT
+      'operation'::TEXT AS item_kind,
+      operation.id AS item_id,
+      operation.operation_type AS activity_type,
+      CASE operation.operation_type
+        WHEN 'bulk_assignment' THEN
+          'Bulk ' || COALESCE(operation.metadata->>'assignment_role', 'lead') ||
+          ' assignment'
+        ELSE REPLACE(operation.operation_type, '_', ' ')
+      END AS content,
+      NULL::TEXT AS old_status,
+      NULL::TEXT AS new_status,
+      operation.created_at,
+      operation.actor_name,
+      NULL::JSONB AS lead,
+      jsonb_build_object(
+        'id', operation.id,
+        'operation_type', operation.operation_type,
+        'affected_count', CASE
+          WHEN p_market_id IS NULL THEN operation.affected_count
+          ELSE (
+            SELECT COUNT(*)
+            FROM lead_activities scoped_activity
+            JOIN leads scoped_lead ON scoped_lead.id = scoped_activity.lead_id
+            WHERE scoped_activity.operation_id = operation.id
+              AND scoped_lead.market_id = p_market_id
+          )
+        END,
+        'market_id', operation.market_id,
+        'metadata', operation.metadata
+      ) AS operation
+    FROM audit_operations operation
+    WHERE (p_user_id IS NULL OR operation.actor_id = p_user_id)
+      AND (p_type IS NULL OR p_type = 'bulk_assignment')
+      AND (p_from IS NULL OR operation.created_at >= p_from)
+      AND (p_to IS NULL OR operation.created_at < p_to)
+      AND (
+        p_market_id IS NULL OR EXISTS (
+          SELECT 1
+          FROM lead_activities linked_activity
+          JOIN leads linked_lead ON linked_lead.id = linked_activity.lead_id
+          WHERE linked_activity.operation_id = operation.id
+            AND linked_lead.market_id = p_market_id
+        )
+      )
+      AND (
+        p_query IS NULL OR p_query = '' OR
+        operation.actor_name ILIKE '%' || p_query || '%' OR
+        EXISTS (
+          SELECT 1
+          FROM lead_activities linked_activity
+          JOIN leads linked_lead ON linked_lead.id = linked_activity.lead_id
+          WHERE linked_activity.operation_id = operation.id
+            AND (
+              linked_activity.content ILIKE '%' || p_query || '%' OR
+              linked_lead.first_name ILIKE '%' || p_query || '%' OR
+              linked_lead.last_name ILIKE '%' || p_query || '%' OR
+              CONCAT_WS(' ', linked_lead.first_name, linked_lead.last_name) ILIKE '%' || p_query || '%' OR
+              linked_lead.address_street ILIKE '%' || p_query || '%' OR
+              linked_lead.address_city ILIKE '%' || p_query || '%'
+            )
+        )
+      )
+
+    UNION ALL
+
+    SELECT
+      'activity'::TEXT AS item_kind,
+      activity.id AS item_id,
+      activity.activity_type::TEXT,
+      activity.content,
+      activity.old_status::TEXT,
+      activity.new_status::TEXT,
+      activity.created_at,
+      actor.name AS actor_name,
+      jsonb_build_object(
+        'id', lead.id,
+        'first_name', lead.first_name,
+        'last_name', lead.last_name,
+        'address_street', lead.address_street,
+        'address_city', lead.address_city,
+        'address_state', lead.address_state,
+        'market_id', lead.market_id
+      ) AS lead,
+      NULL::JSONB AS operation
+    FROM lead_activities activity
+    JOIN leads lead ON lead.id = activity.lead_id
+    LEFT JOIN admin_users actor ON actor.id = activity.created_by
+    WHERE activity.operation_id IS NULL
+      AND (p_user_id IS NULL OR activity.created_by = p_user_id)
+      AND (p_type IS NULL OR activity.activity_type::TEXT = p_type)
+      AND (p_market_id IS NULL OR lead.market_id = p_market_id)
+      AND (p_from IS NULL OR activity.created_at >= p_from)
+      AND (p_to IS NULL OR activity.created_at < p_to)
+      AND (
+        p_query IS NULL OR p_query = '' OR
+        activity.content ILIKE '%' || p_query || '%' OR
+        actor.name ILIKE '%' || p_query || '%' OR
+        lead.first_name ILIKE '%' || p_query || '%' OR
+        lead.last_name ILIKE '%' || p_query || '%' OR
+        CONCAT_WS(' ', lead.first_name, lead.last_name) ILIKE '%' || p_query || '%' OR
+        lead.address_street ILIKE '%' || p_query || '%' OR
+        lead.address_city ILIKE '%' || p_query || '%'
+      )
+  ),
+  counted AS (
+    SELECT feed.*, COUNT(*) OVER() AS total_count
+    FROM feed
+  )
+  SELECT *
+  FROM counted
+  ORDER BY created_at DESC, item_id DESC
+  LIMIT LEAST(GREATEST(p_limit, 1), 100)
+  OFFSET GREATEST(p_offset, 0);
+$$;
+
+REVOKE ALL ON FUNCTION public.list_admin_audit_feed(
+  INTEGER,
+  INTEGER,
+  INTEGER,
+  UUID,
+  TEXT,
+  TIMESTAMPTZ,
+  TIMESTAMPTZ,
+  TEXT
+) FROM PUBLIC, anon, authenticated;
+
+GRANT EXECUTE ON FUNCTION public.list_admin_audit_feed(
+  INTEGER,
+  INTEGER,
+  INTEGER,
+  UUID,
+  TEXT,
+  TIMESTAMPTZ,
+  TIMESTAMPTZ,
+  TEXT
+) TO service_role;
+
+-- Reps keep the existing "my work on my assigned leads" rule. Linked rows
+-- remain individual lead events so a rep never receives a team-wide operation
+-- count through the grouped admin view.
+CREATE OR REPLACE FUNCTION public.list_rep_audit_feed(
+  p_actor_id UUID,
+  p_actor_role TEXT,
+  p_limit INTEGER DEFAULT 50,
+  p_offset INTEGER DEFAULT 0,
+  p_market_id INTEGER DEFAULT NULL,
+  p_type TEXT DEFAULT NULL,
+  p_from TIMESTAMPTZ DEFAULT NULL,
+  p_to TIMESTAMPTZ DEFAULT NULL,
+  p_query TEXT DEFAULT NULL
+)
+RETURNS TABLE (
+  item_kind TEXT,
+  item_id UUID,
+  activity_type TEXT,
+  content TEXT,
+  old_status TEXT,
+  new_status TEXT,
+  created_at TIMESTAMPTZ,
+  actor_name TEXT,
+  lead JSONB,
+  operation JSONB,
+  total_count BIGINT
+)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  WITH feed AS (
+    SELECT
+      'activity'::TEXT AS item_kind,
+      activity.id AS item_id,
+      activity.activity_type::TEXT,
+      activity.content,
+      activity.old_status::TEXT,
+      activity.new_status::TEXT,
+      activity.created_at,
+      actor.name AS actor_name,
+      jsonb_build_object(
+        'id', lead.id,
+        'first_name', lead.first_name,
+        'last_name', lead.last_name,
+        'address_street', lead.address_street,
+        'address_city', lead.address_city,
+        'address_state', lead.address_state,
+        'market_id', lead.market_id
+      ) AS lead,
+      NULL::JSONB AS operation
+    FROM lead_activities activity
+    JOIN leads lead ON lead.id = activity.lead_id
+    LEFT JOIN admin_users actor ON actor.id = activity.created_by
+    WHERE activity.created_by = p_actor_id
+      AND (
+        (p_actor_role = 'setter' AND lead.assigned_setter_id = p_actor_id) OR
+        (p_actor_role = 'closer' AND lead.assigned_closer_id = p_actor_id) OR
+        (p_actor_role = 'admin' AND (
+          lead.assigned_setter_id = p_actor_id OR lead.assigned_closer_id = p_actor_id
+        ))
+      )
+      AND (p_type IS NULL OR activity.activity_type::TEXT = p_type)
+      AND (p_market_id IS NULL OR lead.market_id = p_market_id)
+      AND (p_from IS NULL OR activity.created_at >= p_from)
+      AND (p_to IS NULL OR activity.created_at < p_to)
+      AND (
+        p_query IS NULL OR p_query = '' OR
+        activity.content ILIKE '%' || p_query || '%' OR
+        actor.name ILIKE '%' || p_query || '%' OR
+        lead.first_name ILIKE '%' || p_query || '%' OR
+        lead.last_name ILIKE '%' || p_query || '%' OR
+        CONCAT_WS(' ', lead.first_name, lead.last_name) ILIKE '%' || p_query || '%' OR
+        lead.address_street ILIKE '%' || p_query || '%' OR
+        lead.address_city ILIKE '%' || p_query || '%'
+      )
+  ),
+  counted AS (
+    SELECT feed.*, COUNT(*) OVER() AS total_count
+    FROM feed
+  )
+  SELECT *
+  FROM counted
+  ORDER BY created_at DESC, item_id DESC
+  LIMIT LEAST(GREATEST(p_limit, 1), 100)
+  OFFSET GREATEST(p_offset, 0);
+$$;
+
+REVOKE ALL ON FUNCTION public.list_rep_audit_feed(
+  UUID,
+  TEXT,
+  INTEGER,
+  INTEGER,
+  INTEGER,
+  TEXT,
+  TIMESTAMPTZ,
+  TIMESTAMPTZ,
+  TEXT
+) FROM PUBLIC, anon, authenticated;
+
+GRANT EXECUTE ON FUNCTION public.list_rep_audit_feed(
+  UUID,
+  TEXT,
+  INTEGER,
+  INTEGER,
+  INTEGER,
+  TEXT,
+  TIMESTAMPTZ,
+  TIMESTAMPTZ,
+  TEXT
+) TO service_role;
+
+-- Admins can expand a grouped operation without loading every linked row into
+-- the main feed. This function uses the same office and search boundaries.
+CREATE OR REPLACE FUNCTION public.get_audit_operation_leads(
+  p_operation_id UUID,
+  p_market_id INTEGER DEFAULT NULL,
+  p_limit INTEGER DEFAULT 100
+)
+RETURNS TABLE (
+  activity_id UUID,
+  content TEXT,
+  lead JSONB
+)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT
+    activity.id AS activity_id,
+    activity.content,
+    jsonb_build_object(
+      'id', lead.id,
+      'first_name', lead.first_name,
+      'last_name', lead.last_name,
+      'address_street', lead.address_street,
+      'address_city', lead.address_city,
+      'address_state', lead.address_state
+    ) AS lead
+  FROM lead_activities activity
+  JOIN leads lead ON lead.id = activity.lead_id
+  WHERE activity.operation_id = p_operation_id
+    AND (p_market_id IS NULL OR lead.market_id = p_market_id)
+  ORDER BY lead.last_name, lead.first_name, activity.id
+  LIMIT LEAST(GREATEST(p_limit, 1), 500);
+$$;
+
+REVOKE ALL ON FUNCTION public.get_audit_operation_leads(
+  UUID,
+  INTEGER,
+  INTEGER
+) FROM PUBLIC, anon, authenticated;
+
+GRANT EXECUTE ON FUNCTION public.get_audit_operation_leads(
+  UUID,
+  INTEGER,
+  INTEGER
+) TO service_role;
+
+-- ------------------------------------------------------------
+-- 034_integration_health.sql
+-- ------------------------------------------------------------
+-- Durable health for inbound connections.
+--
+-- Configuration remains in its existing source tables. These rows record what
+-- happened at runtime so the Integrations page does not infer health from a
+-- short page of logs or expose provider secrets.
+
+CREATE TABLE integration_connections (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  provider TEXT NOT NULL CHECK (provider IN ('webhook', 'email_import', 'regrid')),
+  api_key_id UUID UNIQUE REFERENCES integration_api_keys(id) ON DELETE RESTRICT,
+  name TEXT NOT NULL,
+  is_paused BOOLEAN NOT NULL DEFAULT FALSE,
+  expected_cadence_minutes INTEGER CHECK (expected_cadence_minutes > 0),
+  configured_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  last_attempt_at TIMESTAMPTZ,
+  last_success_at TIMESTAMPTZ,
+  last_failure_at TIMESTAMPTZ,
+  last_error_summary TEXT,
+  consecutive_failures INTEGER NOT NULL DEFAULT 0 CHECK (consecutive_failures >= 0),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CHECK (
+    (provider = 'webhook' AND api_key_id IS NOT NULL) OR
+    (provider IN ('email_import', 'regrid') AND api_key_id IS NULL)
+  )
+);
+
+CREATE UNIQUE INDEX idx_integration_connections_singleton_provider
+  ON integration_connections(provider)
+  WHERE api_key_id IS NULL;
+
+CREATE INDEX idx_integration_connections_provider
+  ON integration_connections(provider, updated_at DESC);
+
+CREATE TABLE integration_runs (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  connection_id UUID NOT NULL REFERENCES integration_connections(id) ON DELETE CASCADE,
+  status TEXT NOT NULL CHECK (status IN ('success', 'failure', 'rejected')),
+  started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  finished_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  items_received INTEGER NOT NULL DEFAULT 0 CHECK (items_received >= 0),
+  items_succeeded INTEGER NOT NULL DEFAULT 0 CHECK (items_succeeded >= 0),
+  items_failed INTEGER NOT NULL DEFAULT 0 CHECK (items_failed >= 0),
+  error_summary TEXT,
+  metadata JSONB NOT NULL DEFAULT '{}'::JSONB CHECK (jsonb_typeof(metadata) = 'object')
+);
+
+CREATE INDEX idx_integration_runs_connection_started
+  ON integration_runs(connection_id, started_at DESC);
+
+CREATE INDEX idx_integration_runs_status_started
+  ON integration_runs(status, started_at DESC);
+
+ALTER TABLE integration_connections ENABLE ROW LEVEL SECURITY;
+ALTER TABLE integration_runs ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Service role full access"
+  ON integration_connections
+  FOR ALL
+  USING (auth.role() = 'service_role')
+  WITH CHECK (auth.role() = 'service_role');
+
+CREATE POLICY "Service role full access"
+  ON integration_runs
+  FOR ALL
+  USING (auth.role() = 'service_role')
+  WITH CHECK (auth.role() = 'service_role');
+
+CREATE TRIGGER update_integration_connections_updated_at
+  BEFORE UPDATE ON integration_connections
+  FOR EACH ROW
+  EXECUTE FUNCTION update_updated_at_column();
+
+-- One source-owned call records a run and updates its durable health state.
+-- Rejected requests remain visible but do not mark a working provider failed.
+CREATE OR REPLACE FUNCTION public.record_integration_run(
+  p_provider TEXT,
+  p_api_key_id UUID,
+  p_name TEXT,
+  p_status TEXT,
+  p_items_received INTEGER DEFAULT 0,
+  p_items_succeeded INTEGER DEFAULT 0,
+  p_items_failed INTEGER DEFAULT 0,
+  p_error_summary TEXT DEFAULT NULL,
+  p_metadata JSONB DEFAULT '{}'::JSONB,
+  p_started_at TIMESTAMPTZ DEFAULT NOW()
+)
+RETURNS UUID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_connection_id UUID;
+  v_run_id UUID;
+  v_error TEXT := NULLIF(LEFT(TRIM(COALESCE(p_error_summary, '')), 500), '');
+BEGIN
+  IF auth.role() IS DISTINCT FROM 'service_role' THEN
+    RAISE EXCEPTION 'record_integration_run requires service role';
+  END IF;
+
+  IF p_provider NOT IN ('webhook', 'email_import', 'regrid') THEN
+    RAISE EXCEPTION 'Invalid integration provider';
+  END IF;
+  IF p_status NOT IN ('success', 'failure', 'rejected') THEN
+    RAISE EXCEPTION 'Invalid integration run status';
+  END IF;
+  IF (p_provider = 'webhook') IS DISTINCT FROM (p_api_key_id IS NOT NULL) THEN
+    RAISE EXCEPTION 'Webhook runs require an API key and singleton providers do not';
+  END IF;
+  IF p_items_received < 0 OR p_items_succeeded < 0 OR p_items_failed < 0 THEN
+    RAISE EXCEPTION 'Integration counts cannot be negative';
+  END IF;
+  IF p_metadata IS NULL OR jsonb_typeof(p_metadata) IS DISTINCT FROM 'object' THEN
+    RAISE EXCEPTION 'Integration metadata must be an object';
+  END IF;
+
+  IF p_api_key_id IS NOT NULL THEN
+    INSERT INTO integration_connections (
+      provider,
+      api_key_id,
+      name,
+      configured_at
+    )
+    SELECT p_provider, key.id, COALESCE(NULLIF(TRIM(p_name), ''), key.name), key.created_at
+    FROM integration_api_keys key
+    WHERE key.id = p_api_key_id
+    ON CONFLICT (api_key_id) DO UPDATE
+      SET name = EXCLUDED.name
+    RETURNING id INTO v_connection_id;
+  ELSE
+    INSERT INTO integration_connections (provider, name)
+    VALUES (p_provider, COALESCE(NULLIF(TRIM(p_name), ''), REPLACE(p_provider, '_', ' ')))
+    ON CONFLICT DO NOTHING;
+
+    SELECT id INTO v_connection_id
+    FROM integration_connections
+    WHERE provider = p_provider
+      AND api_key_id IS NULL;
+  END IF;
+
+  IF v_connection_id IS NULL THEN
+    RAISE EXCEPTION 'Integration connection could not be resolved';
+  END IF;
+
+  INSERT INTO integration_runs (
+    connection_id,
+    status,
+    started_at,
+    finished_at,
+    items_received,
+    items_succeeded,
+    items_failed,
+    error_summary,
+    metadata
+  )
+  VALUES (
+    v_connection_id,
+    p_status,
+    p_started_at,
+    NOW(),
+    p_items_received,
+    p_items_succeeded,
+    p_items_failed,
+    v_error,
+    p_metadata
+  )
+  RETURNING id INTO v_run_id;
+
+  UPDATE integration_connections
+  SET
+    last_attempt_at = NOW(),
+    last_success_at = CASE WHEN p_status = 'success' THEN NOW() ELSE last_success_at END,
+    last_failure_at = CASE WHEN p_status = 'failure' THEN NOW() ELSE last_failure_at END,
+    last_error_summary = CASE
+      WHEN p_status = 'success' THEN NULL
+      WHEN p_status = 'failure' THEN v_error
+      ELSE last_error_summary
+    END,
+    consecutive_failures = CASE
+      WHEN p_status = 'success' THEN 0
+      WHEN p_status = 'failure' THEN consecutive_failures + 1
+      ELSE consecutive_failures
+    END
+  WHERE id = v_connection_id;
+
+  RETURN v_run_id;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.record_integration_run(
+  TEXT,
+  UUID,
+  TEXT,
+  TEXT,
+  INTEGER,
+  INTEGER,
+  INTEGER,
+  TEXT,
+  JSONB,
+  TIMESTAMPTZ
+) FROM PUBLIC, anon, authenticated;
+
+GRANT EXECUTE ON FUNCTION public.record_integration_run(
+  TEXT,
+  UUID,
+  TEXT,
+  TEXT,
+  INTEGER,
+  INTEGER,
+  INTEGER,
+  TEXT,
+  JSONB,
+  TIMESTAMPTZ
+) TO service_role;
+
+-- Existing webhook keys become first-class connections without changing their
+-- credentials or activation state.
+INSERT INTO integration_connections (
+  provider,
+  api_key_id,
+  name,
+  is_paused,
+  configured_at,
+  last_attempt_at,
+  last_success_at
+)
+SELECT
+  'webhook',
+  key.id,
+  key.name,
+  NOT COALESCE(key.is_active, FALSE),
+  key.created_at,
+  key.last_used_at,
+  key.last_used_at
+FROM integration_api_keys key
+ON CONFLICT (api_key_id) DO NOTHING;
+
+-- Singleton provider rows exist only when there is real configuration or
+-- history. An untouched provider therefore remains honestly Not configured.
+INSERT INTO integration_connections (provider, name, is_paused, configured_at)
+SELECT
+  'email_import',
+  'Email import',
+  NOT COALESCE(settings.email_import_enabled, FALSE),
+  NOW()
+FROM app_settings settings
+WHERE settings.id = 'default'
+  AND (
+    COALESCE(settings.email_import_enabled, FALSE) OR
+    CARDINALITY(COALESCE(settings.allowed_sender_emails, '{}'::TEXT[])) > 0 OR
+    EXISTS (SELECT 1 FROM email_import_logs)
+  )
+ON CONFLICT DO NOTHING;
+
+INSERT INTO integration_connections (provider, name, is_paused, configured_at)
+SELECT
+  'regrid',
+  'Regrid property enrichment',
+  NOT COALESCE(settings.auto_enrich_enabled, FALSE),
+  NOW()
+FROM app_settings settings
+WHERE settings.id = 'default'
+  AND NULLIF(TRIM(settings.regrid_api_key), '') IS NOT NULL
+ON CONFLICT DO NOTHING;
+
+-- Preserve existing volume and timestamps as initial run history. Payloads,
+-- sender addresses, and secrets are deliberately not copied into health data.
+INSERT INTO integration_runs (
+  connection_id,
+  status,
+  started_at,
+  finished_at,
+  items_received,
+  items_succeeded,
+  items_failed,
+  error_summary,
+  metadata
+)
+SELECT
+  connection.id,
+  CASE
+    WHEN CARDINALITY(COALESCE(log.errors, '{}'::TEXT[])) > 0
+      AND COALESCE(log.leads_imported, 0) = 0
+    THEN 'failure'
+    ELSE 'success'
+  END,
+  log.created_at,
+  log.created_at,
+  COALESCE(log.leads_imported, 0) + COALESCE(log.duplicates_skipped, 0),
+  COALESCE(log.leads_imported, 0),
+  CARDINALITY(COALESCE(log.errors, '{}'::TEXT[])),
+  NULLIF(LEFT(ARRAY_TO_STRING(log.errors, '; '), 500), ''),
+  jsonb_build_object('backfilled', TRUE, 'duplicates', COALESCE(log.duplicates_skipped, 0))
+FROM webhook_logs log
+JOIN integration_connections connection
+  ON connection.provider = 'webhook'
+ AND connection.api_key_id = log.api_key_id;
+
+INSERT INTO integration_runs (
+  connection_id,
+  status,
+  started_at,
+  finished_at,
+  items_received,
+  items_succeeded,
+  items_failed,
+  error_summary,
+  metadata
+)
+SELECT
+  connection.id,
+  CASE
+    WHEN CARDINALITY(COALESCE(log.errors, '{}'::TEXT[])) > 0
+      AND COALESCE(log.leads_imported, 0) = 0
+    THEN 'failure'
+    ELSE 'success'
+  END,
+  log.created_at,
+  log.created_at,
+  COALESCE(log.leads_imported, 0) + COALESCE(log.duplicates_skipped, 0),
+  COALESCE(log.leads_imported, 0),
+  CARDINALITY(COALESCE(log.errors, '{}'::TEXT[])),
+  NULLIF(LEFT(ARRAY_TO_STRING(log.errors, '; '), 500), ''),
+  jsonb_build_object('backfilled', TRUE, 'duplicates', COALESCE(log.duplicates_skipped, 0))
+FROM email_import_logs log
+JOIN integration_connections connection
+  ON connection.provider = 'email_import'
+ AND connection.api_key_id IS NULL;
+
+WITH summary AS (
+  SELECT
+    connection_id,
+    MAX(started_at) AS last_attempt_at,
+    MAX(started_at) FILTER (WHERE status = 'success') AS last_success_at,
+    MAX(started_at) FILTER (WHERE status = 'failure') AS last_failure_at,
+    (ARRAY_AGG(error_summary ORDER BY started_at DESC)
+      FILTER (WHERE status = 'failure' AND error_summary IS NOT NULL))[1] AS last_error_summary
+  FROM integration_runs
+  GROUP BY connection_id
+)
+UPDATE integration_connections connection
+SET
+  last_attempt_at = summary.last_attempt_at,
+  last_success_at = summary.last_success_at,
+  last_failure_at = summary.last_failure_at,
+  last_error_summary = CASE
+    WHEN summary.last_success_at IS NULL OR summary.last_failure_at > summary.last_success_at
+    THEN summary.last_error_summary
+    ELSE NULL
+  END,
+  consecutive_failures = CASE
+    WHEN summary.last_failure_at IS NOT NULL
+      AND (summary.last_success_at IS NULL OR summary.last_failure_at > summary.last_success_at)
+    THEN 1
+    ELSE 0
+  END
+FROM summary
+WHERE connection.id = summary.connection_id;
+

@@ -5,8 +5,16 @@ import {
   shiftAnchor,
   normalizeAnchor,
   calendarLabel,
+  calendarDateFromParam,
+  calendarDateParam,
+  calendarScopeAssignment,
+  calendarViewFromParam,
+  isCalendarDateParam,
+  resolveCalendarScope,
+  scheduleExceptions,
   weekdayLabels,
   WEEK_STARTS_ON,
+  type ScheduleAppointmentFacts,
 } from './calendar';
 
 const iso = (d: Date) => d.toISOString().slice(0, 10);
@@ -151,5 +159,141 @@ describe('calendarLabel', () => {
 describe('weekdayLabels', () => {
   it('starts on the same weekday as the grid', () => {
     expect(weekdayLabels()).toEqual(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']);
+  });
+});
+
+describe('calendar URL state', () => {
+  it('round trips a local date without converting it through UTC', () => {
+    const date = new Date(2026, 7, 14);
+    expect(calendarDateParam(date)).toBe('2026-08-14');
+    expect(calendarDateParam(calendarDateFromParam('2026-08-14', new Date(2020, 0, 1))))
+      .toBe('2026-08-14');
+  });
+
+  it('rejects impossible dates and uses the local fallback day', () => {
+    const fallback = new Date(2026, 6, 20, 15, 30);
+    expect(isCalendarDateParam('2026-02-30')).toBe(false);
+    expect(calendarDateParam(calendarDateFromParam('2026-02-30', fallback))).toBe('2026-07-20');
+  });
+
+  it('accepts only the two supported views', () => {
+    expect(calendarViewFromParam('month')).toBe('month');
+    expect(calendarViewFromParam('agenda')).toBe('week');
+    expect(calendarViewFromParam(null)).toBe('week');
+  });
+});
+
+describe('calendar team scope', () => {
+  const SETTER_ID = '11111111-1111-4111-8111-111111111111';
+  const CLOSER_ID = '22222222-2222-4222-8222-222222222222';
+
+  it('defaults admins to all and reps to mine', () => {
+    expect(resolveCalendarScope('admin', null)).toEqual({ ok: true, scope: 'all' });
+    expect(resolveCalendarScope('setter', null)).toEqual({ ok: true, scope: 'mine' });
+    expect(resolveCalendarScope('closer', null)).toEqual({ ok: true, scope: 'mine' });
+  });
+
+  it('lets an admin select one setter or closer', () => {
+    expect(resolveCalendarScope('admin', `setter:${SETTER_ID}`)).toEqual({
+      ok: true,
+      scope: `setter:${SETTER_ID}`,
+    });
+    expect(calendarScopeAssignment(`closer:${CLOSER_ID}`)).toEqual({
+      column: 'assigned_closer_id',
+      accountId: CLOSER_ID,
+    });
+  });
+
+  it('does not let a rep widen or switch the schedule through the URL', () => {
+    expect(resolveCalendarScope('setter', 'all')).toMatchObject({ ok: false, status: 403 });
+    expect(resolveCalendarScope('closer', `setter:${SETTER_ID}`)).toMatchObject({
+      ok: false,
+      status: 403,
+    });
+  });
+
+  it('rejects malformed person scopes before a query runs', () => {
+    expect(resolveCalendarScope('admin', 'setter:not-a-uuid')).toMatchObject({
+      ok: false,
+      status: 400,
+    });
+    expect(resolveCalendarScope('admin', 'everyone')).toMatchObject({ ok: false, status: 400 });
+  });
+});
+
+describe('scheduleExceptions', () => {
+  const appointment = (
+    id: string,
+    overrides: Partial<ScheduleAppointmentFacts> = {}
+  ): ScheduleAppointmentFacts => ({
+    id,
+    appointment_type: 'inspection',
+    scheduled_at: '2026-08-14T17:00:00.000Z',
+    outcome: 'scheduled',
+    market_id: 1,
+    assigned_setter_id: 'setter-1',
+    assigned_closer_id: 'closer-1',
+    ...overrides,
+  });
+
+  it('shows missing ownership and an overdue result on unresolved inspections', () => {
+    const result = scheduleExceptions([
+      appointment('a', {
+        assigned_setter_id: null,
+        assigned_closer_id: null,
+      }),
+    ], '2026-08-14T18:00:00.000Z');
+
+    expect(result.a).toEqual(['missing_setter', 'missing_closer', 'overdue_outcome']);
+  });
+
+  it('requires a closer but not a setter for an adjuster visit', () => {
+    const result = scheduleExceptions([
+      appointment('a', {
+        appointment_type: 'adjuster',
+        assigned_setter_id: null,
+        assigned_closer_id: null,
+      }),
+    ], '2026-08-14T16:00:00.000Z');
+
+    expect(result.a).toEqual(['missing_closer']);
+  });
+
+  it('flags two unresolved starts inside one hour for the same owner', () => {
+    const result = scheduleExceptions([
+      appointment('a'),
+      appointment('b', {
+        scheduled_at: '2026-08-14T17:30:00.000Z',
+        assigned_setter_id: 'setter-2',
+        assigned_closer_id: 'closer-2',
+      }),
+    ], '2026-08-14T16:00:00.000Z');
+
+    expect(result.a).toContain('conflict');
+    expect(result.b).toContain('conflict');
+  });
+
+  it('does not flag back-to-back, different-market, or settled appointments', () => {
+    const result = scheduleExceptions([
+      appointment('a'),
+      appointment('back-to-back', { scheduled_at: '2026-08-14T18:00:00.000Z' }),
+      appointment('different-market', {
+        scheduled_at: '2026-08-14T17:15:00.000Z',
+        market_id: 2,
+        assigned_setter_id: 'setter-2',
+        assigned_closer_id: 'closer-2',
+      }),
+      appointment('settled', {
+        scheduled_at: '2026-08-14T17:10:00.000Z',
+        outcome: 'completed',
+        assigned_setter_id: null,
+        assigned_closer_id: null,
+      }),
+    ], '2026-08-14T16:00:00.000Z');
+
+    expect(result.a).toEqual([]);
+    expect(result['back-to-back']).toEqual([]);
+    expect(result['different-market']).toEqual([]);
+    expect(result.settled).toEqual([]);
   });
 });

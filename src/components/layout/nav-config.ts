@@ -44,7 +44,7 @@ export function getNavGroups(role: UserRole): NavGroup[] {
       label: 'Reporting',
       items: [
         { href: '/admin', label: 'Dashboard', icon: Home },
-        { href: '/admin/activity', label: 'Activity', icon: ScrollText },
+        { href: '/admin/activity', label: 'Audit Log', icon: ScrollText },
         { href: '/admin/performance', label: 'Performance', icon: TrendingUp },
         ...(role === 'admin'
           ? [{ href: '/admin/analytics', label: 'Analytics', icon: BarChart2 }]

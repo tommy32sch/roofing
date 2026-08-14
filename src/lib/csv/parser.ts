@@ -5,6 +5,8 @@ export type ParsedLead = NormalizedLead;
 
 export interface CSVParseResult {
   leads: NormalizedLead[];
+  /** One-based spreadsheet row for each entry in leads. */
+  leadRows: number[];
   errors: string[];
   skipped: number;
 }
@@ -24,6 +26,7 @@ export function parseLeadCSV(csvText: string): CSVParseResult {
   });
 
   const leads: NormalizedLead[] = [];
+  const leadRows: number[] = [];
   const errors: string[] = [];
   let skipped = 0;
 
@@ -34,11 +37,12 @@ export function parseLeadCSV(csvText: string): CSVParseResult {
     const lead = normalizeLeadData(row);
     if (lead) {
       leads.push(lead);
+      leadRows.push(rowNum);
     } else {
-      errors.push(`Row ${rowNum}: Missing first or last name`);
+      errors.push(`Row ${rowNum}: Missing owner name`);
       skipped++;
     }
   }
 
-  return { leads, errors, skipped };
+  return { leads, leadRows, errors, skipped };
 }

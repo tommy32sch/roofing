@@ -31,8 +31,18 @@ const ADMIN_ONLY_ROUTES = [
   'src/app/api/admin/integrations/[keyId]/route.ts',
   'src/app/api/admin/integrations/logs/route.ts',
   'src/app/api/admin/integrations/email-logs/route.ts',
+  'src/app/api/admin/integrations/email/route.ts',
+  'src/app/api/admin/integrations/health/route.ts',
   'src/app/api/admin/integrations/regrid/route.ts',
 ];
+
+function adminGateCount(source: string): number {
+  const helperUses = (source.match(/requireAdmin\(/g) || []).length;
+  if (source.includes('async function requireAdmin')) {
+    return Math.max(0, helperUses - 1);
+  }
+  return (source.match(/role !== 'admin'/g) || []).length;
+}
 
 describe('admin-only route access control', () => {
   it('middleware lists every sensitive API prefix as admin-only', () => {
@@ -48,7 +58,7 @@ describe('admin-only route access control', () => {
   it.each(ADMIN_ONLY_ROUTES)('%s gates every handler on admin role', (path) => {
     const src = read(path);
     const handlerCount = (src.match(/export async function (GET|POST|PATCH|PUT|DELETE)/g) || []).length;
-    const gateCount = (src.match(/role !== 'admin'/g) || []).length;
+    const gateCount = adminGateCount(src);
     expect(handlerCount, `${path} has no exported handlers`).toBeGreaterThan(0);
     // Each handler needs its own admin gate.
     expect(gateCount, `${path}: ${gateCount} admin gates for ${handlerCount} handlers`).toBe(handlerCount);

@@ -4,7 +4,8 @@ import { describe, expect, it } from 'vitest';
 
 const read = (path: string) => readFileSync(join(process.cwd(), path), 'utf8');
 
-const dashboard = read('src/app/admin/(app)/page.tsx');
+const reportScope = read('src/components/reporting/report-scope-bar.tsx');
+const teamPulse = read('src/components/reporting/team-pulse-ledger.tsx');
 const activityRoute = read('src/app/api/admin/contact-activity/route.ts');
 const leadRoute = read('src/app/api/admin/leads/[leadId]/route.ts');
 const leadDetail = read('src/app/admin/(app)/leads/[leadId]/page.tsx');
@@ -24,14 +25,13 @@ describe('contact activity tracking contracts', () => {
 
   it('offers Today, Week and Month plus account filtering and lead links', () => {
     for (const period of ["'today'", "'week'", "'month'"]) {
-      expect(dashboard).toContain(period);
+      expect(reportScope).toContain(period);
     }
-    expect(dashboard).toContain('All Team');
-    expect(dashboard).toContain('contactActivity?.knockCount');
-    expect(dashboard).toContain('contactActivity?.callCount');
-    expect(dashboard).toContain('`/admin/leads/${event.lead.id}`');
-    expect(dashboard).toContain('knockLabel(event.disposition)');
-    expect(dashboard).toContain('callLabel(event.disposition)');
+    expect(reportScope).toContain('All team');
+    expect(reportScope).toContain('My work');
+    expect(teamPulse).toContain('row.knocks');
+    expect(teamPulse).toContain('row.calls');
+    expect(teamPulse).toContain('href={row.href}');
   });
 
   it('embeds exact structured history in the lead overview', () => {

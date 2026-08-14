@@ -19,6 +19,7 @@ import {
   applyLeadAccessFilter,
   assignmentForNewLead,
 } from '@/lib/leads/lead-visibility';
+import { isValidUUID } from '@/lib/utils/validation';
 
 export async function GET(request: NextRequest) {
   try {
@@ -31,6 +32,10 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
 
     const sourceId = searchParams.get('source_id');
+    const importBatchId = searchParams.get('import_batch_id');
+    if (importBatchId && !isValidUUID(importBatchId)) {
+      return NextResponse.json({ success: false, error: 'Invalid import batch ID' }, { status: 400 });
+    }
     const queueParams = leadQueueRequestParamsFromSearchParams(searchParams);
     const { sort, order } = leadQueueSort(queueParams);
     const parsedPage = parseInt(searchParams.get('page') || '1', 10);
@@ -60,6 +65,10 @@ export async function GET(request: NextRequest) {
     query = applyLeadAccessFilter(query, { id: admin.sub, role: admin.role });
 
     query = applyLeadQueueFilters(query, queueParams);
+
+    // The durable import receipt links here. Assignment filtering still runs
+    // first, so the batch filter cannot expose a lead the caller cannot access.
+    if (importBatchId) query = query.eq('import_batch_id', importBatchId);
 
     // Exclude flagged duplicates from main list unless explicitly requested
     if (!showDuplicates) {

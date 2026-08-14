@@ -1,7 +1,11 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { BACKUP_TABLES, storageObjectLocalPath } from './backup-manifest';
+import {
+  BACKUP_STORAGE_BUCKETS,
+  BACKUP_TABLES,
+  storageObjectLocalPath,
+} from './backup-manifest';
 
 function applicationTablesCreatedByMigrations(): string[] {
   const migrationDir = join(process.cwd(), 'supabase', 'migrations');
@@ -44,5 +48,9 @@ describe('backup manifest', () => {
     expect(localPath).not.toContain('..');
     expect(storageObjectLocalPath('lead-photos', '../../outside/../customer roof photo.jpg'))
       .toBe(localPath);
+  });
+
+  it('includes every private application bucket', () => {
+    expect(BACKUP_STORAGE_BUCKETS).toEqual(['lead-photos', 'lead-imports']);
   });
 });

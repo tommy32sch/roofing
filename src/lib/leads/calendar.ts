@@ -7,6 +7,8 @@ import {
   startOfMonth,
   startOfWeek,
 } from 'date-fns';
+import type { AppointmentOutcome, AppointmentType, UserRole } from '@/types';
+import { APPOINTMENT_SLOT_MINUTES } from './appointment-conflicts';
 
 /**
  * Week/month view maths for the calendar.
@@ -19,8 +21,171 @@ import {
 
 export type CalendarView = 'week' | 'month';
 
+export type CalendarScope =
+  | 'all'
+  | 'mine'
+  | `setter:${string}`
+  | `closer:${string}`;
+
+export type CalendarScopeDecision =
+  | { ok: true; scope: CalendarScope }
+  | { ok: false; status: 400 | 403; error: string };
+
+export type ScheduleExceptionCode =
+  | 'conflict'
+  | 'missing_setter'
+  | 'missing_closer'
+  | 'overdue_outcome';
+
+export interface ScheduleAppointmentFacts {
+  id: string;
+  appointment_type: AppointmentType;
+  scheduled_at: string;
+  outcome: AppointmentOutcome;
+  market_id: number | null;
+  assigned_setter_id: string | null;
+  assigned_closer_id: string | null;
+}
+
+const DATE_PARAM = /^(\d{4})-(\d{2})-(\d{2})$/;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 /** Monday. Matches the existing week view and how a crew's week is planned. */
 export const WEEK_STARTS_ON = 1 as const;
+
+/** A local calendar date for URL state. It never shifts through UTC. */
+export function calendarDateParam(date: Date): string {
+  const pad = (value: number) => String(value).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+export function isCalendarDateParam(value: string | null | undefined): value is string {
+  const match = value?.match(DATE_PARAM);
+  if (!match) return false;
+  const year = Number(match[1]);
+  const month = Number(match[2]) - 1;
+  const day = Number(match[3]);
+  const parsed = new Date(year, month, day);
+  return (
+    parsed.getFullYear() === year &&
+    parsed.getMonth() === month &&
+    parsed.getDate() === day
+  );
+}
+
+/**
+ * Parse a URL date at local midnight.
+ *
+ * `new Date('2026-08-14')` is UTC midnight and becomes the prior date in the
+ * Americas. Build the local date from its parts so a shared schedule URL opens
+ * on the date printed in the URL.
+ */
+export function calendarDateFromParam(value: string | null | undefined, fallback: Date): Date {
+  const fallbackDay = new Date(fallback.getFullYear(), fallback.getMonth(), fallback.getDate());
+  if (!isCalendarDateParam(value)) return fallbackDay;
+  const match = value.match(DATE_PARAM)!;
+
+  const year = Number(match[1]);
+  const month = Number(match[2]) - 1;
+  const day = Number(match[3]);
+  return new Date(year, month, day);
+}
+
+export function calendarViewFromParam(value: string | null | undefined): CalendarView {
+  return value === 'month' ? 'month' : 'week';
+}
+
+/**
+ * Resolve the requested schedule owner before a service-role query runs.
+ *
+ * Admins can inspect the team, their own assigned leads, or one setter/closer.
+ * Reps are fixed to their assignment boundary even if they edit the URL.
+ */
+export function resolveCalendarScope(
+  role: UserRole,
+  requested: string | null | undefined
+): CalendarScopeDecision {
+  const scope = requested || (role === 'admin' ? 'all' : 'mine');
+  const isPerson = /^(setter|closer):/.test(scope);
+
+  if (
+    scope !== 'all' &&
+    scope !== 'mine' &&
+    (!isPerson || !UUID.test(scope.slice(scope.indexOf(':') + 1)))
+  ) {
+    return { ok: false, status: 400, error: 'Invalid calendar scope' };
+  }
+
+  if (role !== 'admin' && scope !== 'mine') {
+    return { ok: false, status: 403, error: 'Team schedules are limited to admins' };
+  }
+
+  return { ok: true, scope: scope as CalendarScope };
+}
+
+export function calendarScopeAssignment(
+  scope: CalendarScope
+): { column: 'assigned_setter_id' | 'assigned_closer_id'; accountId: string } | null {
+  if (scope.startsWith('setter:')) {
+    return { column: 'assigned_setter_id', accountId: scope.slice('setter:'.length) };
+  }
+  if (scope.startsWith('closer:')) {
+    return { column: 'assigned_closer_id', accountId: scope.slice('closer:'.length) };
+  }
+  return null;
+}
+
+/**
+ * Classify schedule exceptions from one visible response.
+ *
+ * Only unresolved bookings create operational exceptions. An inspection needs
+ * both setter and closer ownership; an adjuster visit needs a closer. A clash
+ * uses the same market and one-hour slot as the booking guard. Separate offices
+ * can use the same wall time without creating a false company-wide conflict.
+ */
+export function scheduleExceptions(
+  appointments: ScheduleAppointmentFacts[],
+  nowIso: string
+): Record<string, ScheduleExceptionCode[]> {
+  const result: Record<string, ScheduleExceptionCode[]> = Object.fromEntries(
+    appointments.map((appointment) => [appointment.id, [] as ScheduleExceptionCode[]])
+  );
+  const now = Date.parse(nowIso);
+
+  for (const appointment of appointments) {
+    if (appointment.outcome !== 'scheduled') continue;
+    if (appointment.appointment_type === 'inspection' && !appointment.assigned_setter_id) {
+      result[appointment.id].push('missing_setter');
+    }
+    if (!appointment.assigned_closer_id) result[appointment.id].push('missing_closer');
+
+    const scheduledAt = Date.parse(appointment.scheduled_at);
+    if (!Number.isNaN(now) && !Number.isNaN(scheduledAt) && scheduledAt < now) {
+      result[appointment.id].push('overdue_outcome');
+    }
+  }
+
+  const slotMs = APPOINTMENT_SLOT_MINUTES * 60_000;
+  const unresolved = appointments.filter((appointment) => appointment.outcome === 'scheduled');
+  for (let index = 0; index < unresolved.length; index += 1) {
+    const left = unresolved[index];
+    const leftAt = Date.parse(left.scheduled_at);
+    if (Number.isNaN(leftAt)) continue;
+
+    for (let otherIndex = index + 1; otherIndex < unresolved.length; otherIndex += 1) {
+      const right = unresolved[otherIndex];
+      const rightAt = Date.parse(right.scheduled_at);
+      if (Number.isNaN(rightAt) || Math.abs(leftAt - rightAt) >= slotMs) continue;
+
+      if (left.market_id !== right.market_id) continue;
+
+      if (!result[left.id].includes('conflict')) result[left.id].push('conflict');
+      if (!result[right.id].includes('conflict')) result[right.id].push('conflict');
+    }
+  }
+
+  return result;
+}
 
 /**
  * Days the grid renders for the given view.

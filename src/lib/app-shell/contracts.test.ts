@@ -82,9 +82,7 @@ describe('trusted application shell contracts', () => {
 
   it('gives primary data screens an error state before their empty state', () => {
     for (const page of [
-      read('src/app/admin/(app)/page.tsx'),
       read('src/app/admin/(app)/leads/page.tsx'),
-      read('src/app/admin/(app)/map/page.tsx'),
       read('src/app/admin/(app)/today/page.tsx'),
       read('src/app/admin/(app)/performance/page.tsx'),
       read('src/app/admin/(app)/analytics/page.tsx'),
@@ -93,5 +91,14 @@ describe('trusted application shell contracts', () => {
     ]) {
       expect(page).toContain('DataErrorState');
     }
+
+    const operationsOverview = read('src/components/reporting/operations-overview.tsx');
+    expect(operationsOverview).toContain('<ReportState');
+    expect(operationsOverview).toContain('variant="error"');
+
+    const map = read('src/app/admin/(app)/map/page.tsx');
+    expect(map).toContain('leadError &&');
+    expect(map).toContain('Map leads did not refresh.');
+    expect(map).toContain('onClick={() => void fetchLeads()}');
   });
 });

@@ -181,12 +181,15 @@ function LeadsListContent() {
   // enumerate the roster.
   const assignedSetter = queueParams.assigned_setter || '';
   const assignedCloser = queueParams.assigned_closer || '';
+  // Receipt-only scope. Keep it separate from saved queue definitions, but
+  // preserve it while the user sorts, pages, or adjusts another filter.
+  const importBatchId = searchParams.get('import_batch_id') || '';
   const [uploaders, setUploaders] = useState<{ id: string; name: string }[]>([]);
   const requestedPage = parseInt(searchParams.get('page') || '1', 10);
   const page = Number.isFinite(requestedPage) && requestedPage > 0 ? requestedPage : 1;
   const selectedViewId = searchParams.get('view') || '';
   const { sort, order } = leadQueueSort(queueParams);
-  const hasFilters = hasLeadQueueFilters(queueParams);
+  const hasFilters = hasLeadQueueFilters(queueParams) || Boolean(importBatchId);
 
   // Only show optional columns that actually carry data. Freshly imported lists
   // have no source or values yet, and three columns of "—" on every row is noise
@@ -202,8 +205,9 @@ function LeadsListContent() {
 
   const applyQueue = useCallback((params: LeadQueueParams, viewId?: string | null) => {
     const next = buildLeadQueueSearchParams(params, { viewId });
+    if (importBatchId) next.set('import_batch_id', importBatchId);
     router.replace(leadQueueHref(next), { scroll: false });
-  }, [router]);
+  }, [importBatchId, router]);
 
   const patchQueue = useCallback((
     patch: Partial<Record<LeadQueueParamKey, string | undefined>>
@@ -220,6 +224,7 @@ function LeadsListContent() {
 
   function handleExport() {
     const params = buildLeadQueueSearchParams(queueParams);
+    if (importBatchId) params.set('import_batch_id', importBatchId);
     const query = params.toString();
     window.location.href = query ? `/api/admin/leads/export?${query}` : '/api/admin/leads/export';
   }
@@ -233,6 +238,7 @@ function LeadsListContent() {
     const params = buildLeadQueueSearchParams(queueParams);
     params.set('page', page.toString());
     params.set('limit', '25');
+    if (importBatchId) params.set('import_batch_id', importBatchId);
 
     try {
       const res = await fetch(`/api/admin/leads?${params}`, { signal: controller.signal });
@@ -251,7 +257,7 @@ function LeadsListContent() {
     } finally {
       if (fetchControllerRef.current === controller) setLoading(false);
     }
-  }, [queueParams, page]);
+  }, [queueParams, page, importBatchId]);
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -339,7 +345,7 @@ function LeadsListContent() {
   // Reset during render rather than in an effect. An effect would let one paint
   // happen with a stale selection still armed, and it trips
   // react-hooks/set-state-in-effect.
-  const filterKey = leadFilterKey({
+  const filterKey = `${leadFilterKey({
     status,
     priority,
     search,
@@ -352,7 +358,7 @@ function LeadsListContent() {
     createdBy,
     assignedSetter,
     assignedCloser,
-  });
+  })}|import_batch_id:${importBatchId}`;
   const [selectionScope, setSelectionScope] = useState(filterKey);
   if (!selectionSurvivesFilterChange(selectionScope, filterKey)) {
     setSelectionScope(filterKey);
@@ -384,6 +390,7 @@ function LeadsListContent() {
       viewId: selectedViewId || null,
       page: nextPage,
     });
+    if (importBatchId) params.set('import_batch_id', importBatchId);
     router.replace(leadQueueHref(params));
   }
 
