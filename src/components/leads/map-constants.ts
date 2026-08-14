@@ -27,8 +27,14 @@ export interface GeoLead {
   status: LeadStatus;
   priority: LeadPriority;
   estimated_roof_value: number | null;
+  /** Present on the live browse payload; older offline execution packages omit it. */
+  phone?: string | null;
   address_street: string | null;
   address_city: string | null;
+  /** Present on the live browse payload; older offline execution packages omit it. */
+  address_state?: string | null;
+  /** Present on the live browse payload; older offline execution packages omit it. */
+  address_zip?: string | null;
   is_dnc: boolean;
   hail_date: string | null;
   hail_size_inches: number | null;

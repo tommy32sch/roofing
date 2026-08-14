@@ -6,9 +6,12 @@ import { MapContainer, TileLayer, CircleMarker, Pane, Popup, Polygon, Polyline, 
 import type { Map as LeafletMap } from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { formatDistanceToNow } from 'date-fns';
+import { ArrowUpRight, MessageSquare, Navigation, Phone } from 'lucide-react';
 import { knockLabel, knockRecency, KNOCK_DISPOSITIONS, QUICK_KNOCK_DISPOSITIONS, type KnockDisposition } from '@/lib/leads/knocks';
 import { callLabel } from '@/lib/leads/calls';
-import { Button } from '@/components/ui/button';
+import { formatPhone, mapsUrl } from '@/lib/utils/format';
+import { cn } from '@/lib/utils';
+import { Button, buttonVariants } from '@/components/ui/button';
 import { FollowUpMenu } from '@/components/leads/FollowUpMenu';
 import type { LeadResultChannel } from '@/components/leads/LeadResultSheet';
 import { LEAD_STATUS_OPTIONS } from '@/types';
@@ -28,6 +31,17 @@ const EMPTY_LEAD_IDS: ReadonlySet<string> = new Set();
 const SIMPLIFY_TOLERANCE_PX = 4;
 
 const STATUS_LABELS = Object.fromEntries(LEAD_STATUS_OPTIONS.map((o) => [o.value, o.label]));
+
+const POPUP_ACTION_CLASS = cn(
+  buttonVariants({ variant: 'outline', size: 'sm' }),
+  'h-auto min-h-11 rounded-sm px-2 text-xs'
+);
+
+function geoLeadAddress(lead: GeoLead): string {
+  const cityState = [lead.address_city, lead.address_state].filter(Boolean).join(', ');
+  const locality = [cityState, lead.address_zip].filter(Boolean).join(' ');
+  return [lead.address_street, locality].filter(Boolean).join(', ') || 'No address on file';
+}
 
 /**
  * Run a view change once the map container actually has a size.
@@ -959,6 +973,9 @@ export default function LeadMap({
 
       {leads.map((lead) => {
         const selected = selectedIds.has(lead.id);
+        const leadName = `${lead.first_name} ${lead.last_name}`.trim();
+        const primaryPhone = lead.phone?.trim() || null;
+        const directionsUrl = mapsUrl(lead);
         const marker = leadMarkerAppearance({
           addressDetail,
           statusColor: STATUS_COLORS[lead.status] ?? STATUS_COLORS.new,
@@ -979,49 +996,103 @@ export default function LeadMap({
               weight: marker.strokeWeight,
             }}
           >
-            <Popup pane="popupPane">
-              <div className="space-y-1 text-sm min-w-[180px]">
-                <p className="font-medium">
-                  {lead.first_name} {lead.last_name}
-                </p>
-                <p className="text-xs">
-                  {[lead.address_street, lead.address_city].filter(Boolean).join(', ') || 'No address'}
-                </p>
-                {/* The two Do Not warnings stay above the buttons because they
-                    DISABLE them — a rep must see why a control is dead before
-                    reaching for it. Everything else is reference and sits below. */}
-                {lead.is_dnc && (
-                  <p className="text-xs font-semibold" style={{ color: DNC_RING_COLOR }}>
-                    Do Not Call
+            <Popup
+              pane="popupPane"
+              className="lead-map-popup"
+              maxWidth={320}
+            >
+              <div className="w-full space-y-2 text-sm">
+                <header className="space-y-0.5 pr-8">
+                  <p className="font-mono text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    {STATUS_LABELS[lead.status] ?? lead.status}
                   </p>
-                )}
-                {lead.do_not_knock && (
-                  <p className="text-xs font-semibold" style={{ color: DO_NOT_KNOCK_RING_COLOR }}>
-                    Do not knock — homeowner asked
+                  <p className="text-base font-semibold leading-tight text-foreground">
+                    {lead.first_name} {lead.last_name}
                   </p>
+                  <p className="text-xs leading-5 text-muted-foreground">
+                    {geoLeadAddress(lead)}
+                  </p>
+                  {!lead.is_dnc && primaryPhone && (
+                    <p className="font-mono text-xs text-muted-foreground">
+                      {formatPhone(primaryPhone)}
+                    </p>
+                  )}
+                </header>
+
+                {/* Restrictions stay above all actions. Each warning blocks
+                    only its own channel: DNC blocks phone actions, while DNK
+                    blocks knock-result actions. */}
+                {(lead.is_dnc || lead.do_not_knock) && (
+                  <div className="space-y-1 border-y border-border py-2" role="note" aria-label="Contact restrictions">
+                    {lead.is_dnc && (
+                      <p className="text-xs font-semibold" style={{ color: DNC_RING_COLOR }}>
+                        Do Not Call
+                      </p>
+                    )}
+                    {lead.do_not_knock && (
+                      <p className="text-xs font-semibold" style={{ color: DO_NOT_KNOCK_RING_COLOR }}>
+                        Do not knock — homeowner asked
+                      </p>
+                    )}
+                  </div>
                 )}
 
+                <nav
+                  className={cn(
+                    'grid grid-cols-2 gap-1.5',
+                    !lead.is_dnc && primaryPhone && 'sm:grid-cols-4'
+                  )}
+                  aria-label={`Lead actions for ${leadName}`}
+                >
+                  {!lead.is_dnc && primaryPhone && (
+                    <>
+                      <a
+                        href={`tel:${primaryPhone}`}
+                        className={POPUP_ACTION_CLASS}
+                        aria-label={`Call ${leadName}`}
+                      >
+                        <Phone className="size-3.5" aria-hidden="true" />
+                        Call
+                      </a>
+                      <a
+                        href={`sms:${primaryPhone}`}
+                        className={POPUP_ACTION_CLASS}
+                        aria-label={`Text ${leadName}`}
+                      >
+                        <MessageSquare className="size-3.5" aria-hidden="true" />
+                        Text
+                      </a>
+                    </>
+                  )}
+                  {directionsUrl && (
+                    <a
+                      href={directionsUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={POPUP_ACTION_CLASS}
+                      aria-label={`Directions to ${leadName}`}
+                    >
+                      <Navigation className="size-3.5" aria-hidden="true" />
+                      Directions
+                    </a>
+                  )}
+                  <Link
+                    href={`/admin/leads/${lead.id}`}
+                    className={POPUP_ACTION_CLASS}
+                    aria-label={`Open lead for ${leadName}`}
+                  >
+                    <ArrowUpRight className="size-3.5" aria-hidden="true" />
+                    Open
+                  </Link>
+                </nav>
 
-                {/* The action sits above the reference detail: a rep taps a pin to
-                    knock the house, and hail size and estimated value do not change
-                    that decision at the door. What DOES change it — the two Do Not
-                    warnings and when the house was last contacted — stays above. */}
-                {/* Identify the activity here, then choose the outcome in a
-                    phone-sized sheet outside Leaflet. Each restriction blocks
-                    only its own channel: DNC leads can still be knocked and
-                    do-not-knock houses can still be called. */}
+                {/* Result capture stays in the popup because it is the core
+                    door workflow. The two common knock results remain one tap. */}
                 {onOpenResult && (
-                  <div className="border-t pt-1.5">
-                    <p className="mb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                  <section className="border-t border-border pt-2" aria-label="Record result">
+                    <p className="mb-1.5 font-mono text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
                       Record result
                     </p>
-
-                    {/* The two commonest knock outcomes record in one tap,
-                        straight from the popup. A rep does this hundreds of
-                        times a shift, and both of these are terminal — no
-                        scheduling or won-lead step follows — so the sheet was
-                        pure overhead on the path they walk most. Everything
-                        else stays behind "More". */}
                     {onQuickKnock && !lead.do_not_knock && (
                       <div className="mb-1.5 grid grid-cols-2 gap-1.5">
                         {QUICK_KNOCK_DISPOSITIONS.map((value) => {
@@ -1031,7 +1102,7 @@ export default function LeadMap({
                               key={value}
                               type="button"
                               size="sm"
-                              className="min-h-11 h-auto px-2 text-xs"
+                              className="h-auto min-h-11 px-2 text-xs"
                               onClick={() => onQuickKnock(lead, value as KnockDisposition)}
                             >
                               {d.label}
@@ -1040,26 +1111,23 @@ export default function LeadMap({
                         })}
                       </div>
                     )}
-
                     <div className="grid grid-cols-2 gap-1.5">
                       <Button
                         type="button"
                         size="sm"
                         variant="outline"
-                        className="min-h-11 h-auto px-2 text-xs"
+                        className="h-auto min-h-11 px-2 text-xs"
                         disabled={lead.do_not_knock}
                         title={lead.do_not_knock ? 'This house is marked Do Not Knock' : undefined}
                         onClick={() => onOpenResult(lead, 'knock')}
                       >
-                        {/* Every other knock outcome, plus appointment and
-                            contract which open their own flow. */}
-                        More…
+                        Full result
                       </Button>
                       <Button
                         type="button"
                         size="sm"
                         variant="outline"
-                        className="min-h-11 h-auto px-2 text-xs"
+                        className="h-auto min-h-11 px-2 text-xs"
                         disabled={lead.is_dnc}
                         title={lead.is_dnc ? 'This lead is marked Do Not Call' : undefined}
                         onClick={() => onOpenResult(lead, 'cold_call')}
@@ -1067,23 +1135,14 @@ export default function LeadMap({
                         Cold called
                       </Button>
                     </div>
-                  </div>
+                  </section>
                 )}
 
-                {/* Reference detail, below the action. */}
-                {lead.hail_size_inches != null && (
-                  <p className="text-xs font-medium text-blue-600">
-                    {Number(lead.hail_size_inches).toFixed(2)}&quot; hail
-                    {lead.hail_date ? ` · ${lead.hail_date}` : ''}
-                  </p>
-                )}
-
-                {/* Go Back and Call Back are promises to follow up. Without
-                    capturing when, the result is recorded and then lost — so
-                    the control stays here instead of being buried on the lead. */}
+                {/* Go Back and Call Back are promises to follow up. Without a
+                    date, the result is recorded and then lost. */}
                 {onOpenResult && shouldPromptForFollowUp(lead) && (
-                  <div className="border-t pt-1.5">
-                    <p className="mb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                  <section className="border-t border-border pt-2" aria-label="Follow up">
+                    <p className="mb-1.5 font-mono text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
                       {lead.follow_up_date ? 'Following up' : 'Follow up when?'}
                     </p>
                     <FollowUpMenu
@@ -1091,49 +1150,51 @@ export default function LeadMap({
                       followUpDate={lead.follow_up_date}
                       onChange={onFollowUpChange}
                     />
-                  </div>
+                  </section>
                 )}
 
-
-                {/* Reference detail: real information, but not what the popup
-                    was opened for, so it does not stand between the rep and
-                    the buttons. */}
-                <p className="text-xs">
-                  {STATUS_LABELS[lead.status] ?? lead.status}
-                  {lead.estimated_roof_value != null &&
-                    ` · ~$${Number(lead.estimated_roof_value).toLocaleString()}`}
-                </p>
-                {lead.last_knock_at && (
-                  <p className="text-xs text-muted-foreground">
-                    Knocked {formatDistanceToNow(new Date(lead.last_knock_at), { addSuffix: true })}
-                    {lead.last_disposition ? ` · ${knockLabel(lead.last_disposition)}` : ''}
-                    {lead.knock_count > 1 ? ` · ${lead.knock_count}×` : ''}
+                {/* Hail, value, and interaction history support the decision,
+                    but never stand between the rep and the primary actions. */}
+                <section className="space-y-1 border-t border-border pt-2" aria-label="Lead reference">
+                  <p className="text-xs font-medium text-foreground">
+                    {STATUS_LABELS[lead.status] ?? lead.status}
+                    {lead.estimated_roof_value != null &&
+                      ` · ~$${Number(lead.estimated_roof_value).toLocaleString()}`}
                   </p>
-                )}
-                {lead.last_call_at && (
-                  <p className="text-xs text-muted-foreground">
-                    Cold called {formatDistanceToNow(new Date(lead.last_call_at), { addSuffix: true })}
-                    {lead.last_call_disposition
-                      ? ` · ${callLabel(lead.last_call_disposition)}`
-                      : ''}
-                    {lead.call_count > 1 ? ` · ${lead.call_count}×` : ''}
-                  </p>
-                )}
-                <div className="flex items-center gap-2 pt-1">
-                  <Link href={`/admin/leads/${lead.id}`} className="text-xs underline">
-                    View lead →
-                  </Link>
-                  {onToggleSelect && (
-                    <Button
-                      size="sm"
-                      variant={selected ? 'secondary' : 'default'}
-                      className="h-6 px-2 text-xs"
-                      onClick={() => onToggleSelect(lead)}
-                    >
-                      {selected ? 'Deselect' : 'Select'}
-                    </Button>
+                  {lead.hail_size_inches != null && (
+                    <p className="text-xs font-medium text-blue-600">
+                      {Number(lead.hail_size_inches).toFixed(2)}&quot; hail
+                      {lead.hail_date ? ` · ${lead.hail_date}` : ''}
+                    </p>
                   )}
-                </div>
+                  {lead.last_knock_at && (
+                    <p className="text-xs leading-5 text-muted-foreground">
+                      Knocked {formatDistanceToNow(new Date(lead.last_knock_at), { addSuffix: true })}
+                      {lead.last_disposition ? ` · ${knockLabel(lead.last_disposition)}` : ''}
+                      {lead.knock_count > 1 ? ` · ${lead.knock_count}×` : ''}
+                    </p>
+                  )}
+                  {lead.last_call_at && (
+                    <p className="text-xs leading-5 text-muted-foreground">
+                      Cold called {formatDistanceToNow(new Date(lead.last_call_at), { addSuffix: true })}
+                      {lead.last_call_disposition
+                        ? ` · ${callLabel(lead.last_call_disposition)}`
+                        : ''}
+                      {lead.call_count > 1 ? ` · ${lead.call_count}×` : ''}
+                    </p>
+                  )}
+                </section>
+
+                {onToggleSelect && (
+                  <Button
+                    size="sm"
+                    variant={selected ? 'secondary' : 'outline'}
+                    className="h-auto min-h-11 w-full text-xs"
+                    onClick={() => onToggleSelect(lead)}
+                  >
+                    {selected ? 'Remove from selection' : 'Select for assignment'}
+                  </Button>
+                )}
               </div>
             </Popup>
           </CircleMarker>

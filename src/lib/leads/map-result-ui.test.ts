@@ -55,8 +55,36 @@ describe('map lead-result UI contracts', () => {
     expect(geoRoute).toContain('call_count');
   });
 
+  it('keeps the popup phone payload inside the existing role access boundary', () => {
+    const geoSelection = geoRoute.slice(
+      geoRoute.indexOf('.select('),
+      geoRoute.indexOf(".eq('is_flagged_duplicate'", geoRoute.indexOf('.select('))
+    );
+    expect(geoSelection).toContain('phone');
+    expect(geoSelection).toContain('address_state');
+    expect(geoSelection).toContain('address_zip');
+    expect(geoRoute).toContain('applyLeadAccessFilter(query, { id: admin.sub, role: admin.role })');
+    expect(geoRoute.indexOf('applyLeadAccessFilter')).toBeLessThan(geoRoute.indexOf('await query'));
+  });
+
+  it('never renders direct phone actions for a DNC map lead', () => {
+    expect(map).toContain('!lead.is_dnc && primaryPhone');
+    expect(map).toContain('href={`tel:${primaryPhone}`}');
+    expect(map).toContain('href={`sms:${primaryPhone}`}');
+
+    const directPhoneActions = map.slice(
+      map.indexOf('aria-label={`Lead actions'),
+      map.indexOf('Directions to ')
+    );
+    expect(directPhoneActions).toContain('!lead.is_dnc && primaryPhone');
+    expect(directPhoneActions).toContain('tel:');
+    expect(directPhoneActions).toContain('sms:');
+    expect(directPhoneActions).not.toContain('lead.do_not_knock');
+  });
+
   it('does not leave phone actions active after a manual Do Not Call result', () => {
-    expect(detail).toContain('p && !lead.is_dnc');
+    expect(detail).toContain('primaryPhone && !lead.is_dnc');
+    expect(detail).toContain('phone && !lead.is_dnc');
     expect(detail).toContain('Do not call this lead.');
     expect(detail).not.toContain('The phone\\n                      number was not stored');
   });

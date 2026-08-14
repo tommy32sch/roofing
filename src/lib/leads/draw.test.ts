@@ -54,7 +54,7 @@ describe('drawing pointer gesture lifecycle', () => {
     ])).toBe('path');
   });
 
-  it('preserves a genuine tap as one corner point', () => {
+  it('classifies a stationary gesture as a point instead of a path', () => {
     expect(simulateGesture([
       { type: 'pointerdown', x: 100, y: 100 },
       { type: 'pointermove', x: 102, y: 101 },

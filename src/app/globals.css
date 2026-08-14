@@ -285,6 +285,105 @@
   display: none;
 }
 
+/* Lead popups are compact field tools, not generic floating cards. The square
+   edge and light border match the ledger surfaces used by Today and Leads. */
+.leaflet-popup.lead-map-popup .leaflet-popup-content-wrapper {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--popover);
+  color: var(--popover-foreground);
+  box-shadow: 0 18px 45px -24px oklch(0 0 0 / 55%);
+}
+
+.leaflet-popup.lead-map-popup .leaflet-popup-content {
+  width: min(18rem, calc(100vw - 4.5rem)) !important;
+  max-height: min(70dvh, 34rem);
+  overflow-y: auto;
+  margin: 0;
+  padding: 0.75rem 0.875rem;
+  color: var(--popover-foreground);
+  font-family: inherit;
+}
+
+.leaflet-popup.lead-map-popup .leaflet-popup-tip {
+  border: 1px solid var(--border);
+  background: var(--popover);
+  box-shadow: none;
+}
+
+.leaflet-popup.lead-map-popup .leaflet-popup-close-button {
+  display: grid;
+  width: 2.75rem;
+  height: 2.75rem;
+  place-items: center;
+  padding: 0;
+  color: var(--muted-foreground);
+  font-size: 1.25rem;
+}
+
+.leaflet-popup.lead-map-popup .leaflet-popup-close-button:hover,
+.leaflet-popup.lead-map-popup .leaflet-popup-close-button:focus-visible {
+  color: var(--foreground);
+}
+
+/* Leaflet controls use the same restrained chrome as the app shell. */
+.leaflet-control-zoom.leaflet-bar {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  box-shadow: 0 8px 24px -18px oklch(0 0 0 / 55%);
+}
+
+.leaflet-control-zoom.leaflet-bar a,
+.leaflet-control-zoom.leaflet-bar a:hover {
+  width: 2.5rem;
+  height: 2.5rem;
+  border-color: var(--border);
+  background: var(--background);
+  color: var(--foreground);
+  line-height: 2.5rem;
+}
+
+.leaflet-control-zoom.leaflet-bar a:hover {
+  background: var(--muted);
+}
+
+.leaflet-control-zoom.leaflet-bar a.leaflet-disabled,
+.leaflet-control-zoom.leaflet-bar a.leaflet-disabled:hover {
+  background: var(--muted);
+  color: var(--muted-foreground);
+  opacity: 0.6;
+}
+
+.leaflet-control-attribution {
+  border-top: 1px solid color-mix(in oklch, var(--border) 75%, transparent);
+  border-left: 1px solid color-mix(in oklch, var(--border) 75%, transparent);
+  background: color-mix(in oklch, var(--background) 90%, transparent) !important;
+  color: var(--muted-foreground);
+  font-size: 9px;
+  line-height: 1.35;
+}
+
+.leaflet-control-attribution a {
+  color: inherit;
+}
+
+/* The Map workspace owns the top edge of the canvas. Move Leaflet's zoom
+   control below that command dock so both remain fully visible and tappable. */
+.field-map-workspace .leaflet-top.leaflet-left {
+  top: 3.75rem;
+}
+
+@media (pointer: coarse) {
+  .leaflet-control-zoom.leaflet-bar a,
+  .leaflet-control-zoom.leaflet-bar a:hover {
+    width: 2.75rem;
+    height: 2.75rem;
+    line-height: 2.75rem;
+  }
+}
+
 /* ---------------------------------------------------------------------------
    Field sizing: interactive targets on touch devices.
 

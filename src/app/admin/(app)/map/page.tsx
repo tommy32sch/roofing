@@ -2,7 +2,22 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
-import { BoxSelect, UserCheck, LocateFixed, CloudHail, Wind, Pencil, ChevronDown, Check, Hexagon, MapPinned, Undo2, HousePlus, X, SlidersHorizontal } from 'lucide-react';
+import {
+  BoxSelect,
+  Filter,
+  HousePlus,
+  Layers3,
+  ListFilter,
+  LocateFixed,
+  Map as MapIcon,
+  MapPinned,
+  Pencil,
+  RefreshCw,
+  SlidersHorizontal,
+  Undo2,
+  UserCheck,
+  X,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { knockLabel } from '@/lib/leads/knocks';
 import { callLabel } from '@/lib/leads/calls';
@@ -24,39 +39,31 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuGroup,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet';
 import { BulkAssignDialog } from '@/components/leads/BulkAssignDialog';
 import {
-  STATUS_COLORS, DNC_RING_COLOR, STORM_TYPES, toggleStormType, countStormsByType,
-  stormLegendEntries, stormAgeLegendEntries, stormZoneLegendEntries, STORM_WINDOWS, stormWindowLabel, STORM_MIN_VALUES, stormMinLabel,
+  toggleStormType, countStormsByType,
   type GeoLead, type StormReport, type StormType,
 } from '@/components/leads/map-constants';
-import { LEAD_STATUS_OPTIONS, LEAD_PRIORITY_OPTIONS } from '@/types';
 import type { Territory } from '@/types';
 import { LIMITS } from '@/lib/utils/validation';
 import { leadsAfterRemovingArea, totalLeadsInAreas, newLeadsFromArea, type LassoArea } from '@/lib/leads/lasso-areas';
 import { pointInPolygon } from '@/lib/leads/geo-polygon';
 import { mapDrawAvailability, type MapDrawPurpose } from '@/lib/leads/map-drawing';
 import { AddHouseSheet } from '@/components/leads/AddHouseSheet';
-import { PageHeader } from '@/components/layout/page-header';
-import { MarketFilter } from '@/components/markets/market-filter';
 import { useMarkets, ALL_MARKETS } from '@/components/markets/use-markets';
+import {
+  MapFiltersPanel,
+  MapLayersPanel,
+  MapLegendPanel,
+} from '@/components/leads/MapWorkspaceControls';
 import { TerritoryDialog } from '@/components/territories/TerritoryDialog';
 import { TerritoryExecutionPanel } from '@/components/territories/TerritoryExecutionPanel';
 import { TerritorySheet } from '@/components/territories/TerritorySheet';
@@ -73,7 +80,6 @@ import {
 import { AppointmentModal } from '@/components/leads/AppointmentModal';
 import { WonLeadModal } from '@/components/leads/WonLeadModal';
 import { useAppShell } from '@/components/providers/app-shell-provider';
-import { DataErrorState } from '@/components/layout/data-error-state';
 
 // Leaflet touches `window` at import time — client-only
 const LeadMap = dynamic(() => import('@/components/leads/LeadMap'), {
@@ -130,7 +136,7 @@ export default function MapPage() {
   const [geocoding, setGeocoding] = useState(false);
   const [geocodeStatus, setGeocodeStatus] = useState('');
 
-  const [legendOpen, setLegendOpen] = useState(false);
+  const [desktopPanel, setDesktopPanel] = useState<'filters' | 'layers' | 'legend' | null>(null);
   // Wind and hail are independent overlays and can both be on: a roof with both
   // hail bruising and wind-lifted shingles is the strongest claim, and that only
   // shows up where the two layers overlap.
@@ -162,19 +168,27 @@ export default function MapPage() {
   const [addingHouse, setAddingHouse] = useState(false);
   const [pendingHouse, setPendingHouse] = useState<{ latitude: number; longitude: number } | null>(null);
   const [mapToolsOpen, setMapToolsOpen] = useState(false);
+  const [mobileToolPanel, setMobileToolPanel] = useState<'filters' | 'layers' | 'legend'>('filters');
   /**
-   * Tracks the sm breakpoint the Tools toggle uses, so the draw hint appears
-   * exactly when the controls it explains do. Matching on the same query rather
-   * than a second hardcoded number keeps the two from drifting apart.
+   * Tracks the mobile workspace breakpoint, so only one set of Select controls
+   * is mounted after hydration. This prevents duplicate Base UI control IDs and
+   * uses the same breakpoint as the desktop command docks.
    */
   const [isNarrow, setIsNarrow] = useState(false);
   useEffect(() => {
-    const mq = window.matchMedia('(max-width: 639px)');
+    const mq = window.matchMedia('(max-width: 1279px)');
     const sync = () => setIsNarrow(mq.matches);
     sync();
     mq.addEventListener('change', sync);
     return () => mq.removeEventListener('change', sync);
   }, []);
+  useEffect(() => {
+    if (isNarrow) {
+      setDesktopPanel(null);
+    } else {
+      setMapToolsOpen(false);
+    }
+  }, [isNarrow]);
   const [drawing, setDrawing] = useState(false);
   const [drawPurpose, setDrawPurpose] = useState<MapDrawPurpose | null>(null);
   // Areas committed during this draw session. Kept so several loops are
@@ -994,18 +1008,39 @@ export default function MapPage() {
     }
   }
 
-  function handleMarketChange(nextMarket: string) {
+  function clearSelectionAreas() {
+    setSelection(new Map());
+    setDrawPoints([]);
+    setLassoAreas([]);
+  }
+
+  function clearActiveMapIntent() {
     setDrawing(false);
     setDrawPurpose(null);
-    setDrawPoints([]);
     setEditingTerritory(null);
     setEditingBoundary(false);
     setTerritoryDialogOpen(false);
+  }
+
+  function handleMarketChange(nextMarket: string) {
+    clearActiveMapIntent();
+    clearSelectionAreas();
     setTerritorySheetOpen(false);
     setRestoreConflict(null);
     setAlertFocus(null);
-    setSelection(new Map());
     setMarket(nextMarket);
+  }
+
+  function handleStatusChange(nextStatus: string) {
+    clearActiveMapIntent();
+    clearSelectionAreas();
+    setStatus(nextStatus === 'all' ? '' : nextStatus);
+  }
+
+  function handlePriorityChange(nextPriority: string) {
+    clearActiveMapIntent();
+    clearSelectionAreas();
+    setPriority(nextPriority === 'all' ? '' : nextPriority);
   }
 
   const selectionTotal = [...selection.values()].reduce((sum, v) => sum + v, 0);
@@ -1043,516 +1078,490 @@ export default function MapPage() {
           pointInPolygon([lead.latitude, lead.longitude], dialogBoundary)
       ).length;
 
-  // Map height budget, measured rather than guessed. Desktop: viewport minus the
-  // app header (3.5rem) and main's vertical padding (4rem). Mobile reserves more
-  // for the fixed bottom tab bar.
-  return (
-    <div className="flex min-h-[420px] flex-col gap-3 h-[calc(100dvh-13rem)] md:h-[calc(100dvh-7.5rem)]">
-      <PageHeader
-        title={execution.territory?.name ?? 'Map'}
-        description={
-          execution.active
-            ? 'Focused territory canvassing'
-            : 'Lead locations, saved territories and storm overlays'
-        }
-        actions={
-          <>
-            {/* On a phone this toolbar consumed 252px and left the map 178px of
-                an 812px screen — 22%, for the one element the page exists to
-                show. Collapsed behind a toggle at phone size, unchanged on
-                desktop, matching the Filters pattern the leads page already
-                uses. Not execution mode: that toolbar is the focused one. */}
-            {!execution.active && (
-              <Button
-                variant={mapToolsOpen ? 'default' : 'outline'}
-                size="sm"
-                className="sm:hidden"
-                aria-expanded={mapToolsOpen}
-                onClick={() => setMapToolsOpen((o) => !o)}
-              >
-                <SlidersHorizontal className="h-4 w-4 mr-1" />
-                {mapToolsOpen ? 'Hide tools' : 'Tools'}
-              </Button>
-            )}
-            <div
-              className={`${mapToolsOpen || execution.active ? 'flex' : 'hidden'} sm:flex flex-wrap items-center gap-2`}
-            >
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setTerritorySheetOpen(true)}
-              disabled={territoriesLoading || drawing}
-              title={drawing ? 'Finish or cancel the current boundary first' : undefined}
-            >
-              <MapPinned className="h-4 w-4 mr-1" />
-              Territories ({activeTerritories.length})
-            </Button>
+  const mapMode:
+    | 'browse'
+    | 'select-area'
+    | 'draw-territory'
+    | 'add-house'
+    | 'execute-territory' = execution.active
+      ? 'execute-territory'
+      : addingHouse
+        ? 'add-house'
+        : drawing && drawPurpose === 'selection'
+          ? 'select-area'
+          : drawing
+            ? 'draw-territory'
+            : 'browse';
+  const mapModeLabel = {
+    browse: 'Browse',
+    'select-area': 'Select area',
+    'draw-territory': 'Draw territory',
+    'add-house': 'Add house',
+    'execute-territory': 'Execute territory',
+  }[mapMode];
+  const mapModeDetail = {
+    browse: loading ? 'Updating lead pins' : displayedLeads.length + ' mapped leads',
+    'select-area': 'Trace one or more lead groups',
+    'draw-territory': 'Trace and save one boundary',
+    'add-house': 'Tap the house location',
+    'execute-territory': execution.territory?.name ?? 'Active route',
+  }[mapMode];
+  const drawBlockedReasons = isAdmin
+    ? [
+        drawAvailability.territoryBlockedReason,
+        drawAvailability.selectionBlockedReason,
+      ]
+    : [];
 
-            {/* Unsynced work. Silence here would be the old bug wearing a new
-                face: the rep needs to know their results are held, not lost. */}
+  return (
+    <div
+      className="field-map-workspace -mx-4 -my-5 flex h-[calc(100dvh-8rem-env(safe-area-inset-bottom))] min-h-[26rem] flex-col overflow-hidden border-y bg-background md:-mx-8 md:-my-7 md:h-[calc(100dvh-4rem)] xl:-mx-10"
+      aria-label="Field map workspace"
+      data-map-mode={mapMode}
+    >
+      <header
+        className="flex h-[3.75rem] shrink-0 items-center justify-between gap-4 border-b bg-background px-3 md:px-4"
+        aria-label="Field Map header"
+      >
+        <div className="min-w-0">
+          <p className="font-mono text-[9px] font-bold uppercase tracking-[0.16em] text-primary">
+            Field map
+          </p>
+          <h1 className="truncate text-lg font-semibold tracking-[-0.025em]">
+            {execution.territory?.name ?? selectedMarket?.name ?? 'All markets'}
+          </h1>
+        </div>
+        <div className="flex min-w-0 items-center gap-1.5">
+          {execution.active && (
+            <Button
+              variant="ghost"
+              className="h-11 px-2 sm:px-3"
+              onClick={() => setTerritorySheetOpen(true)}
+              disabled={territoriesLoading}
+            >
+              <MapPinned className="h-4 w-4" />
+              <span className="hidden sm:inline">Territories</span>
+            </Button>
+          )}
+          <div className="min-w-0 border-l pl-3 text-right">
+            <p className="font-mono text-[9px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              Mode
+            </p>
+            <p className="truncate text-xs font-semibold">{mapModeLabel}</p>
+            <p className="hidden truncate text-[10px] text-muted-foreground sm:block">{mapModeDetail}</p>
+          </div>
+        </div>
+      </header>
+
+      <div className="relative isolate min-h-0 flex-1 overflow-hidden" data-stable-map-canvas>
+        <LeadMap
+          addingHouse={!execution.active && addingHouse}
+          pendingHouse={execution.active ? null : pendingHouse}
+          onPlaceHouse={(latitude, longitude) => setPendingHouse({ latitude, longitude })}
+          leads={displayedLeads}
+          selectedIds={execution.active ? new Set<string>() : new Set(selection.keys())}
+          activeLeadId={execution.currentLead?.id ?? null}
+          revisitDueIds={execution.revisitDueIds}
+          userLocation={execution.location}
+          onToggleSelect={isAdmin && !execution.active ? toggleSelect : undefined}
+          stormReports={execution.active ? [] : stormReports}
+          stormNow={stormFetchedAt}
+          stormZones={!execution.active && stormZones}
+          territories={displayedTerritories}
+          territoryLeadCounts={displayedTerritoryLeadCounts}
+          currentUserId={currentUserId}
+          onSelectTerritoryLeads={
+            isAdmin && !execution.active ? addTerritoryLeadsToSelection : undefined
+          }
+          onEditTerritory={isAdmin && !execution.active ? editTerritoryDetails : undefined}
+          drawing={!execution.active && drawing}
+          drawPoints={drawPoints}
+          onDrawPath={isAdmin && !execution.active ? (path) => setDrawPoints(path) : undefined}
+          onDrawCommit={
+            isAdmin && !execution.active && drawPurpose === 'selection'
+              ? commitLassoSelection
+              : undefined
+          }
+          lassoAreas={!execution.active && drawPurpose === 'selection' ? lassoAreas : undefined}
+          onMapReady={(map) => { mapRef.current = map; setMapInstance(map); }}
+          onOpenResult={(lead, channel) => setResultTarget({ lead, channel })}
+          onQuickKnock={(lead, disposition) =>
+            void logLeadResult({ channel: 'knock', disposition }, lead)
+          }
+          onFollowUpChange={refreshLeadViews}
+          marketId={execution.territory?.market_id ?? selectedMarket?.id ?? null}
+          marketCenter={marketCenter}
+          marketLoading={loading}
+          focus={displayedFocus}
+        />
+
+        {!hasLoadedOnce && (
+          <div className="pointer-events-none absolute inset-0 z-[520] bg-background">
+            <Skeleton className="h-full w-full rounded-none" />
+          </div>
+        )}
+
+        {!execution.active && !drawing && !addingHouse && (
+          <>
+            <div
+              className="pointer-events-none absolute left-3 top-3 z-[500] hidden items-center gap-1 border border-black/10 bg-background/95 p-1 shadow-md xl:flex"
+              aria-label="Map command dock"
+            >
+              <Button
+                variant="ghost"
+                className="pointer-events-auto h-11"
+                onClick={() => setTerritorySheetOpen(true)}
+                disabled={territoriesLoading}
+              >
+                <MapPinned className="h-4 w-4" />
+                Territories
+                <span className="font-mono text-[10px] text-muted-foreground">{activeTerritories.length}</span>
+              </Button>
+              <span className="h-6 w-px bg-border" aria-hidden="true" />
+              <Button
+                variant="ghost"
+                className="pointer-events-auto h-11"
+                onClick={() => { setAddingHouse(true); setPendingHouse(null); }}
+              >
+                <HousePlus className="h-4 w-4" />
+                Add house
+              </Button>
+              {isAdmin && (
+                <>
+                  <Button
+                    variant={allVisibleSelected ? 'default' : 'ghost'}
+                    className="pointer-events-auto h-11"
+                    onClick={toggleVisibleSelection}
+                    disabled={loading || visibleIds.size === 0}
+                  >
+                    <BoxSelect className="h-4 w-4" />
+                    {allVisibleSelected ? 'Deselect visible' : 'Select visible'}
+                    {visibleIds.size > 0 && <span className="font-mono text-[10px]">{visibleIds.size}</span>}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    className="pointer-events-auto h-11"
+                    onClick={startSelectionArea}
+                    disabled={drawAvailability.selectionDisabled}
+                    title={drawAvailability.selectionBlockedReason ?? undefined}
+                  >
+                    <Pencil className="h-4 w-4" />
+                    Draw area
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    className="pointer-events-auto h-11"
+                    onClick={startNewTerritory}
+                    disabled={drawAvailability.territoryDisabled}
+                    title={drawAvailability.territoryBlockedReason ?? undefined}
+                  >
+                    <MapPinned className="h-4 w-4" />
+                    New territory
+                  </Button>
+                </>
+              )}
+            </div>
+
+            <div
+              className="pointer-events-none absolute right-3 top-3 z-[500] hidden items-center gap-1 border border-black/10 bg-background/95 p-1 shadow-md xl:flex"
+              aria-label="Desktop map panel dock"
+            >
+              {([
+                ['filters', 'Filters', Filter],
+                ['layers', 'Layers', Layers3],
+                ['legend', 'Legend', MapIcon],
+              ] as const).map(([panel, label, Icon]) => (
+                <Button
+                  key={panel}
+                  variant={desktopPanel === panel ? 'default' : 'ghost'}
+                  className="pointer-events-auto h-11"
+                  aria-expanded={desktopPanel === panel}
+                  onClick={() => setDesktopPanel((current) => current === panel ? null : panel)}
+                >
+                  <Icon className="h-4 w-4" />
+                  {label}
+                </Button>
+              ))}
+            </div>
+
+            {!isNarrow && desktopPanel && (
+              <aside
+                className="pointer-events-auto absolute right-3 top-[4.25rem] z-[510] max-h-[calc(100%-5rem)] w-72 overflow-y-auto border border-black/10 bg-background p-4 shadow-lg"
+                aria-label={desktopPanel.charAt(0).toUpperCase() + desktopPanel.slice(1) + ' panel'}
+              >
+                <div className="mb-4 flex items-center justify-between border-b pb-3">
+                  <p className="font-mono text-[10px] font-bold uppercase tracking-[0.15em]">
+                    {desktopPanel}
+                  </p>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-11 w-11"
+                    onClick={() => setDesktopPanel(null)}
+                    aria-label={'Close ' + desktopPanel}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+                {desktopPanel === 'filters' && (
+                  <MapFiltersPanel
+                    markets={markets}
+                    marketsLoading={marketsLoading}
+                    marketValue={marketValue}
+                    status={status}
+                    priority={priority}
+                    blockedReasons={drawBlockedReasons}
+                    onMarketChange={handleMarketChange}
+                    onStatusChange={handleStatusChange}
+                    onPriorityChange={handlePriorityChange}
+                  />
+                )}
+                {desktopPanel === 'layers' && (
+                  <MapLayersPanel
+                    stormTypes={stormTypes}
+                    stormCounts={stormCounts}
+                    stormLoading={stormLoading}
+                    stormDays={stormDays}
+                    stormZones={stormZones}
+                    hailMin={hailMin}
+                    windMin={windMin}
+                    onToggleType={(type) => setStormTypes((current) => toggleStormType(current, type))}
+                    onDaysChange={setStormDays}
+                    onZonesChange={setStormZones}
+                    onHailMinChange={setHailMin}
+                    onWindMinChange={setWindMin}
+                  />
+                )}
+                {desktopPanel === 'legend' && (
+                  <MapLegendPanel stormTypes={stormTypes} stormZones={stormZones} />
+                )}
+              </aside>
+            )}
+
+            <div
+              className="pointer-events-none absolute inset-x-2 top-2 z-[500] grid grid-cols-3 gap-1.5 border border-black/10 bg-background p-1 shadow-md xl:hidden"
+              aria-label="Mobile map actions"
+            >
+              <Button
+                variant="outline"
+                className="pointer-events-auto h-11 min-w-0 px-2 text-xs shadow-none"
+                onClick={() => setTerritorySheetOpen(true)}
+                disabled={territoriesLoading}
+              >
+                <MapPinned className="h-4 w-4 shrink-0" />
+                <span className="truncate">Territories</span>
+              </Button>
+              <Button
+                variant="outline"
+                className="pointer-events-auto h-11 min-w-0 px-2 text-xs shadow-none"
+                onClick={() => { setAddingHouse(true); setPendingHouse(null); }}
+              >
+                <HousePlus className="h-4 w-4 shrink-0" />
+                <span className="truncate">Add house</span>
+              </Button>
+              <Button
+                variant="outline"
+                className="pointer-events-auto h-11 min-w-0 px-2 text-xs shadow-none"
+                onClick={() => setMapToolsOpen(true)}
+                aria-expanded={mapToolsOpen}
+              >
+                <SlidersHorizontal className="h-4 w-4 shrink-0" />
+                Tools
+              </Button>
+            </div>
+          </>
+        )}
+
+        {!execution.active && (drawing || addingHouse) && (
+          <>
+            <div
+              className="pointer-events-none absolute left-1/2 top-3 z-[520] hidden -translate-x-1/2 xl:block"
+              aria-label="Desktop map mode controls"
+            >
+              <div className="pointer-events-auto flex min-h-11 items-center gap-2 border border-white/10 bg-[#121722] px-3 py-1.5 text-white shadow-xl">
+                <div className="mr-1">
+                  <p className="text-xs font-semibold">{mapModeLabel}</p>
+                  <p className="text-[10px] text-white/60">{mapModeDetail}</p>
+                </div>
+                {drawPurpose === 'selection' && lassoAreas.length > 0 && (
+                  <span className="whitespace-nowrap font-mono text-[10px] text-white/70">
+                    {lassoAreas.length} area{lassoAreas.length === 1 ? '' : 's'} · {totalLeadsInAreas(lassoAreas)} leads
+                  </span>
+                )}
+                {drawing && drawPurpose === 'selection' && lassoAreas.length > 0 && (
+                  <Button
+                    variant="ghost"
+                    className="h-11 text-white hover:bg-white/10 hover:text-white"
+                    onClick={() => undoLassoArea(lassoAreas[lassoAreas.length - 1].id)}
+                  >
+                    <Undo2 className="h-4 w-4" />
+                    Undo
+                  </Button>
+                )}
+                {drawing && drawPurpose === 'selection' && (
+                  <Button className="h-11" onClick={cancelDraw}>Done</Button>
+                )}
+                {drawing && drawPurpose === 'territory' && (
+                  <>
+                    <Button className="h-11" onClick={finishDraw} disabled={drawPoints.length < 3}>
+                      Finish{drawPoints.length > 0 ? ' ' + drawPoints.length : ''}
+                    </Button>
+                    {drawPoints.length > 0 && (
+                      <Button
+                        variant="ghost"
+                        className="h-11 text-white hover:bg-white/10 hover:text-white"
+                        onClick={() => setDrawPoints([])}
+                      >
+                        Clear
+                      </Button>
+                    )}
+                    <Button
+                      variant="ghost"
+                      className="h-11 text-white hover:bg-white/10 hover:text-white"
+                      onClick={cancelDraw}
+                    >
+                      Cancel
+                    </Button>
+                  </>
+                )}
+                {addingHouse && (
+                  <Button
+                    variant="ghost"
+                    className="h-11 text-white hover:bg-white/10 hover:text-white"
+                    onClick={() => { setAddingHouse(false); setPendingHouse(null); }}
+                  >
+                    Cancel
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            <div
+              className="pointer-events-none absolute inset-x-2 top-2 z-[520] xl:hidden"
+              aria-label="Mobile map mode controls"
+            >
+              <div className="pointer-events-auto flex min-h-11 items-center gap-2 overflow-x-auto border border-white/10 bg-[#121722] px-2 py-1.5 text-white shadow-xl">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-xs font-semibold">{mapModeLabel}</p>
+                  <p className="truncate text-[10px] text-white/60">{mapModeDetail}</p>
+                </div>
+                {drawing && drawPurpose === 'selection' && lassoAreas.length > 0 && (
+                  <Button
+                    variant="ghost"
+                    className="h-11 shrink-0 text-white hover:bg-white/10 hover:text-white"
+                    onClick={() => undoLassoArea(lassoAreas[lassoAreas.length - 1].id)}
+                  >
+                    <Undo2 className="h-4 w-4" />
+                    Undo
+                  </Button>
+                )}
+                {drawing && drawPurpose === 'selection' && (
+                  <Button className="h-11 shrink-0" onClick={cancelDraw}>Done</Button>
+                )}
+                {drawing && drawPurpose === 'territory' && (
+                  <Button className="h-11 shrink-0" onClick={finishDraw} disabled={drawPoints.length < 3}>
+                    Finish
+                  </Button>
+                )}
+                {drawing && drawPurpose === 'territory' && drawPoints.length > 0 && (
+                  <Button
+                    variant="ghost"
+                    className="h-11 shrink-0 text-white hover:bg-white/10 hover:text-white"
+                    onClick={() => setDrawPoints([])}
+                  >
+                    Clear
+                  </Button>
+                )}
+                {drawing && drawPurpose === 'territory' && (
+                  <Button
+                    variant="ghost"
+                    className="h-11 shrink-0 text-white hover:bg-white/10 hover:text-white"
+                    onClick={cancelDraw}
+                  >
+                    Cancel
+                  </Button>
+                )}
+                {addingHouse && (
+                  <Button
+                    variant="ghost"
+                    className="h-11 shrink-0 text-white hover:bg-white/10 hover:text-white"
+                    onClick={() => { setAddingHouse(false); setPendingHouse(null); }}
+                  >
+                    Cancel
+                  </Button>
+                )}
+              </div>
+            </div>
+          </>
+        )}
+
+        {(showResultSync || leadError || (!execution.active && (missingCoords > 0 || geocoding))) && (
+          <div
+            className={
+              'pointer-events-none absolute left-2 z-[500] flex max-w-[min(28rem,calc(100%-1rem))] flex-col gap-2 md:left-3 ' +
+              (execution.active ? 'top-3' : selection.size > 0 ? 'bottom-16' : 'bottom-2 md:bottom-3')
+            }
+            aria-label="Map status"
+          >
             {showResultSync && (
               <button
                 type="button"
+                className={
+                  'pointer-events-auto flex min-h-11 items-center gap-2 border bg-background/95 px-3 py-2 text-left text-xs font-medium shadow-md ' +
+                  (resultSyncNeedsAttention ? 'text-destructive' : 'text-muted-foreground')
+                }
                 onClick={() =>
                   void (resultOutbox.failed > 0
                     ? resultOutbox.retryFailed()
                     : resultOutbox.flush(true))
                 }
                 title={resultSyncTitle}
-                className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium ${
-                  resultSyncNeedsAttention
-                    ? 'border-destructive/40 bg-destructive/10 text-destructive'
-                    : 'border-status-offline/40 bg-status-offline/10 text-status-stale dark:text-status-offline'
-                }`}
               >
                 <span
-                  className={`h-1.5 w-1.5 rounded-full ${
-                    resultSyncNeedsAttention
+                  className={
+                    'h-2 w-2 shrink-0 rounded-full ' +
+                    (resultSyncNeedsAttention
                       ? 'bg-destructive'
                       : resultOutbox.online
                         ? 'bg-amber-500'
-                        : 'bg-muted-foreground'
-                  }`}
+                        : 'bg-muted-foreground')
+                  }
                 />
                 {resultSyncLabel}
               </button>
             )}
 
-            {!execution.active && (
-              <>
-            {isAdmin && (
-              <Button
-                variant={allVisibleSelected ? 'default' : 'outline'}
-                size="sm"
-                onClick={toggleVisibleSelection}
-                disabled={loading || visibleIds.size === 0}
-              >
-                <BoxSelect className="h-4 w-4 mr-1" />
-                {allVisibleSelected ? 'Deselect visible' : 'Select visible'}
-                {visibleIds.size > 0 && ` (${visibleIds.size})`}
-              </Button>
-            )}
-            {!drawing && (
-              /* Every role, not just admin: a setter finding an unlisted house
-                 is the whole reason this exists. */
-              <Button
-                variant={addingHouse ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => { setAddingHouse(a => !a); setPendingHouse(null); }}
-                title="Tap the map to add a house that isn't a lead yet"
-              >
-                {addingHouse ? <X className="h-4 w-4 mr-1" /> : <HousePlus className="h-4 w-4 mr-1" />}
-                {addingHouse ? 'Cancel' : 'Add house'}
-              </Button>
-            )}
-            {isAdmin && !drawing && !addingHouse && (
-              <>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={startSelectionArea}
-                  disabled={drawAvailability.selectionDisabled}
-                  title={
-                    drawAvailability.selectionBlockedReason ??
-                    'Draw an area to select leads for assignment'
-                  }
-                >
-                  <Pencil className="h-4 w-4 mr-1" />
-                  Draw area
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={startNewTerritory}
-                  disabled={drawAvailability.territoryDisabled}
-                  title={drawAvailability.territoryBlockedReason ?? undefined}
-                >
-                  <MapPinned className="h-4 w-4 mr-1" />
-                  New territory
-                </Button>
-              </>
-            )}
-            {isAdmin && drawing && (
-              <>
-                {/* Selection commits on release, so there is nothing to finish —
-                    Done just leaves draw mode, and stays enabled because the
-                    selection already exists. Territory still needs an explicit
-                    Finish to reach its naming dialog. */}
-                {drawPurpose === 'selection' ? (
-                  <>
-                    {/* What has been drawn so far. Without this the selection is
-                        just a number and there is no way to tell which parts of
-                        the map it came from. */}
-                    {lassoAreas.length > 0 && (
-                      <span className="text-xs text-muted-foreground whitespace-nowrap tabular-nums">
-                        {lassoAreas.length} area{lassoAreas.length !== 1 ? 's' : ''} ·{' '}
-                        {totalLeadsInAreas(lassoAreas)} lead
-                        {totalLeadsInAreas(lassoAreas) !== 1 ? 's' : ''}
-                      </span>
-                    )}
-                    {lassoAreas.length > 0 && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => undoLassoArea(lassoAreas[lassoAreas.length - 1].id)}
-                      >
-                        <Undo2 className="h-4 w-4 mr-1" />
-                        Undo area
-                      </Button>
-                    )}
-                    <Button variant="default" size="sm" onClick={cancelDraw}>
-                      Done
-                    </Button>
-                  </>
-                ) : (
-                  <Button variant="default" size="sm" onClick={finishDraw} disabled={drawPoints.length < 3}>
-                    Finish{drawPoints.length > 0 ? ` (${drawPoints.length})` : ''}
-                  </Button>
-                )}
-                {drawPoints.length > 0 && (
-                  <Button variant="outline" size="sm" onClick={() => setDrawPoints([])}>
-                    Clear
-                  </Button>
-                )}
-                {drawPurpose !== 'selection' && (
-                  <Button variant="ghost" size="sm" onClick={cancelDraw}>
-                    Cancel
-                  </Button>
-                )}
-              </>
-            )}
-            {/* Two independent toggles rather than one button plus a type
-                dropdown. A dropdown can only ever express one choice, and the
-                overlap of wind and hail is exactly what a rep wants to see. Each
-                carries its own count so the layers stay distinguishable. */}
-            {STORM_TYPES.map((type) => {
-              const active = stormTypes.includes(type);
-              const Icon = type === 'wind' ? Wind : CloudHail;
-              const count = stormCounts[type];
-              return (
-                <Button
-                  key={type}
-                  variant={active ? 'default' : 'outline'}
-                  size="sm"
-                  aria-pressed={active}
-                  onClick={() => setStormTypes((prev) => toggleStormType(prev, type))}
-                >
-                  <Icon className={`h-4 w-4 mr-1 ${stormLoading && active ? 'animate-pulse' : ''}`} />
-                  {type === 'wind' ? 'Wind' : 'Hail'}
-                  {active && count > 0 ? ` (${count})` : ''}
-                </Button>
-              );
-            })}
-            {stormOn && (
-              <>
-                <Select value={String(stormDays)} onValueChange={(v) => v && setStormDays(parseInt(v, 10))}>
-                  <SelectTrigger className="w-[140px]" aria-label="Storm window">
-                    {/* Needs explicit children — this Select renders the raw
-                        value otherwise, so the trigger read "30" instead of
-                        "Last 30 days". */}
-                    <SelectValue>{stormWindowLabel(stormDays)}</SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    {STORM_WINDOWS.map((w) => (
-                      <SelectItem key={w.days} value={String(w.days)}>{w.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Button
-                  variant={stormZones ? 'default' : 'outline'}
-                  size="sm"
-                  aria-pressed={stormZones}
-                  onClick={() => setStormZones((v) => !v)}
-                  title="Overlay each storm swath beneath its individual report dots"
-                >
-                  <Hexagon className="h-4 w-4 mr-1" />
-                  Zones
-                </Button>
-                {/* Minimum severity. Two years of reports includes a lot of
-                    marginal ones, and severity is what qualifies a roof — 1"
-                    hail is the usual insurer threshold, 58 mph the severe-wind
-                    criterion. Rendered as one control listing whichever
-                    overlays are on, since the units differ. */}
-                <DropdownMenu>
-                  <DropdownMenuTrigger
-                    render={
-                      <Button variant="outline" size="sm" className="min-w-[140px] justify-between">
-                        {stormMinLabel(stormTypes, hailMin, windMin)}
-                        <ChevronDown className="ml-1 h-3.5 w-3.5 opacity-60" />
-                      </Button>
-                    }
-                  />
-                  <DropdownMenuContent align="start" className="w-44">
-                    {/* Each labelled section must be a real DropdownMenuGroup:
-                        the label renders Base UI's GroupLabel, which THROWS
-                        ("MenuGroupRootContext is missing") outside a Menu.Group
-                        and takes the whole page down with it. A Fragment is not
-                        a substitute. */}
-                    {stormTypes.includes('hail') && (
-                      <DropdownMenuGroup>
-                        <DropdownMenuLabel>Hail size</DropdownMenuLabel>
-                        {STORM_MIN_VALUES.hail.map((o) => (
-                          <DropdownMenuItem key={`h${o.value}`} onClick={() => setHailMin(o.value)}>
-                            <span className="flex-1">{o.label}</span>
-                            {hailMin === o.value && <Check className="h-3.5 w-3.5" />}
-                          </DropdownMenuItem>
-                        ))}
-                      </DropdownMenuGroup>
-                    )}
-                    {stormTypes.length === 2 && <DropdownMenuSeparator />}
-                    {stormTypes.includes('wind') && (
-                      <DropdownMenuGroup>
-                        <DropdownMenuLabel>Wind speed</DropdownMenuLabel>
-                        {STORM_MIN_VALUES.wind.map((o) => (
-                          <DropdownMenuItem key={`w${o.value}`} onClick={() => setWindMin(o.value)}>
-                            <span className="flex-1">{o.label}</span>
-                            {windMin === o.value && <Check className="h-3.5 w-3.5" />}
-                          </DropdownMenuItem>
-                        ))}
-                      </DropdownMenuGroup>
-                    )}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </>
-            )}
-            {!marketsLoading && (
-              <MarketFilter
-                markets={markets}
-                value={marketValue}
-                onChange={handleMarketChange}
-                className="w-[150px]"
-              />
-            )}
-            <Select value={status} onValueChange={(v) => setStatus(v === 'all' ? '' : v ?? '')}>
-              <SelectTrigger className="w-[150px]">
-                <SelectValue placeholder="All Statuses" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Statuses</SelectItem>
-                {LEAD_STATUS_OPTIONS.map((opt) => (
-                  <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={priority} onValueChange={(v) => setPriority(v === 'all' ? '' : v ?? '')}>
-              <SelectTrigger className="w-[140px]">
-                <SelectValue placeholder="All Priorities" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Priorities</SelectItem>
-                {LEAD_PRIORITY_OPTIONS.map((opt) => (
-                  <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-              </>
-            )}
-            </div>
-          </>
-        }
-      />
-
-      {leadError && (
-        <DataErrorState
-          compact
-          title={leads.length > 0 ? 'Map leads could not be refreshed' : 'Map leads did not load'}
-          description={
-            leads.length > 0
-              ? `${leadError} The last loaded pins remain visible.`
-              : leadError
-          }
-          onRetry={fetchLeads}
-        />
-      )}
-
-      {/* Why a drawing tool is greyed out.
-          The tooltip cannot be reached on a touchscreen and is easy to miss on a
-          mouse, so a disabled button with no visible explanation is a dead end —
-          "New territory" looks broken rather than waiting on a choice. */}
-      {/* Only alongside the controls it explains. On a phone the tools are
-          collapsed behind the Tools toggle, so this was describing a disabled
-          button that was not on screen — and costing 100px of map to do it. */}
-      {isAdmin && !drawing && !addingHouse && (mapToolsOpen || !isNarrow) &&
-        (drawAvailability.territoryBlockedReason || drawAvailability.selectionBlockedReason) && (
-        <div className="rounded-md border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-          {[drawAvailability.territoryBlockedReason, drawAvailability.selectionBlockedReason]
-            .filter(Boolean)
-            .map((reason) => (
-              <p key={reason as string}>{reason}</p>
-            ))}
-        </div>
-      )}
-
-      {drawing && (
-        <div className="rounded-md border border-blue-300 bg-blue-50 dark:bg-blue-950/30 px-3 py-2 text-xs text-blue-700 dark:text-blue-300">
-          {drawPurpose === 'selection' ? (
-            <>
-              <strong>Draw a loop</strong> around the leads you want and lift your
-              finger — everything inside is selected. Draw as many areas as you
-              like; each one stays on the map. <strong>Undo area</strong> removes
-              the last one, then press <strong>Done</strong> to assign them all.
-            </>
-          ) : (
-            <>
-              <strong>Draw a loop</strong> around the neighborhood, then press
-              <strong> Finish</strong> to name and save the territory. Leads inside stay
-              available for explicit bulk assignment.
-            </>
-          )}
-        </div>
-      )}
-
-      {!execution.active && (missingCoords > 0 || geocoding) && (
-        <div className="flex items-center justify-between gap-3 rounded-md border bg-muted/40 px-3 py-2 text-xs flex-wrap">
-          <span className="text-muted-foreground">
-            {geocoding
-              ? geocodeStatus || 'Geocoding leads...'
-              : `${missingCoords} lead${missingCoords !== 1 ? 's' : ''} not on the map yet (no coordinates).`}
-          </span>
-          {isAdmin && (
-            <Button variant="outline" size="sm" onClick={geocodeMissing} disabled={geocoding}>
-              <LocateFixed className={`h-4 w-4 mr-1 ${geocoding ? 'animate-pulse' : ''}`} />
-              {geocoding ? 'Geocoding...' : 'Geocode missing'}
-            </Button>
-          )}
-        </div>
-      )}
-
-      {/* Legend — collapsed by default on mobile, where it otherwise consumed
-          ~130px of a 812px screen before the map even started. */}
-      {!execution.active && (
-        <>
-      <button
-        type="button"
-        className="sm:hidden self-start text-xs text-muted-foreground underline underline-offset-2"
-        onClick={() => setLegendOpen((o) => !o)}
-        aria-expanded={legendOpen}
-      >
-        {legendOpen ? 'Hide legend' : 'Show legend'}
-      </button>
-      <div
-        className={`${legendOpen ? 'flex' : 'hidden'} sm:flex gap-3 flex-wrap text-xs text-muted-foreground`}
-      >
-        {LEAD_STATUS_OPTIONS.map((opt) => (
-          <span key={opt.value} className="flex items-center gap-1.5">
-            <span
-              className="inline-block h-2.5 w-2.5 rounded-full"
-              style={{ backgroundColor: STATUS_COLORS[opt.value] }}
-            />
-            {opt.label}
-          </span>
-        ))}
-        <span className="flex items-center gap-1.5">
-          <span
-            className="inline-block h-2.5 w-2.5 rounded-full border-2 bg-transparent"
-            style={{ borderColor: DNC_RING_COLOR }}
-          />
-          Do Not Call (knock only)
-        </span>
-        {stormOn && (
-          <>
-            <span className="text-muted-foreground/60">|</span>
-            {/* Dots remain visible when swaths are on, so their severity key
-                must remain visible too. */}
-            <span className="text-muted-foreground">Report severity</span>
-            {stormLegendEntries(stormTypes).map((entry) => (
-              <span key={entry.key} className="flex items-center gap-1.5">
-                <span
-                  className="inline-block h-2.5 w-2.5 rounded-full"
-                  style={{ backgroundColor: entry.color, opacity: 0.6 }}
-                />
-                {entry.label}
-              </span>
-            ))}
-            {/* Both layers use the same age buckets, but distinct encodings:
-                dots fade their severity colour; swaths use a red ramp. */}
-            <span className="text-muted-foreground/60">|</span>
-            <span className="text-muted-foreground">Report age</span>
-            {stormAgeLegendEntries().map((entry) => (
-              <span key={entry.key} className="flex items-center gap-1.5">
-                <span
-                  className="inline-block h-2.5 w-2.5 rounded-full bg-foreground"
-                  style={{ opacity: entry.fillOpacity }}
-                />
-                {entry.label}
-              </span>
-            ))}
-            {stormZones && (
-              <>
-                <span className="text-muted-foreground/60">|</span>
-                <span className="text-muted-foreground">Swath age</span>
-                {stormZoneLegendEntries().map((entry) => (
-                  <span key={entry.key} className="flex items-center gap-1.5">
-                    <span
-                      className="inline-block h-2.5 w-2.5 rounded-sm"
-                      style={{ backgroundColor: entry.color, opacity: entry.opacity }}
-                    />
-                    {entry.label}
+            {leadError && (
+              <div className="pointer-events-auto flex min-h-11 items-center gap-3 border border-destructive/30 bg-background/95 px-3 py-2 text-xs shadow-md">
+                <p className="min-w-0 flex-1">
+                  <span className="font-semibold text-destructive">Map leads did not refresh.</span>{' '}
+                  <span className="text-muted-foreground">
+                    {leads.length > 0 ? 'The last loaded pins remain visible.' : leadError}
                   </span>
-                ))}
-              </>
+                </p>
+                <Button variant="outline" className="h-11 shrink-0" onClick={() => void fetchLeads()}>
+                  <RefreshCw className="h-4 w-4" />
+                  Retry
+                </Button>
+              </div>
             )}
-          </>
-        )}
-      </div>
-        </>
-      )}
 
-      <div className="relative flex-1 min-h-0 isolate">
-        {!hasLoadedOnce ? (
-          <Skeleton className="h-full w-full rounded-md" />
-        ) : (
-          <LeadMap
-            addingHouse={!execution.active && addingHouse}
-            pendingHouse={execution.active ? null : pendingHouse}
-            onPlaceHouse={(latitude, longitude) => setPendingHouse({ latitude, longitude })}
-            leads={displayedLeads}
-            selectedIds={execution.active ? new Set<string>() : new Set(selection.keys())}
-            activeLeadId={execution.currentLead?.id ?? null}
-            revisitDueIds={execution.revisitDueIds}
-            userLocation={execution.location}
-            onToggleSelect={isAdmin && !execution.active ? toggleSelect : undefined}
-            stormReports={execution.active ? [] : stormReports}
-            stormNow={stormFetchedAt}
-            stormZones={!execution.active && stormZones}
-            territories={displayedTerritories}
-            territoryLeadCounts={displayedTerritoryLeadCounts}
-            currentUserId={currentUserId}
-            onSelectTerritoryLeads={
-              isAdmin && !execution.active ? addTerritoryLeadsToSelection : undefined
-            }
-            onEditTerritory={isAdmin && !execution.active ? editTerritoryDetails : undefined}
-            drawing={!execution.active && drawing}
-            drawPoints={drawPoints}
-            // A freehand trace is one shape, so it replaces rather than appends.
-            onDrawPath={isAdmin && !execution.active ? (path) => setDrawPoints(path) : undefined}
-            // Selection commits the moment the finger lifts — the polygon is
-            // implicitly closed, so releasing IS closing the loop. Territory
-            // drawing deliberately omits this and keeps Finish, because that
-            // path opens a naming dialog.
-            onDrawCommit={
-              isAdmin && !execution.active && drawPurpose === 'selection'
-                ? commitLassoSelection
-                : undefined
-            }
-            lassoAreas={!execution.active && drawPurpose === 'selection' ? lassoAreas : undefined}
-            onMapReady={(map) => { mapRef.current = map; setMapInstance(map); }}
-            onOpenResult={
-              (lead, channel) => setResultTarget({ lead, channel })
-            }
-            // Records straight through the same path the sheet uses, so it
-            // queues offline and fires the follow-up flows identically — it
-            // just skips the disposition picker for the two outcomes that
-            // need none.
-            onQuickKnock={(lead, disposition) =>
-              void logLeadResult({ channel: 'knock', disposition }, lead)
-            }
-            onFollowUpChange={refreshLeadViews}
-            marketId={execution.territory?.market_id ?? selectedMarket?.id ?? null}
-            marketCenter={marketCenter}
-            marketLoading={loading}
-            focus={displayedFocus}
-          />
+            {!execution.active && (missingCoords > 0 || geocoding) && (
+              <div className="pointer-events-auto flex min-h-11 items-center gap-3 border bg-background/95 px-3 py-2 text-xs shadow-md">
+                <p className="min-w-0 flex-1 text-muted-foreground">
+                  {geocoding
+                    ? geocodeStatus || 'Placing leads on the map'
+                    : missingCoords + ' lead' + (missingCoords === 1 ? '' : 's') + ' need coordinates'}
+                </p>
+                {isAdmin && (
+                  <Button variant="outline" className="h-11 shrink-0" onClick={geocodeMissing} disabled={geocoding}>
+                    <LocateFixed className={'h-4 w-4 ' + (geocoding ? 'animate-pulse' : '')} />
+                    {geocoding ? 'Placing' : 'Place'}
+                  </Button>
+                )}
+              </div>
+            )}
+          </div>
         )}
 
         {execution.active && execution.summary && (
@@ -1577,6 +1586,116 @@ export default function MapPage() {
           />
         )}
       </div>
+
+      <Sheet open={mapToolsOpen} onOpenChange={setMapToolsOpen}>
+        <SheetContent
+          side="bottom"
+          className="max-h-[78dvh] overflow-y-auto pb-[calc(1rem+env(safe-area-inset-bottom))] xl:hidden"
+          aria-label="Mobile map tools sheet"
+        >
+          <SheetHeader className="border-b p-4 pr-12">
+            <SheetTitle>Map tools</SheetTitle>
+            <SheetDescription>
+              Change the lead view or map layers. The map stays in place behind this panel.
+            </SheetDescription>
+          </SheetHeader>
+
+          {isNarrow && (
+            <div className="space-y-5 px-4 pb-2">
+              {isAdmin && (
+                <section aria-label="Area tools">
+                  <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                    Area tools
+                  </p>
+                  <div className="mt-2 grid grid-cols-2 gap-2">
+                    <Button
+                      variant={allVisibleSelected ? 'default' : 'outline'}
+                      className="h-11"
+                      onClick={toggleVisibleSelection}
+                      disabled={loading || visibleIds.size === 0}
+                    >
+                      <BoxSelect className="h-4 w-4" />
+                      {allVisibleSelected ? 'Deselect visible' : 'Select visible'}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="h-11"
+                      onClick={() => { setMapToolsOpen(false); startSelectionArea(); }}
+                      disabled={drawAvailability.selectionDisabled}
+                    >
+                      <Pencil className="h-4 w-4" />
+                      Draw area
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="col-span-2 h-11"
+                      onClick={() => { setMapToolsOpen(false); startNewTerritory(); }}
+                      disabled={drawAvailability.territoryDisabled}
+                    >
+                      <MapPinned className="h-4 w-4" />
+                      New territory
+                    </Button>
+                  </div>
+                </section>
+              )}
+
+              <div className="grid grid-cols-3 border" aria-label="Mobile map tool panels">
+                {([
+                  ['filters', 'Filters', ListFilter],
+                  ['layers', 'Layers', Layers3],
+                  ['legend', 'Legend', MapIcon],
+                ] as const).map(([panel, label, Icon]) => (
+                  <Button
+                    key={panel}
+                    variant={mobileToolPanel === panel ? 'default' : 'ghost'}
+                    className="h-11 rounded-none"
+                    aria-pressed={mobileToolPanel === panel}
+                    onClick={() => setMobileToolPanel(panel)}
+                  >
+                    <Icon className="h-4 w-4" />
+                    {label}
+                  </Button>
+                ))}
+              </div>
+
+              <section aria-label={mobileToolPanel.charAt(0).toUpperCase() + mobileToolPanel.slice(1) + ' panel'}>
+                {mobileToolPanel === 'filters' && (
+                  <MapFiltersPanel
+                    markets={markets}
+                    marketsLoading={marketsLoading}
+                    marketValue={marketValue}
+                    status={status}
+                    priority={priority}
+                    blockedReasons={drawBlockedReasons}
+                    onMarketChange={handleMarketChange}
+                    onStatusChange={handleStatusChange}
+                    onPriorityChange={handlePriorityChange}
+                  />
+                )}
+                {mobileToolPanel === 'layers' && (
+                  <MapLayersPanel
+                    stormTypes={stormTypes}
+                    stormCounts={stormCounts}
+                    stormLoading={stormLoading}
+                    stormDays={stormDays}
+                    stormZones={stormZones}
+                    hailMin={hailMin}
+                    windMin={windMin}
+                    onToggleType={(type) => setStormTypes((current) => toggleStormType(current, type))}
+                    onDaysChange={setStormDays}
+                    onZonesChange={setStormZones}
+                    onHailMinChange={setHailMin}
+                    onWindMinChange={setWindMin}
+                  />
+                )}
+                {mobileToolPanel === 'legend' && (
+                  <MapLegendPanel stormTypes={stormTypes} stormZones={stormZones} />
+                )}
+              </section>
+            </div>
+          )}
+        </SheetContent>
+      </Sheet>
 
       <TerritorySheet
         open={territorySheetOpen}
@@ -1690,11 +1809,14 @@ export default function MapPage() {
 
       {/* Bulk selection action bar */}
       {isAdmin && !execution.active && selection.size > 0 && (
-        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 rounded-lg border bg-background px-4 py-2.5 shadow-lg">
+        <div
+          aria-label="Map selection actions"
+          className="fixed bottom-[calc(4.25rem+env(safe-area-inset-bottom))] left-2 right-2 z-40 flex items-center gap-3 overflow-x-auto border border-white/10 bg-[#121722] px-4 py-3 text-white shadow-xl md:bottom-4 md:left-1/2 md:right-auto md:-translate-x-1/2"
+        >
           <p className="text-sm whitespace-nowrap">
             <span className="font-medium">{selection.size}</span> selected
             {selectionTotal > 0 && (
-              <span className="text-muted-foreground"> · ${selectionTotal.toLocaleString()} est.</span>
+              <span className="text-white/60"> · ${selectionTotal.toLocaleString()} est.</span>
             )}
           </p>
           {selection.size > LIMITS.BULK_ASSIGN_MAX && (
@@ -1703,14 +1825,18 @@ export default function MapPage() {
             </p>
           )}
           <Button
-            size="sm"
+            className="h-11"
             onClick={() => setAssignOpen(true)}
             disabled={selection.size > LIMITS.BULK_ASSIGN_MAX}
           >
             <UserCheck className="h-4 w-4 mr-1" />
             Assign
           </Button>
-          <Button size="sm" variant="ghost" onClick={() => setSelection(new Map())}>
+          <Button
+            className="h-11 text-white hover:bg-white/10 hover:text-white dark:hover:bg-white/10"
+            variant="ghost"
+            onClick={clearSelectionAreas}
+          >
             Clear
           </Button>
         </div>

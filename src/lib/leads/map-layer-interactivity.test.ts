@@ -10,6 +10,10 @@ const pageSource = readFileSync(
   join(process.cwd(), 'src/app/admin/(app)/map/page.tsx'),
   'utf8'
 );
+const controlsSource = readFileSync(
+  join(process.cwd(), 'src/components/leads/MapWorkspaceControls.tsx'),
+  'utf8'
+);
 
 describe('map canvas layer interactivity', () => {
   it('keeps overlapping interactive vectors on one canvas renderer', () => {
@@ -37,7 +41,9 @@ describe('map canvas layer interactivity', () => {
   it('keeps every storm point visible when the swath overlay is enabled', () => {
     expect(source).not.toContain('!stormZones && sortStormsForDrawing');
     expect(source).not.toContain('strays.map');
-    expect(pageSource).toContain('Overlay each storm swath beneath its individual report dots');
+    expect(source).toContain('Overlay storm swaths beneath the individual report markers.');
+    expect(controlsSource).toContain('Storm zones');
+    expect(pageSource).toContain('stormZones={stormZones}');
   });
 
   it('switches lead dots to a house-number-safe treatment after zooming in', () => {
@@ -81,9 +87,14 @@ describe('map canvas layer interactivity', () => {
   });
 
   it('keeps report severity and both active age encodings in the combined legend', () => {
-    expect(pageSource).toContain('Report severity');
-    expect(pageSource).toContain('Report age');
-    expect(pageSource).toContain('Swath age');
-    expect(pageSource).not.toContain('!stormZones &&\n              stormLegendEntries');
+    const legend = controlsSource.slice(
+      controlsSource.indexOf('export function MapLegendPanel'),
+      controlsSource.indexOf('function LegendRow')
+    );
+    expect(legend).toContain('stormLegendEntries(stormTypes)');
+    expect(legend).toContain('stormAgeLegendEntries()');
+    expect(legend).toContain('stormZones && (');
+    expect(legend).toContain('stormZoneLegendEntries()');
+    expect(legend).not.toContain('!stormZones &&');
   });
 });
