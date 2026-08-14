@@ -31,20 +31,19 @@ export interface NavGroup {
 export function getNavGroups(role: UserRole): NavGroup[] {
   const groups: NavGroup[] = [
     {
-      label: 'Workspace',
+      label: 'Fieldwork',
       items: [
-        // First because it's the screen a rep opens each morning; the Dashboard
-        // is a status read, this is the work itself.
+        // Field actions stay together and in the order a rep uses them.
         { href: '/admin/today', label: 'Today', icon: Sun },
-        { href: '/admin', label: 'Dashboard', icon: Home },
         { href: '/admin/leads', label: 'Leads', icon: Users, badge: 'duplicates' },
         { href: '/admin/map', label: 'Map', icon: Map },
         { href: '/admin/calendar', label: 'Calendar', icon: CalendarDays },
       ],
     },
     {
-      label: 'Insights',
+      label: 'Reporting',
       items: [
+        { href: '/admin', label: 'Dashboard', icon: Home },
         { href: '/admin/activity', label: 'Activity', icon: ScrollText },
         { href: '/admin/performance', label: 'Performance', icon: TrendingUp },
         ...(role === 'admin'
@@ -64,9 +63,28 @@ export function getNavGroups(role: UserRole): NavGroup[] {
       { href: '/admin/settings', label: 'Settings', icon: Settings },
     );
   }
-  if (manage.length) groups.push({ label: 'Manage', items: manage });
+  if (manage.length) groups.push({ label: 'Operations', items: manage });
 
   return groups;
+}
+
+export interface NavLocation {
+  section: string;
+  label: string;
+}
+
+/** Route context for the shell header, sourced from the same nav as the rail. */
+export function getNavLocation(pathname: string, role: UserRole): NavLocation {
+  if (pathname === '/admin/leads/new') {
+    return { section: 'Fieldwork', label: 'New lead' };
+  }
+
+  for (const group of getNavGroups(role)) {
+    const item = group.items.find((candidate) => isNavActive(pathname, candidate.href));
+    if (item) return { section: group.label, label: item.label };
+  }
+
+  return { section: 'Roofing sales', label: 'Workspace' };
 }
 
 /** Phone tab bar — only the handful of things a rep needs in the field. */

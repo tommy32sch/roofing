@@ -15,6 +15,10 @@ import { useEffect } from 'react';
  */
 export function ServiceWorkerRegistrar() {
   useEffect(() => {
+    // Dev assets keep stable URLs instead of production content hashes. A
+    // cache-first worker would therefore serve yesterday's CSS or JavaScript
+    // after a source change and can even create hydration mismatches.
+    if (process.env.NODE_ENV !== 'production') return;
     if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return;
     // Registration competes with the first data fetches for bandwidth, and the
     // rep needs those first. Waiting for load costs nothing — the worker only

@@ -68,6 +68,14 @@ describe('Today command center contracts', () => {
     expect(command).toMatch(/role="alert"/);
   });
 
+  it('uses one command surface and ledger rows instead of nested dashboard cards', () => {
+    expect(command).not.toContain('bg-gradient');
+    expect(page).not.toContain('SectionCard');
+    expect(page).toContain('WorkQueueSection');
+    expect(command).toContain('divide-y');
+    expect(page).toContain('divide-y');
+  });
+
   it('stops cancelled visits from blocking slots or sending reminders', () => {
     expect(conflicts).toMatch(/\.eq\('outcome', 'scheduled'\)/);
     expect(reminders).toMatch(/\.eq\('outcome', 'scheduled'\)/);

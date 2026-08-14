@@ -9,6 +9,9 @@ const login = read('src/app/admin/login/page.tsx');
 const provider = read('src/components/providers/app-shell-provider.tsx');
 const marketHook = read('src/components/markets/use-markets.ts');
 const adminShell = read('src/components/layout/admin-shell.tsx');
+const sidebar = read('src/components/layout/app-sidebar.tsx');
+const globalStyles = read('src/app/globals.css');
+const serviceWorker = read('src/components/providers/service-worker.tsx');
 const clientSources = [
   adminShell,
   marketHook,
@@ -51,6 +54,19 @@ describe('trusted application shell contracts', () => {
     expect(adminShell).not.toContain("theme === 'dark'");
     expect(adminShell).toContain('className="h-4 w-4 dark:hidden"');
     expect(adminShell).toContain('className="hidden h-4 w-4 dark:block"');
+  });
+
+  it('uses a product-specific work rail without decorative global elevation', () => {
+    expect(adminShell).toContain('getNavLocation(pathname, user.role)');
+    expect(sidebar).toContain('<RoofMark');
+    expect(sidebar).toContain('border-l-2');
+    expect(globalStyles).not.toContain('--ambient');
+    expect(globalStyles).not.toContain('[data-slot="card"]:hover');
+  });
+
+  it('does not let the production service worker cache stable development asset URLs', () => {
+    expect(serviceWorker).toContain("process.env.NODE_ENV !== 'production'");
+    expect(serviceWorker).toContain("navigator.serviceWorker.register('/sw.js'");
   });
 
   it('owns the browser connection subscription once in the provider', () => {

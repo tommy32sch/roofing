@@ -1,5 +1,20 @@
 # Lessons
 
+## Generic polish can make a product feel more AI-built
+- **Correction:** the interface was polished with ambient gradients, glowing
+  buttons, elevated cards, and repeated rounded panels, but the owner said it
+  still looked AI-built.
+- **Rules:**
+  - Do not use visual effects as a substitute for product-specific hierarchy.
+  - Build the screen around the real work sequence, then use surfaces only
+    where they clarify ownership, priority, or interaction.
+  - Avoid the component-demo pattern: icon, title, description, rounded card,
+    and pill repeated for every section.
+  - Give a field-sales tool a durable visual identity through typography,
+    density, strong navigation, and ledger-like work rows.
+  - Reserve gradients, glows, and large radii for a specific purpose. Remove
+    them when they are only decoration.
+
 ## “Information behind a marker” can mean basemap occlusion, not z-index
 - **Correction:** interpreted the report that lead dots covered “the info” as
   the popup card rendering behind the Canvas. The owner meant that an opaque

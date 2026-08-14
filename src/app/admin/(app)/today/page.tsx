@@ -8,11 +8,8 @@ import {
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { PageHeader } from '@/components/layout/page-header';
-import { EmptyState } from '@/components/layout/empty-state';
 import { LeadStatusBadge } from '@/components/leads/lead-status-badge';
 import { FollowUpMenu } from '@/components/leads/FollowUpMenu';
 import { MarketFilter } from '@/components/markets/market-filter';
@@ -61,18 +58,14 @@ function LeadRow({
   const phone = firstPhone(lead);
   const directions = mapsUrl(lead);
 
-  // Stacks on a phone. Side by side, the time gutter plus three action buttons
-  // left the info block 85px on a 375px screen and the customer's name
-  // truncated to nothing. Stacked, the name gets the full row and the actions
-  // become bigger one-handed targets.
   return (
-    <div className="flex flex-col gap-2 rounded-lg border p-3 sm:flex-row sm:items-center">
+    <article className="group flex flex-col gap-2 py-3.5 sm:flex-row sm:items-center">
       <Link href={`/admin/leads/${lead.id}`} className="min-w-0 sm:flex-1">
         {/* The name must win the space fight: min-w-0 + flex-1 on the name and
             shrink-0 on the chips. Without it the badge took the full row on a
             phone and truncated the customer's name to nothing. */}
         <div className="flex items-center gap-2">
-          <p className="min-w-0 flex-1 truncate text-sm font-medium">
+          <p className="min-w-0 flex-1 truncate text-sm font-semibold group-hover:text-primary">
             {lead.first_name} {lead.last_name}
           </p>
           <span className="shrink-0">
@@ -106,14 +99,14 @@ function LeadRow({
             <a
               href={`tel:${phone}`}
               aria-label={`Call ${lead.first_name}`}
-              className={cn(buttonVariants({ variant: 'ghost', size: 'icon' }), 'h-11 w-11')}
+              className={cn(buttonVariants({ variant: 'ghost', size: 'icon' }), 'h-11 w-11 border border-transparent hover:border-border')}
             >
               <Phone className="h-4 w-4" />
             </a>
             <a
               href={`sms:${phone}`}
               aria-label={`Text ${lead.first_name}`}
-              className={cn(buttonVariants({ variant: 'ghost', size: 'icon' }), 'h-11 w-11')}
+              className={cn(buttonVariants({ variant: 'ghost', size: 'icon' }), 'h-11 w-11 border border-transparent hover:border-border')}
             >
               <MessageSquare className="h-4 w-4" />
             </a>
@@ -125,13 +118,13 @@ function LeadRow({
             target="_blank"
             rel="noopener noreferrer"
             aria-label={`Directions to ${lead.first_name}`}
-            className={cn(buttonVariants({ variant: 'ghost', size: 'icon' }), 'h-11 w-11')}
+            className={cn(buttonVariants({ variant: 'ghost', size: 'icon' }), 'h-11 w-11 border border-transparent hover:border-border')}
           >
             <Navigation className="h-4 w-4" />
           </a>
         )}
       </div>
-    </div>
+    </article>
   );
 }
 
@@ -145,10 +138,10 @@ function LeadRow({
  * treatment only when the Mine scope has no assigned work at all.
  */
 function SectionEmpty({ children }: { children: React.ReactNode }) {
-  return <p className="py-1 text-sm text-muted-foreground">{children}</p>;
+  return <p className="py-5 text-sm leading-6 text-muted-foreground">{children}</p>;
 }
 
-function SectionCard({
+function WorkQueueSection({
   icon: Icon,
   title,
   count,
@@ -160,20 +153,46 @@ function SectionCard({
   children: React.ReactNode;
 }) {
   return (
-    <Card>
-      <CardHeader className="pb-3">
-        <CardTitle className="flex items-center gap-2 text-base">
-          <Icon className="h-4 w-4 text-muted-foreground" />
-          {title}
-          {count != null && count > 0 && (
-            <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-muted px-1.5 text-[11px] font-semibold tabular-nums">
-              {count}
-            </span>
-          )}
-        </CardTitle>
-      </CardHeader>
-      <CardContent>{children}</CardContent>
-    </Card>
+    <section className="border-t-2 border-foreground/80 pt-4">
+      <header className="flex items-start justify-between gap-4">
+        <div className="flex items-center gap-2">
+          <Icon className="h-4 w-4 text-primary" />
+          <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
+        </div>
+        <div className="text-right">
+          <p className="text-3xl font-semibold leading-none tabular-nums">{count ?? 0}</p>
+          <p className="mt-1 font-mono text-[10px] uppercase tracking-wide text-muted-foreground">Open</p>
+        </div>
+      </header>
+      <div className="mt-4 divide-y border-y">{children}</div>
+    </section>
+  );
+}
+
+function TodayHeader({
+  day,
+  actions,
+}: {
+  day: DayBounds;
+  actions?: React.ReactNode;
+}) {
+  return (
+    <header className="border-b pb-5">
+      <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-4">
+        <div>
+          <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.16em] text-primary">
+            Field brief
+          </p>
+          <div className="mt-1 flex flex-wrap items-baseline gap-x-4 gap-y-1">
+            <h1 className="text-3xl font-semibold tracking-[-0.04em] sm:text-4xl">Today</h1>
+            <p className="text-sm text-muted-foreground">
+              {format(new Date(day.start), 'EEEE · MMMM d')}
+            </p>
+          </div>
+        </div>
+        {actions && <div className="flex w-full flex-wrap items-end gap-4 sm:w-auto">{actions}</div>}
+      </div>
+    </header>
   );
 }
 
@@ -301,18 +320,21 @@ export default function TodayPage() {
 
   if (loading) {
     return (
-      <div className="space-y-6">
-        <PageHeader title="Today" />
-        <Skeleton className="h-40 w-full" />
-        <Skeleton className="h-40 w-full" />
+      <div className="space-y-8">
+        <TodayHeader day={day} />
+        <Skeleton className="h-80 w-full rounded-lg" />
+        <div className="grid gap-8 xl:grid-cols-2">
+          <Skeleton className="h-48 w-full rounded-none" />
+          <Skeleton className="h-48 w-full rounded-none" />
+        </div>
       </div>
     );
   }
 
   if (error && !data) {
     return (
-      <div className="space-y-6">
-        <PageHeader title="Today" description={format(new Date(day.start), 'EEEE, MMMM d')} />
+      <div className="space-y-8">
+        <TodayHeader day={day} />
         <DataErrorState title="Today’s work did not load" description={error} onRetry={fetchToday} />
       </div>
     );
@@ -327,35 +349,51 @@ export default function TodayPage() {
   const nothingAssigned = scope === 'mine' && (counts?.assignedToMe ?? 0) === 0;
 
   return (
-    <div className="space-y-6">
-      <PageHeader
-        title="Today"
-        description={format(new Date(day.start), 'EEEE, MMMM d')}
+    <div className="space-y-8">
+      <TodayHeader
+        day={day}
         actions={
-          <div className="flex items-center gap-2">
-            {!marketsLoading && (
-              <MarketFilter markets={markets} value={marketValue} onChange={setMarket} className="w-[150px]" />
+          <>
+            {!marketsLoading && markets.length >= 2 && (
+              <div>
+                <p className="mb-1 font-mono text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  Market
+                </p>
+                <MarketFilter
+                  markets={markets}
+                  value={marketValue}
+                  onChange={setMarket}
+                  className="h-11 w-[160px] rounded-none border-0 border-b bg-transparent px-0 shadow-none"
+                />
+              </div>
             )}
             {/* Segmented rather than a dropdown: two options, and which one is
                 active is the single most important thing on the screen. */}
             {permissions.canViewTeamData && (
-              <div className="flex rounded-md border p-0.5" role="group" aria-label="Whose work">
-                {(['mine', 'all'] as const).map((s) => (
-                  <button
-                    key={s}
-                    type="button"
-                    aria-pressed={scope === s}
-                    onClick={() => { setScope(s); setLoading(true); }}
-                    className={`h-9 rounded px-3 text-xs font-medium transition-colors ${
-                      scope === s ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'
-                    }`}
-                  >
-                    {s === 'mine' ? 'Mine' : 'Everyone'}
-                  </button>
-                ))}
+              <div>
+                <p className="mb-1 font-mono text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  Scope
+                </p>
+                <div className="flex h-11 border-b" role="group" aria-label="Whose work">
+                  {(['mine', 'all'] as const).map((s) => (
+                    <button
+                      key={s}
+                      type="button"
+                      aria-pressed={scope === s}
+                      onClick={() => { setScope(s); setLoading(true); }}
+                      className={`relative h-11 px-3 text-xs font-semibold transition-colors after:absolute after:inset-x-2 after:-bottom-px after:h-0.5 ${
+                        scope === s
+                          ? 'text-foreground after:bg-primary'
+                          : 'text-muted-foreground after:bg-transparent hover:text-foreground'
+                      }`}
+                    >
+                      {s === 'mine' ? 'Mine' : 'Everyone'}
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
-          </div>
+          </>
         }
       />
 
@@ -369,31 +407,36 @@ export default function TodayPage() {
       )}
 
       {nothingAssigned ? (
-        <Card className="border-dashed">
-          <CardContent className="p-0">
-            <EmptyState
-              icon={Sun}
-              title="Nothing is assigned to you yet"
-              description={permissions.canViewTeamData
+        <section className="border-y py-14 sm:py-20">
+          <div className="max-w-xl">
+            <div className="flex items-center gap-2 text-primary">
+              <Sun className="h-4 w-4" />
+              <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.16em]">
+                Assignment queue
+              </p>
+            </div>
+            <h2 className="mt-3 text-2xl font-semibold tracking-tight">
+              Nothing is assigned to you yet
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">
+              {permissions.canViewTeamData
                 ? 'No leads have you as their setter or closer. Assign leads from the Leads list or view the whole team.'
                 : `No leads are assigned to you as a ${user.role}. An admin can assign leads from the Leads list.`}
-              action={
-                <div className="flex gap-2">
-                  {permissions.canViewTeamData && (
-                    <Button variant="outline" onClick={() => { setScope('all'); setLoading(true); }}>
-                      View everyone&apos;s
-                    </Button>
-                  )}
-                  {permissions.canBulkAssignLeads && (
-                    <Link href="/admin/leads" className={buttonVariants()}>
-                      Assign leads
-                    </Link>
-                  )}
-                </div>
-              }
-            />
-          </CardContent>
-        </Card>
+            </p>
+            <div className="mt-6 flex flex-wrap gap-2">
+              {permissions.canViewTeamData && (
+                <Button variant="outline" className="h-11" onClick={() => { setScope('all'); setLoading(true); }}>
+                  View everyone&apos;s
+                </Button>
+              )}
+              {permissions.canBulkAssignLeads && (
+                <Link href="/admin/leads" className={cn(buttonVariants(), 'h-11 px-4')}>
+                  Assign leads
+                </Link>
+              )}
+            </div>
+          </div>
+        </section>
       ) : (
         <>
           <TodayAppointmentCommand
@@ -406,15 +449,15 @@ export default function TodayPage() {
           />
 
           {/* Follow-ups — promises with a date on them. Overdue first. */}
-          <div className="grid items-start gap-6 xl:grid-cols-2">
-            <SectionCard icon={PhoneCall} title="Follow-ups due" count={counts?.followUps}>
+          <div className="grid items-start gap-10 xl:grid-cols-2">
+            <WorkQueueSection icon={PhoneCall} title="Follow-ups due" count={counts?.followUps}>
               {followUps.length === 0 ? (
                 <SectionEmpty>
                   Nothing due. Set a follow-up date on a lead and it appears here on the day
                   it&apos;s due, then stays until you clear it.
                 </SectionEmpty>
               ) : (
-                <div className="space-y-2">
+                <>
                   {followUps.map((lead) => {
                     const urgency = lead.follow_up_date
                       ? followUpUrgency(lead.follow_up_date, day.date)
@@ -445,26 +488,26 @@ export default function TodayPage() {
                   {counts && counts.followUps > followUps.length && (
                     <Link
                       href="/admin/leads?sort=follow_up_date&order=asc"
-                      className="flex items-center justify-center gap-1 py-2 text-xs font-medium text-muted-foreground hover:text-foreground"
+                      className="flex items-center justify-center gap-1 py-3 text-xs font-medium text-muted-foreground hover:text-foreground"
                     >
                       {counts.followUps - followUps.length} more
                       <ChevronRight className="h-3 w-3" />
                     </Link>
                   )}
-                </div>
+                </>
               )}
-            </SectionCard>
+            </WorkQueueSection>
 
             {/* Callbacks — "come back later" logged at the door. Nothing else in the
                 app surfaces these, so without this card they are simply lost. */}
-            <SectionCard icon={DoorOpen} title="Callbacks from the door" count={counts?.callbacks}>
+            <WorkQueueSection icon={DoorOpen} title="Callbacks from the door" count={counts?.callbacks}>
               {callbacks.length === 0 ? (
                 <SectionEmpty>
                   None waiting. Knocks logged as &quot;Callback&quot; collect here so an
                   interested homeowner doesn&apos;t get forgotten.
                 </SectionEmpty>
               ) : (
-                <div className="space-y-2">
+                <>
                   {callbacks.map((lead) => (
                     <LeadRow
                       key={lead.id}
@@ -481,9 +524,9 @@ export default function TodayPage() {
                       }
                     />
                   ))}
-                </div>
+                </>
               )}
-            </SectionCard>
+            </WorkQueueSection>
           </div>
         </>
       )}

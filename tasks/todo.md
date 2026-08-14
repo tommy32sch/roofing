@@ -1385,3 +1385,48 @@ Architectural decisions:
 - Verified locally: 1,074 tests, TypeScript, and changed-file ESLint pass.
   Not deployed. Existing unassigned leads stay admin-only until an admin
   assigns them. Signed-in production role checks remain after deploy.
+
+## Product-specific admin interface
+
+Goal: replace the generic AI-dashboard appearance with a durable visual system
+for a roofing sales operation, starting with the shared shell and Today.
+
+Architectural decisions:
+- Use hierarchy, density, and task order instead of decorative glow or a wall
+  of interchangeable cards.
+- Make the desktop navigation a distinct work rail and keep the mobile tab bar
+  focused on field actions.
+- Treat Today as an operating board: next stop first, unresolved results next,
+  and flexible follow-up work after the scheduled route.
+- Keep the existing data, permissions, actions, touch targets, and dark mode.
+
+### Implementation
+- [x] Remove the global ambient/glow treatment from core surfaces
+- [x] Redesign the shared admin shell and navigation
+- [x] Redesign Today around one clear work sequence
+- [x] Preserve responsive, accessible, role-aware behavior
+
+### Verification
+- [x] Run focused contracts, TypeScript, changed-file lint, and production build
+- [x] Inspect desktop and phone-width renders
+- [x] Record review results and remaining production verification
+
+### Review
+- The shell now uses a dark, product-specific work rail, a custom roof mark,
+  route context, stronger account controls, and a field-focused mobile dock.
+- Today is one operating board: the next stop and daily progress share one
+  command surface; unresolved results and later visits use ledger rows; flexible
+  follow-ups and callbacks sit below the scheduled route.
+- The global ambient gradient, card sheen, card lift, and button glow are gone.
+  Cards, buttons, and badges now have smaller radii and flat structural borders.
+- Signed-in browser inspection passed at 1440, 900, 768, 390, and 320 px in
+  dark mode, plus a light-mode phone pass. The drawer, fixed mobile dock,
+  filters, command surface, result actions, and lower work queues have no
+  horizontal overflow or console warnings. A tablet-only result-row squeeze
+  and a truncated Completed label were found and fixed during this pass.
+- The production service worker no longer registers in development. Stable dev
+  asset URLs had cached an old stylesheet and caused a hydration mismatch; the
+  production content-hashed offline cache remains unchanged.
+- Verification passed: 45 focused contracts, TypeScript, changed-file ESLint,
+  `git diff --check`, and a real Turbopack production build with all 43 pages.
+- No database changes or migration are required for this redesign.
