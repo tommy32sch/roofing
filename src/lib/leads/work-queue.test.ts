@@ -1,9 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
   LEAD_QUEUE_FILTER_KEYS,
+  LEAD_PAGE_SIZE,
   buildLeadQueueSearchParams,
   clearLeadQueueFilters,
   hasLeadQueueFilters,
+  leadListRangeLabel,
+  leadListRequestLimit,
+  leadListViewFromSearchParams,
   leadQueueHref,
   leadQueueParamsFromDefinition,
   leadQueueParamsFromSearchParams,
@@ -96,12 +100,32 @@ describe('lead work queue URL state', () => {
     const params = buildLeadQueueSearchParams(COMPLETE, { viewId: 'not-a-view', page: 1 });
     expect(params.has('page')).toBe(false);
     expect(params.has('view')).toBe(false);
+    expect(params.has('limit')).toBe(false);
     expect(leadQueueHref(params)).toContain('/admin/leads?');
 
     const paged = buildLeadQueueSearchParams(COMPLETE, { viewId: USER_C, page: 3 });
     expect(paged.get('page')).toBe('3');
     expect(paged.get('view')).toBe(USER_C);
+    expect(paged.has('limit')).toBe(false);
     expect(leadQueueParamsFromSearchParams(paged)).toEqual(normalizeLeadQueueParams(COMPLETE));
+  });
+
+  it('writes the all-leads view without a page and keeps the default 50-lead page implicit', () => {
+    expect(leadListViewFromSearchParams(new URLSearchParams())).toBe('page');
+    expect(leadListViewFromSearchParams(new URLSearchParams('limit=all'))).toBe('all');
+    expect(leadListRequestLimit(null)).toBe(LEAD_PAGE_SIZE);
+    expect(leadListRequestLimit('all')).toBe(LEAD_PAGE_SIZE);
+    expect(leadListRequestLimit('2000')).toBe(1000);
+
+    const all = buildLeadQueueSearchParams(COMPLETE, { page: 4, listView: 'all' });
+    expect(all.get('limit')).toBe('all');
+    expect(all.has('page')).toBe(false);
+    expect(leadQueueParamsFromSearchParams(all)).toEqual(normalizeLeadQueueParams(COMPLETE));
+
+    expect(leadListRangeLabel(0, 0, 1, 'page')).toBe('0');
+    expect(leadListRangeLabel(967, 50, 1, 'page')).toBe('1–50');
+    expect(leadListRangeLabel(967, 50, 2, 'page')).toBe('51–100');
+    expect(leadListRangeLabel(1967, 1000, 1, 'all')).toBe('1–1,000');
   });
 });
 
@@ -124,7 +148,7 @@ describe('saved lead view definition', () => {
       unexpected: 'value',
     }));
     const definition = leadViewDefinitionFromQueue(params);
-    expect(JSON.stringify(definition)).not.toMatch(/page|selection|unexpected|view/);
+    expect(JSON.stringify(definition)).not.toMatch(/page|selection|unexpected|view|limit/);
   });
 
   it('rejects malformed or future definitions instead of widening them', () => {

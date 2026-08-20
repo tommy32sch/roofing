@@ -35,13 +35,18 @@ import { useAppShell } from '@/components/providers/app-shell-provider';
 import { DataErrorState } from '@/components/layout/data-error-state';
 import { LeadQueueToolbar } from '@/components/leads/LeadQueueToolbar';
 import {
+  LEAD_LIST_CHUNK_SIZE,
+  LEAD_PAGE_SIZE,
   buildLeadQueueSearchParams,
   hasLeadQueueFilters,
+  leadListRangeLabel,
+  leadListViewFromSearchParams,
   leadQueueHref,
   leadQueueParamsFromSearchParams,
   leadQueueSort,
   nextLeadSort,
   patchLeadQueueParams,
+  type LeadListView,
   type LeadQueueParamKey,
   type LeadQueueParams,
   type LeadSortOrder,
@@ -137,6 +142,7 @@ function LeadsListContent() {
   const searchParams = useSearchParams();
   const [leads, setLeads] = useState<LeadWithSource[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState('');
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
@@ -187,6 +193,7 @@ function LeadsListContent() {
   const [uploaders, setUploaders] = useState<{ id: string; name: string }[]>([]);
   const requestedPage = parseInt(searchParams.get('page') || '1', 10);
   const page = Number.isFinite(requestedPage) && requestedPage > 0 ? requestedPage : 1;
+  const listView = leadListViewFromSearchParams(searchParams);
   const selectedViewId = searchParams.get('view') || '';
   const { sort, order } = leadQueueSort(queueParams);
   const hasFilters = hasLeadQueueFilters(queueParams) || Boolean(importBatchId);
@@ -204,10 +211,10 @@ function LeadsListContent() {
     (isAdmin ? 1 : 0) + 9 + [showSource, showAddedBy, showEstValue, showDealValue].filter(Boolean).length;
 
   const applyQueue = useCallback((params: LeadQueueParams, viewId?: string | null) => {
-    const next = buildLeadQueueSearchParams(params, { viewId });
+    const next = buildLeadQueueSearchParams(params, { viewId, listView });
     if (importBatchId) next.set('import_batch_id', importBatchId);
     router.replace(leadQueueHref(next), { scroll: false });
-  }, [importBatchId, router]);
+  }, [importBatchId, listView, router]);
 
   const patchQueue = useCallback((
     patch: Partial<Record<LeadQueueParamKey, string | undefined>>
@@ -234,30 +241,53 @@ function LeadsListContent() {
     const controller = new AbortController();
     fetchControllerRef.current = controller;
     setLoading(true);
+    setLoadingMore(false);
     setError('');
-    const params = buildLeadQueueSearchParams(queueParams);
-    params.set('page', page.toString());
-    params.set('limit', '25');
-    if (importBatchId) params.set('import_batch_id', importBatchId);
+
+    const collected: LeadWithSource[] = [];
+    let nextPage = listView === 'all' ? 1 : page;
+    const requestLimit = listView === 'all' ? LEAD_LIST_CHUNK_SIZE : LEAD_PAGE_SIZE;
 
     try {
-      const res = await fetch(`/api/admin/leads?${params}`, { signal: controller.signal });
-      const data = await res.json().catch(() => null);
-      if (!res.ok || !data?.success) {
-        throw new Error(data?.error || 'Could not load leads');
+      while (true) {
+        const params = buildLeadQueueSearchParams(queueParams);
+        params.set('page', nextPage.toString());
+        params.set('limit', requestLimit.toString());
+        if (importBatchId) params.set('import_batch_id', importBatchId);
+
+        const res = await fetch(`/api/admin/leads?${params}`, { signal: controller.signal });
+        const data = await res.json().catch(() => null);
+        if (!res.ok || !data?.success) {
+          throw new Error(data?.error || 'Could not load leads');
+        }
+        if (fetchControllerRef.current !== controller) return;
+
+        const pageLeads = Array.isArray(data.leads) ? data.leads : [];
+        collected.push(...pageLeads);
+        setLeads(listView === 'all' ? [...collected] : pageLeads);
+        setTotal(data.total);
+        setTotalPages(listView === 'all' ? 1 : data.totalPages);
+        setLoading(false);
+
+        if (listView !== 'all') break;
+        if (collected.length >= data.total || pageLeads.length < requestLimit) {
+          setLoadingMore(false);
+          break;
+        }
+        nextPage += 1;
+        setLoadingMore(true);
       }
-      if (fetchControllerRef.current !== controller) return;
-      setLeads(data.leads);
-      setTotal(data.total);
-      setTotalPages(data.totalPages);
     } catch (cause) {
       if (cause instanceof DOMException && cause.name === 'AbortError') return;
       if (fetchControllerRef.current !== controller) return;
       setError(cause instanceof Error ? cause.message : 'Could not load leads');
     } finally {
-      if (fetchControllerRef.current === controller) setLoading(false);
+      if (fetchControllerRef.current === controller) {
+        setLoading(false);
+        setLoadingMore(false);
+      }
     }
-  }, [queueParams, page, importBatchId]);
+  }, [queueParams, page, importBatchId, listView]);
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -379,6 +409,8 @@ function LeadsListContent() {
   const pageAllSelected = leads.length > 0 && leads.every((l) => selection.has(l.id));
   const pageSomeSelected = !pageAllSelected && leads.some((l) => selection.has(l.id));
   const selectionTotal = [...selection.values()].reduce((sum, v) => sum + v, 0);
+  const rangeLabel = leadListRangeLabel(total, leads.length, page, listView);
+  const selectShownLabel = listView === 'all' ? 'Select these results' : 'Select this page';
 
   function handleSort(column: string, initialOrder: LeadSortOrder) {
     const next = nextLeadSort(queueParams, column, initialOrder);
@@ -389,9 +421,20 @@ function LeadsListContent() {
     const params = buildLeadQueueSearchParams(queueParams, {
       viewId: selectedViewId || null,
       page: nextPage,
+      listView: 'page',
     });
     if (importBatchId) params.set('import_batch_id', importBatchId);
-    router.replace(leadQueueHref(params));
+    router.replace(leadQueueHref(params), { scroll: false });
+  }
+
+  function setListView(nextView: LeadListView) {
+    const params = buildLeadQueueSearchParams(queueParams, {
+      viewId: selectedViewId || null,
+      page: 1,
+      listView: nextView,
+    });
+    if (importBatchId) params.set('import_batch_id', importBatchId);
+    router.replace(leadQueueHref(params), { scroll: false });
   }
 
   return (
@@ -515,7 +558,7 @@ function LeadsListContent() {
             </h2>
             {!loading && total > 0 && (
               <p className="mt-1 text-xs text-muted-foreground">
-                Showing {((page - 1) * 25 + 1).toLocaleString()}–{Math.min(page * 25, total).toLocaleString()}
+                Showing {rangeLabel}
               </p>
             )}
           </div>
@@ -536,9 +579,9 @@ function LeadsListContent() {
                   setSelected(leads.map((lead) => ({ id: lead.id, value: lead.estimated_roof_value })), checked === true)
                 }
                 className="after:-inset-3.5 data-indeterminate:border-primary data-indeterminate:bg-primary/30"
-                aria-label="Select all on page"
+                aria-label={selectShownLabel}
               />
-              Select this page
+              {selectShownLabel}
             </div>
           )}
 
@@ -662,7 +705,7 @@ function LeadsListContent() {
                       setSelected(leads.map((l) => ({ id: l.id, value: l.estimated_roof_value })), checked === true)
                     }
                     className="after:-inset-3.5 data-indeterminate:border-primary data-indeterminate:bg-primary/30"
-                    aria-label="Select all on page"
+                    aria-label={selectShownLabel}
                   />
                 </TableHead>
               )}
@@ -939,34 +982,45 @@ function LeadsListContent() {
         </div>
       </section>
 
-      {/* Pagination */}
       <div className="flex flex-col gap-3 border-t pt-4 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm text-muted-foreground">
-          Showing {total === 0 ? 0 : (page - 1) * 25 + 1}–{Math.min(page * 25, total)} of {total} lead{total !== 1 ? 's' : ''}
+          Showing {rangeLabel} of {total.toLocaleString()} lead{total !== 1 ? 's' : ''}
+          {loadingMore ? ' · loading the rest' : ''}
         </p>
-        {totalPages > 1 && (
-          <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {listView === 'page' && totalPages > 1 && (
+            <>
+              <Button
+                variant="outline"
+                className="h-11"
+                disabled={page <= 1}
+                onClick={() => goToPage(page - 1)}
+              >
+                Previous
+              </Button>
+              <span className="flex items-center px-2 text-sm text-muted-foreground">
+                Page {page} of {totalPages}
+              </span>
+              <Button
+                variant="outline"
+                className="h-11"
+                disabled={page >= totalPages}
+                onClick={() => goToPage(page + 1)}
+              >
+                Next
+              </Button>
+            </>
+          )}
+          {total > LEAD_PAGE_SIZE && (
             <Button
               variant="outline"
               className="h-11"
-              disabled={page <= 1}
-              onClick={() => goToPage(page - 1)}
+              onClick={() => setListView(listView === 'all' ? 'page' : 'all')}
             >
-              Previous
+              {listView === 'all' ? 'Show 50 at a time' : 'Show all'}
             </Button>
-            <span className="flex items-center text-sm text-muted-foreground px-2">
-              Page {page} of {totalPages}
-            </span>
-            <Button
-              variant="outline"
-              className="h-11"
-              disabled={page >= totalPages}
-              onClick={() => goToPage(page + 1)}
-            >
-              Next
-            </Button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {/* Bulk selection action bar */}

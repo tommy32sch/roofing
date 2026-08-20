@@ -28,6 +28,8 @@ describe('Leads work queue contracts', () => {
 
   it('forwards sort and order to the list route and supports accessible headers', () => {
     expect(page).toContain('buildLeadQueueSearchParams(queueParams)');
+    expect(page).toContain('leadListViewFromSearchParams');
+    expect(page).toContain('LEAD_PAGE_SIZE');
     expect(page).toContain('aria-sort=');
     expect(page).toContain('nextLeadSort(queueParams');
     expect(listRoute).toContain('leadQueueSort(queueParams)');

@@ -22,6 +22,9 @@ describe('lead workspace visual contracts', () => {
   it('keeps desktop and phone results purpose-built for their available space', () => {
     expect(listPage).toContain('md:hidden" aria-busy={loading} aria-label="Lead results"');
     expect(listPage).toContain('hidden border-y md:block');
+    expect(listPage).toContain('[&_[data-slot=table-container]]:overflow-auto');
+    expect(listPage).toContain("Show 50 at a time");
+    expect(listPage).toContain('Show all');
     expect(listPage).toContain('Call ${leadName}');
     expect(listPage).toContain('Text ${leadName}');
     expect(listPage).toContain('Directions to ${leadName}');

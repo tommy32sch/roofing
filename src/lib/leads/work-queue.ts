@@ -7,6 +7,9 @@ import { UNASSIGNED } from '@/lib/leads/assignment-filter';
 export const LEAD_VIEW_NAME_MAX_LENGTH = 80;
 export const DEFAULT_LEAD_SORT = 'created_at';
 export const DEFAULT_LEAD_ORDER = 'desc';
+export const LEAD_PAGE_SIZE = 50;
+export const LEAD_LIST_CHUNK_SIZE = 1000;
+export type LeadListView = 'page' | 'all';
 
 export const LEAD_QUEUE_PARAM_KEYS = [
   'status',
@@ -258,9 +261,34 @@ export function nextLeadSort(
   return { sort: key, order: initialOrder };
 }
 
+export function leadListViewFromSearchParams(searchParams: URLSearchParams): LeadListView {
+  return searchParams.get('limit') === 'all' ? 'all' : 'page';
+}
+
+export function leadListRequestLimit(raw: string | null | undefined): number {
+  const parsed = parseInt(raw ?? '', 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) return LEAD_PAGE_SIZE;
+  return Math.min(Math.trunc(parsed), LEAD_LIST_CHUNK_SIZE);
+}
+
+export function leadListRangeLabel(
+  total: number,
+  loaded: number,
+  page: number,
+  listView: LeadListView
+): string {
+  if (total <= 0) return '0';
+  if (listView === 'all') {
+    return `1–${Math.max(0, loaded).toLocaleString()}`;
+  }
+  const from = (page - 1) * LEAD_PAGE_SIZE + 1;
+  const to = Math.min(page * LEAD_PAGE_SIZE, total);
+  return `${from.toLocaleString()}–${to.toLocaleString()}`;
+}
+
 export function buildLeadQueueSearchParams(
   params: LeadQueueParams,
-  options: { viewId?: string | null; page?: number | null } = {}
+  options: { viewId?: string | null; page?: number | null; listView?: LeadListView | null } = {}
 ): URLSearchParams {
   const result = new URLSearchParams();
   const normalized = normalizeLeadQueueParams(params);
@@ -269,6 +297,10 @@ export function buildLeadQueueSearchParams(
     if (value) result.set(key, value);
   }
   if (options.viewId && isValidUUID(options.viewId)) result.set('view', options.viewId);
+  if (options.listView === 'all') {
+    result.set('limit', 'all');
+    return result;
+  }
   if (options.page && Number.isInteger(options.page) && options.page > 1) {
     result.set('page', String(options.page));
   }

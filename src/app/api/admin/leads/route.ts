@@ -14,7 +14,7 @@ import {
   applyLeadQueueFilters,
   leadQueueRequestParamsFromSearchParams,
 } from '@/lib/leads/work-queue.server';
-import { leadQueueSort } from '@/lib/leads/work-queue';
+import { leadListRequestLimit, leadQueueSort } from '@/lib/leads/work-queue';
 import {
   applyLeadAccessFilter,
   assignmentForNewLead,
@@ -39,11 +39,8 @@ export async function GET(request: NextRequest) {
     const queueParams = leadQueueRequestParamsFromSearchParams(searchParams);
     const { sort, order } = leadQueueSort(queueParams);
     const parsedPage = parseInt(searchParams.get('page') || '1', 10);
-    const parsedLimit = parseInt(searchParams.get('limit') || '25', 10);
     const page = Number.isFinite(parsedPage) && parsedPage > 0 ? parsedPage : 1;
-    const limit = Number.isFinite(parsedLimit) && parsedLimit > 0
-      ? Math.min(parsedLimit, 100)
-      : 25;
+    const limit = leadListRequestLimit(searchParams.get('limit'));
     const offset = (page - 1) * limit;
     const showDuplicates = searchParams.get('show_duplicates') === 'true';
     const isFlaggedDuplicate = searchParams.get('is_flagged_duplicate');

@@ -61,7 +61,7 @@ describe('lead assignment page contract', () => {
 
   it('refetches when either filter changes', () => {
     expect(page).toMatch(
-      /const fetchLeads = useCallback\([\s\S]*?\}, \[queueParams, page, importBatchId\]\);/
+      /const fetchLeads = useCallback\([\s\S]*?\}, \[queueParams, page, importBatchId, listView\]\);/
     );
   });
 
