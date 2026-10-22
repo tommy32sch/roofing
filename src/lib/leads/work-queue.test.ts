@@ -6,6 +6,7 @@ import {
   clearLeadQueueFilters,
   hasLeadQueueFilters,
   leadListRangeLabel,
+  leadPageToStepBackTo,
   leadListRequestLimit,
   leadListViewFromSearchParams,
   leadQueueHref,
@@ -126,6 +127,26 @@ describe('lead work queue URL state', () => {
     expect(leadListRangeLabel(967, 50, 1, 'page')).toBe('1–50');
     expect(leadListRangeLabel(967, 50, 2, 'page')).toBe('51–100');
     expect(leadListRangeLabel(1967, 1000, 1, 'all')).toBe('1–1,000');
+  });
+});
+
+describe('leadPageToStepBackTo', () => {
+  // Deleting every lead on the last page must land on the new last page, not
+  // on an empty queue that reads as "you have no leads".
+  it('moves an empty page past the end back to the last real page', () => {
+    expect(leadPageToStepBackTo('page', 3, 0, 2)).toBe(2);
+    expect(leadPageToStepBackTo('page', 9, 0, 1)).toBe(1);
+  });
+
+  it('moves to page 1 when nothing is left', () => {
+    expect(leadPageToStepBackTo('page', 3, 0, 0)).toBe(1);
+  });
+
+  it('leaves a page that still exists or still has rows alone', () => {
+    expect(leadPageToStepBackTo('page', 1, 0, 0)).toBeNull();
+    expect(leadPageToStepBackTo('page', 2, 0, 2)).toBeNull();
+    expect(leadPageToStepBackTo('page', 3, 20, 3)).toBeNull();
+    expect(leadPageToStepBackTo('all', 3, 0, 1)).toBeNull();
   });
 });
 

@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { ArrowDown, ArrowUp, ChevronRight, ChevronsUpDown, Search, Upload, Sparkles, Download, CalendarClock, MapPin, UserCheck, UserMinus, PhoneOff, CopyCheck, Navigation, Phone, MessageSquare } from 'lucide-react';
+import { ArrowDown, ArrowUp, ChevronRight, ChevronsUpDown, Search, Upload, Sparkles, Download, CalendarClock, MapPin, UserCheck, UserMinus, Trash2, PhoneOff, CopyCheck, Navigation, Phone, MessageSquare } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatPhone, formatAddress, mapsUrl } from '@/lib/utils/format';
 import { PageHeader } from '@/components/layout/page-header';
@@ -24,6 +24,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { LeadStatusBadge } from '@/components/leads/lead-status-badge';
 import { LeadPriorityBadge } from '@/components/leads/lead-priority-badge';
 import { BulkAssignDialog } from '@/components/leads/BulkAssignDialog';
+import { BulkDeleteDialog } from '@/components/leads/BulkDeleteDialog';
 import { StreetSelectSheet } from '@/components/leads/StreetSelectSheet';
 import type { LeadWithSource } from '@/types';
 import { LIMITS } from '@/lib/utils/validation';
@@ -40,6 +41,7 @@ import {
   buildLeadQueueSearchParams,
   hasLeadQueueFilters,
   leadListRangeLabel,
+  leadPageToStepBackTo,
   leadListViewFromSearchParams,
   leadQueueHref,
   leadQueueParamsFromSearchParams,
@@ -152,6 +154,7 @@ function LeadsListContent() {
   // with fresh state per mode — cheaper and less error-prone than syncing a
   // prop into state that only initialises on mount.
   const [assignMode, setAssignMode] = useState<'assign' | 'unassign'>('assign');
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const [streetsOpen, setStreetsOpen] = useState(false);
   const [dncCount, setDncCount] = useState(0);
   const [dncScrubOpen, setDncScrubOpen] = useState(false);
@@ -236,6 +239,16 @@ function LeadsListContent() {
     window.location.href = query ? `/api/admin/leads/export?${query}` : '/api/admin/leads/export';
   }
 
+  const goToPage = useCallback((nextPage: number) => {
+    const params = buildLeadQueueSearchParams(queueParams, {
+      viewId: selectedViewId || null,
+      page: nextPage,
+      listView: 'page',
+    });
+    if (importBatchId) params.set('import_batch_id', importBatchId);
+    router.replace(leadQueueHref(params), { scroll: false });
+  }, [queueParams, selectedViewId, importBatchId, router]);
+
   const fetchLeads = useCallback(async () => {
     fetchControllerRef.current?.abort();
     const controller = new AbortController();
@@ -247,6 +260,7 @@ function LeadsListContent() {
     const collected: LeadWithSource[] = [];
     let nextPage = listView === 'all' ? 1 : page;
     const requestLimit = listView === 'all' ? LEAD_LIST_CHUNK_SIZE : LEAD_PAGE_SIZE;
+    let steppingBack = false;
 
     try {
       while (true) {
@@ -263,6 +277,16 @@ function LeadsListContent() {
         if (fetchControllerRef.current !== controller) return;
 
         const pageLeads = Array.isArray(data.leads) ? data.leads : [];
+        // The page no longer exists. Move to the last real page instead of
+        // showing an empty queue that reads as "you have no leads".
+        const stepBackTo = leadPageToStepBackTo(listView, page, pageLeads.length, data.totalPages);
+        if (stepBackTo !== null) {
+          // Stay in the loading state: the rows on screen may be the ones that
+          // were just deleted, and the next page's fetch starts on navigation.
+          steppingBack = true;
+          goToPage(stepBackTo);
+          return;
+        }
         collected.push(...pageLeads);
         setLeads(listView === 'all' ? [...collected] : pageLeads);
         setTotal(data.total);
@@ -282,12 +306,12 @@ function LeadsListContent() {
       if (fetchControllerRef.current !== controller) return;
       setError(cause instanceof Error ? cause.message : 'Could not load leads');
     } finally {
-      if (fetchControllerRef.current === controller) {
+      if (fetchControllerRef.current === controller && !steppingBack) {
         setLoading(false);
         setLoadingMore(false);
       }
     }
-  }, [queueParams, page, importBatchId, listView]);
+  }, [queueParams, page, importBatchId, listView, goToPage]);
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -415,16 +439,6 @@ function LeadsListContent() {
   function handleSort(column: string, initialOrder: LeadSortOrder) {
     const next = nextLeadSort(queueParams, column, initialOrder);
     patchQueue({ sort: next.sort, order: next.order });
-  }
-
-  function goToPage(nextPage: number) {
-    const params = buildLeadQueueSearchParams(queueParams, {
-      viewId: selectedViewId || null,
-      page: nextPage,
-      listView: 'page',
-    });
-    if (importBatchId) params.set('import_batch_id', importBatchId);
-    router.replace(leadQueueHref(params), { scroll: false });
   }
 
   function setListView(nextView: LeadListView) {
@@ -1034,7 +1048,7 @@ function LeadsListContent() {
           </p>
           {selection.size > LIMITS.BULK_ASSIGN_MAX && (
             <p className="text-xs text-destructive whitespace-nowrap">
-              Max {LIMITS.BULK_ASSIGN_MAX} per assignment
+              Max {LIMITS.BULK_ASSIGN_MAX} at a time
             </p>
           )}
           <Button
@@ -1057,6 +1071,15 @@ function LeadsListContent() {
             <UserMinus className="h-4 w-4 mr-1" />
             Unassign
           </Button>
+          <Button
+            variant="destructive"
+            className="h-11"
+            onClick={() => setDeleteOpen(true)}
+            disabled={selection.size > LIMITS.BULK_DELETE_MAX}
+          >
+            <Trash2 className="h-4 w-4 mr-1" />
+            Delete
+          </Button>
           <Button className="h-11 text-white hover:bg-white/10 hover:text-white dark:hover:bg-white/10" variant="ghost" onClick={() => setSelection(new Map())}>
             Clear
           </Button>
@@ -1077,6 +1100,17 @@ function LeadsListContent() {
               fetchLeads();
             }}
           />
+          {deleteOpen && (
+            <BulkDeleteDialog
+              onOpenChange={setDeleteOpen}
+              leadIds={[...selection.keys()]}
+              onDeleted={() => {
+                setSelection(new Map());
+                setDeleteOpen(false);
+                fetchLeads();
+              }}
+            />
+          )}
           <StreetSelectSheet
             open={streetsOpen}
             onOpenChange={setStreetsOpen}

@@ -70,6 +70,7 @@ import { callLabel } from '@/lib/leads/calls';
 import { useAppShell } from '@/components/providers/app-shell-provider';
 import { DataErrorState } from '@/components/layout/data-error-state';
 import { AppointmentOutcomeActions, type RecordableAppointmentOutcome } from '@/components/leads/AppointmentOutcomeActions';
+import { describeFieldwork } from '@/lib/leads/lead-deletion';
 import { appointmentOutcomeLabel, canRecordAppointmentOutcome } from '@/lib/leads/appointment-outcomes';
 import { saveAppointmentOutcome } from '@/lib/leads/appointment-outcome-client';
 import { cn } from '@/lib/utils';
@@ -153,6 +154,7 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [deleteAppointmentTarget, setDeleteAppointmentTarget] = useState<LeadAppointment | null>(null);
   const [appointmentOutcomePending, setAppointmentOutcomePending] = useState<Record<string, AppointmentOutcome | undefined>>({});
   const userRole = user.role;
@@ -460,16 +462,20 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
   }
 
   async function handleDelete() {
+    setDeleting(true);
     try {
       const res = await fetch(`/api/admin/leads/${leadId}`, { method: 'DELETE' });
       const data = await res.json();
       if (data.success) {
         toast.success('Lead deleted');
         router.push('/admin/leads');
+        return;
       }
+      toast.error(data.error || 'Failed to delete lead');
     } catch {
       toast.error('Failed to delete lead');
     }
+    setDeleting(false);
   }
 
   if (loading) {
@@ -560,6 +566,12 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
     roof_type: lead.roof_type,
   });
 
+  const leadFieldwork = describeFieldwork({
+    knocks: lead.lead_knocks?.length ?? 0,
+    calls: lead.lead_calls?.length ?? 0,
+    appointments: lead.lead_appointments?.length ?? 0,
+  });
+
   const contactHistory = [
     ...(lead.lead_knocks ?? []).map((knock) => ({
       key: `knock-${knock.id}`,
@@ -616,23 +628,29 @@ export default function LeadDetailPage({ params }: { params: Promise<{ leadId: s
               </Link>
             )}
             {userRole === 'admin' && (
-              <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+              <Dialog open={deleteOpen} onOpenChange={(open) => { if (!deleting) setDeleteOpen(open); }}>
                 <DialogTrigger
-                  aria-label={`Delete ${lead.first_name} ${lead.last_name}`}
-                  className={cn(buttonVariants({ variant: 'destructive', size: 'icon' }), 'h-11 w-11')}
+                  className={cn(buttonVariants({ variant: 'destructive' }), 'h-11 px-3')}
                 >
                   <Trash2 />
+                  Delete lead
                 </DialogTrigger>
                 <DialogContent>
                   <DialogHeader>
-                    <DialogTitle>Delete Lead</DialogTitle>
+                    <DialogTitle>Delete {lead.first_name} {lead.last_name} permanently?</DialogTitle>
                   </DialogHeader>
                   <p className="text-sm text-muted-foreground">
-                    Are you sure you want to delete {lead.first_name} {lead.last_name}? This action cannot be undone.
+                    This removes the lead and everything recorded against it
+                    {leadFieldwork ? `, including ${leadFieldwork}` : ''}. It can&apos;t be undone.
+                    A record stays in Activity → Deleted leads.
                   </p>
                   <DialogFooter>
-                    <Button variant="outline" onClick={() => setDeleteOpen(false)}>Cancel</Button>
-                    <Button variant="destructive" onClick={handleDelete}>Delete</Button>
+                    <Button variant="outline" className="h-11" onClick={() => setDeleteOpen(false)} disabled={deleting}>
+                      Cancel
+                    </Button>
+                    <Button variant="destructive" className="h-11" onClick={handleDelete} disabled={deleting}>
+                      {deleting ? 'Deleting…' : 'Delete lead'}
+                    </Button>
                   </DialogFooter>
                 </DialogContent>
               </Dialog>

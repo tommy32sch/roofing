@@ -8,7 +8,7 @@ import { findAppointmentConflicts, conflictResponseBody } from '@/lib/leads/appo
 import { getRoofPricePerSquare } from '@/lib/leads/roof-value.server';
 import { notifyAppointmentBooked } from '@/lib/notifications/notify-appointment';
 import { pickWritableLeadFields, statusDenialReason } from '@/lib/leads/lead-fields';
-import { buildLeadDeletionRecord, type DeletedLeadSnapshot } from '@/lib/leads/lead-deletion';
+import { deleteLeadsWithAudit } from '@/lib/leads/lead-deletion.server';
 import { authorizeLeadAccess } from '@/lib/leads/lead-visibility';
 import { assertAssignableCloser, resolveCloserHandoff } from '@/lib/leads/closer-handoff';
 
@@ -331,67 +331,17 @@ export async function DELETE(
       return NextResponse.json({ success: false, error: 'Invalid lead ID' }, { status: 400 });
     }
 
-    const supabase = db();
-
-    /**
-     * Record what is about to be destroyed, BEFORE destroying it.
-     *
-     * Every child table is ON DELETE CASCADE, so the lead and its whole history
-     * vanish together and afterwards there is nothing left to join to or read.
-     * The snapshot has to be taken while the rows still exist.
-     *
-     * The counts are the part worth having: deleting a duplicate nobody worked
-     * is routine, deleting a lead with fourteen knocks against it destroyed real
-     * fieldwork, and only the counts tell those apart after the fact.
-     */
-    const { data: doomed } = await supabase
-      .from('leads')
-      .select('id, first_name, last_name, phone, email, address_street, address_city, ' +
-              'address_state, address_zip, status, deal_value, market_id, ' +
-              'assigned_setter_id, assigned_closer_id, created_at, created_by')
-      .eq('id', leadId)
-      .single();
-
-    if (!doomed) {
-      return NextResponse.json({ success: false, error: 'Lead not found' }, { status: 404 });
-    }
-
-    const countFor = async (table: string) => {
-      const { count } = await supabase
-        .from(table)
-        .select('id', { count: 'exact', head: true })
-        .eq('lead_id', leadId);
-      return count ?? 0;
-    };
-    const [activities, knocks, calls, photos, appointments] = await Promise.all([
-      countFor('lead_activities'),
-      countFor('lead_knocks'),
-      countFor('lead_calls'),
-      countFor('lead_photos'),
-      countFor('lead_appointments'),
-    ]);
-
-    // Written before the delete so a failure here aborts rather than losing the
-    // lead silently. An untracked deletion is the thing this exists to prevent.
-    const { error: auditError } = await supabase
-      .from('lead_deletions')
-      .insert(buildLeadDeletionRecord(
-        doomed as unknown as DeletedLeadSnapshot,
-        admin,
-        { activities, knocks, calls, photos, appointments }
-      ));
-
-    if (auditError) {
+    // The audit snapshot and the delete commit together in the database. See
+    // deleteLeadsWithAudit — single and bulk deletion share that one path.
+    const result = await deleteLeadsWithAudit(db(), admin.sub, [leadId]);
+    if (!result.ok) {
       return NextResponse.json(
-        { success: false, error: `Could not record the deletion, so the lead was kept: ${auditError.message}` },
+        { success: false, error: `Could not delete the lead: ${result.error}` },
         { status: 500 }
       );
     }
-
-    const { error } = await supabase.from('leads').delete().eq('id', leadId);
-
-    if (error) {
-      return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    if (result.receipt.deleted === 0) {
+      return NextResponse.json({ success: false, error: 'Lead not found' }, { status: 404 });
     }
 
     return NextResponse.json({ success: true });

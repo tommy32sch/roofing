@@ -21,6 +21,7 @@ const ADMIN_ONLY_PREFIXES = [
   '/api/admin/analytics',
   '/api/admin/settings',
   '/api/admin/integrations',
+  '/api/admin/leads/bulk-delete',
 ];
 
 // Route files whose every exported handler must self-check admin role.
@@ -34,6 +35,7 @@ const ADMIN_ONLY_ROUTES = [
   'src/app/api/admin/integrations/email/route.ts',
   'src/app/api/admin/integrations/health/route.ts',
   'src/app/api/admin/integrations/regrid/route.ts',
+  'src/app/api/admin/leads/bulk-delete/route.ts',
 ];
 
 function adminGateCount(source: string): number {

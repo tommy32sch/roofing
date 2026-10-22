@@ -13,7 +13,7 @@ const PUBLIC_PREFIXES = ['/api/webhooks/'];
 // key, so neither should be reachable by setters/closers. The handlers also
 // enforce this themselves — this list is the outer layer of defense.
 const ADMIN_ONLY_PAGE_PREFIXES = ['/admin/users', '/admin/analytics', '/admin/settings', '/admin/integrations'];
-const ADMIN_ONLY_API_PREFIXES = ['/api/admin/users', '/api/admin/analytics', '/api/admin/settings', '/api/admin/integrations'];
+const ADMIN_ONLY_API_PREFIXES = ['/api/admin/users', '/api/admin/analytics', '/api/admin/settings', '/api/admin/integrations', '/api/admin/leads/bulk-delete'];
 
 // Routes blocked for closers.
 //

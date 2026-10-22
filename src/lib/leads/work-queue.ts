@@ -286,6 +286,22 @@ export function leadListRangeLabel(
   return `${from.toLocaleString()}–${to.toLocaleString()}`;
 }
 
+/**
+ * The page to move to when the requested page is past the end, or null.
+ *
+ * This happens after the leads on the last page are deleted, or from a stale
+ * URL. An empty page past the end must not render as an empty queue.
+ */
+export function leadPageToStepBackTo(
+  listView: LeadListView,
+  page: number,
+  rowsOnPage: number,
+  totalPages: number
+): number | null {
+  if (listView === 'all' || page <= 1 || rowsOnPage > 0 || totalPages >= page) return null;
+  return Math.max(1, totalPages);
+}
+
 export function buildLeadQueueSearchParams(
   params: LeadQueueParams,
   options: { viewId?: string | null; page?: number | null; listView?: LeadListView | null } = {}

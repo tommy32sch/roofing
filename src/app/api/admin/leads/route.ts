@@ -46,42 +46,49 @@ export async function GET(request: NextRequest) {
     const isFlaggedDuplicate = searchParams.get('is_flagged_duplicate');
     const followUpBefore = searchParams.get('follow_up_before'); // ISO date string, e.g. today
 
-    let query = supabase
-      .from('leads')
+    // Office scoping: explicit ?market_id, else the caller's home market.
+    const marketId = await marketFilterFor(admin.marketId, searchParams.get('market_id'));
+
+    // The page of leads and the recount below must apply identical filters, so
+    // both are built here.
+    const filteredLeads = (columns: string, options: { count: 'exact'; head?: boolean }) => {
+      let query = supabase.from('leads').select(columns, options);
+
+      query = applyMarketFilter(query, marketId);
+
+      query = applyLeadAccessFilter(query, { id: admin.sub, role: admin.role });
+
+      query = applyLeadQueueFilters(query, queueParams);
+
+      // The durable import receipt links here. Assignment filtering still runs
+      // first, so the batch filter cannot expose a lead the caller cannot access.
+      if (importBatchId) query = query.eq('import_batch_id', importBatchId);
+
+      // Exclude flagged duplicates from main list unless explicitly requested
+      if (!showDuplicates) {
+        query = query.eq('is_flagged_duplicate', false);
+      } else if (isFlaggedDuplicate !== null) {
+        query = query.eq('is_flagged_duplicate', isFlaggedDuplicate === 'true');
+      }
+
+      if (sourceId) query = query.eq('source_id', parseInt(sourceId, 10));
+
+      if (followUpBefore) {
+        query = query
+          .lte('follow_up_date', followUpBefore)
+          .not('follow_up_date', 'is', null)
+          .not('status', 'in', '("sold","lost")');
+      }
+      return query;
+    };
+
+    let query = filteredLeads(
       // Two embeds of admin_users, so each MUST name its foreign key explicitly
       // — without the !fk hint PostgREST cannot tell which column a join means
       // and rejects the request as ambiguous.
-      .select(
-        '*, lead_sources!source_id(id, display_name), assigned_setter:admin_users!assigned_setter_id(id, name), assigned_closer:admin_users!assigned_closer_id(id, name)',
-        { count: 'exact' }
-      );
-
-    // Office scoping: explicit ?market_id, else the caller's home market.
-    query = applyMarketFilter(query, await marketFilterFor(admin.marketId, searchParams.get('market_id')));
-
-    query = applyLeadAccessFilter(query, { id: admin.sub, role: admin.role });
-
-    query = applyLeadQueueFilters(query, queueParams);
-
-    // The durable import receipt links here. Assignment filtering still runs
-    // first, so the batch filter cannot expose a lead the caller cannot access.
-    if (importBatchId) query = query.eq('import_batch_id', importBatchId);
-
-    // Exclude flagged duplicates from main list unless explicitly requested
-    if (!showDuplicates) {
-      query = query.eq('is_flagged_duplicate', false);
-    } else if (isFlaggedDuplicate !== null) {
-      query = query.eq('is_flagged_duplicate', isFlaggedDuplicate === 'true');
-    }
-
-    if (sourceId) query = query.eq('source_id', parseInt(sourceId, 10));
-
-    if (followUpBefore) {
-      query = query
-        .lte('follow_up_date', followUpBefore)
-        .not('follow_up_date', 'is', null)
-        .not('status', 'in', '("sold","lost")');
-    }
+      '*, lead_sources!source_id(id, display_name), assigned_setter:admin_users!assigned_setter_id(id, name), assigned_closer:admin_users!assigned_closer_id(id, name)',
+      { count: 'exact' }
+    );
 
     const ascending = order === 'asc';
     const sortColumn = safeSortColumn(sort);
@@ -92,6 +99,27 @@ export async function GET(request: NextRequest) {
     query = query.order('id', { ascending: true }).range(offset, offset + limit - 1);
 
     const { data: leads, error, count } = await query;
+
+    // A page past the end, for example after the leads on the last page were
+    // deleted. PostgREST refuses the range and sends no count, so count again
+    // and answer with an empty page and the real total. The client can then
+    // step back to the last page; a 500 here would fail the same way on Retry.
+    if (error?.code === 'PGRST103') {
+      const { count: total, error: countError } = await filteredLeads('id', { count: 'exact', head: true });
+      if (countError) {
+        return NextResponse.json({ success: false, error: countError.message }, { status: 500 });
+      }
+      return NextResponse.json({
+        success: true,
+        leads: [],
+        total: total || 0,
+        page,
+        limit,
+        sort: sortColumn,
+        order,
+        totalPages: Math.ceil((total || 0) / limit),
+      });
+    }
 
     if (error) {
       return NextResponse.json({ success: false, error: error.message }, { status: 500 });

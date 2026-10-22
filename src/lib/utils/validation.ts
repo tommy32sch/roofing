@@ -27,4 +27,6 @@ export const LIMITS = {
   CSV_FILE_SIZE: 5 * 1024 * 1024, // 5MB
   BULK_IMPORT_MAX: 5000,
   BULK_ASSIGN_MAX: 500,
+  // Must match the cap in delete_leads_with_audit (migration 035).
+  BULK_DELETE_MAX: 500,
 } as const;
