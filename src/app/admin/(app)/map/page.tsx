@@ -14,6 +14,7 @@ import {
   Pencil,
   RefreshCw,
   SlidersHorizontal,
+  Trash2,
   Undo2,
   UserCheck,
   X,
@@ -48,6 +49,7 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet';
 import { BulkAssignDialog } from '@/components/leads/BulkAssignDialog';
+import { BulkDeleteDialog } from '@/components/leads/BulkDeleteDialog';
 import {
   toggleStormType, countStormsByType,
   type GeoLead, type StormReport, type StormType,
@@ -133,6 +135,7 @@ export default function MapPage() {
   }, [selection]);
   const [visibleIds, setVisibleIds] = useState<Set<string>>(new Set());
   const [assignOpen, setAssignOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const [geocoding, setGeocoding] = useState(false);
   const [geocodeStatus, setGeocodeStatus] = useState('');
 
@@ -1821,7 +1824,7 @@ export default function MapPage() {
           </p>
           {selection.size > LIMITS.BULK_ASSIGN_MAX && (
             <p className="text-xs text-destructive whitespace-nowrap">
-              Max {LIMITS.BULK_ASSIGN_MAX} per assignment
+              Max {LIMITS.BULK_ASSIGN_MAX} at a time
             </p>
           )}
           <Button
@@ -1831,6 +1834,15 @@ export default function MapPage() {
           >
             <UserCheck className="h-4 w-4 mr-1" />
             Assign
+          </Button>
+          <Button
+            variant="destructive"
+            className="h-11"
+            onClick={() => setDeleteOpen(true)}
+            disabled={selection.size > LIMITS.BULK_DELETE_MAX}
+          >
+            <Trash2 className="h-4 w-4 mr-1" />
+            Delete
           </Button>
           <Button
             className="h-11 text-white hover:bg-white/10 hover:text-white dark:hover:bg-white/10"
@@ -1851,6 +1863,21 @@ export default function MapPage() {
             setSelection(new Map());
             setAssignOpen(false);
             fetchLeads();
+          }}
+        />
+      )}
+
+      {isAdmin && deleteOpen && (
+        <BulkDeleteDialog
+          onOpenChange={setDeleteOpen}
+          leadIds={[...selection.keys()]}
+          onDeleted={() => {
+            // Unlike after an assign, the drawn areas go too: their lead
+            // counts were taken when drawn and would now include deleted leads.
+            clearSelectionAreas();
+            setDeleteOpen(false);
+            // Territory progress counts the deleted leads as well.
+            refreshLeadViews();
           }}
         />
       )}

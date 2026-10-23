@@ -13,6 +13,7 @@ const queuePage = read('src/app/admin/(app)/leads/page.tsx');
 const detailPage = read('src/app/admin/(app)/leads/[leadId]/page.tsx');
 const dialog = read('src/components/leads/BulkDeleteDialog.tsx');
 const leadsListRoute = read('src/app/api/admin/leads/route.ts');
+const mapPage = read('src/app/admin/(app)/map/page.tsx');
 
 describe('lead deletion contracts', () => {
   it('records and deletes in one locked database transaction', () => {
@@ -62,6 +63,14 @@ describe('lead deletion contracts', () => {
     expect(queuePage).toContain('disabled={selection.size > LIMITS.BULK_DELETE_MAX}');
     expect(dialog).toContain('bulkDeleteConfirmed(typed, count)');
     expect(dialog).toContain('dry_run: true');
+  });
+
+  it('offers bulk delete in the map selection bar, admin-only', () => {
+    const bar = mapPage.slice(mapPage.indexOf('aria-label="Map selection actions"'));
+    expect(mapPage).toContain('{isAdmin && !execution.active && selection.size > 0 && (');
+    expect(bar.slice(0, bar.indexOf('</div>'))).toContain('onClick={() => setDeleteOpen(true)}');
+    expect(mapPage).toContain('disabled={selection.size > LIMITS.BULK_DELETE_MAX}');
+    expect(mapPage).toContain('{isAdmin && deleteOpen && (');
   });
 
   it('labels the single delete and reports a failed one', () => {
