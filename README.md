@@ -133,6 +133,7 @@ Optional integrations:
 | `RESEND_FROM_EMAIL` | Verified sender identity |
 | `RESEND_REPLY_TO` | Homeowner reply destination |
 | `APP_TIME_ZONE` | Human-readable appointment timezone |
+| `ANTHROPIC_API_KEY` | "Say it" knock drafting at the door (Claude Haiku 5.5); hidden when unset |
 
 Regrid credentials and email-import settings are managed from the application's
 admin Settings page rather than from environment variables.

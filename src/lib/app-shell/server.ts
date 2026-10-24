@@ -1,6 +1,7 @@
 import { resolveAdminSession } from '@/lib/auth/jwt';
 import { permissionsForRole } from '@/lib/auth/permissions';
 import { db } from '@/lib/supabase/server';
+import { isKnockDraftConfigured } from '@/lib/ai/knock-draft.server';
 import type { AppShellIssue, AppShellLoadResult } from './types';
 import type { Market } from '@/types';
 
@@ -64,6 +65,9 @@ export async function loadAppShell(): Promise<AppShellLoadResult> {
         session: {
           isImpersonating: Boolean(admin.impersonatedBy),
           impersonatedById: admin.impersonatedBy ?? null,
+        },
+        features: {
+          knockDraft: isKnockDraftConfigured(),
         },
         issues,
         loadedAt: new Date().toISOString(),

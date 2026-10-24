@@ -25,6 +25,15 @@ export interface AppShellData {
     isImpersonating: boolean;
     impersonatedById: string | null;
   };
+  /**
+   * Optional features that depend on server configuration. Read on the server
+   * so the browser never learns how they are configured, only whether to show
+   * them.
+   */
+  features: {
+    /** "Say it" knock drafting; on when the AI key is set. */
+    knockDraft: boolean;
+  };
   issues: AppShellIssue[];
   loadedAt: string;
 }

@@ -7,6 +7,7 @@ const read = (path: string) => readFileSync(join(process.cwd(), path), 'utf8');
 const CHILD_ROUTES = [
   ['src/app/api/admin/leads/[leadId]/activities/route.ts', 2],
   ['src/app/api/admin/leads/[leadId]/knocks/route.ts', 2],
+  ['src/app/api/admin/leads/[leadId]/knock-draft/route.ts', 1],
   ['src/app/api/admin/leads/[leadId]/calls/route.ts', 2],
   ['src/app/api/admin/leads/[leadId]/photos/route.ts', 2],
   ['src/app/api/admin/leads/[leadId]/photos/[photoId]/route.ts', 1],

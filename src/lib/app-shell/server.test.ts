@@ -68,6 +68,19 @@ describe('server application shell', () => {
     expect(mocks.db).not.toHaveBeenCalled();
   });
 
+  it('shows knock drafting only when the AI key is set', async () => {
+    mocks.resolveAdminSession.mockResolvedValue({ status: 'authenticated', admin: ADMIN });
+    mocks.db.mockReturnValue(databaseResults());
+    vi.stubEnv('ANTHROPIC_API_KEY', '');
+    let result = await loadAppShell();
+    expect(result.status === 'ready' && result.data.features).toEqual({ knockDraft: false });
+
+    vi.stubEnv('ANTHROPIC_API_KEY', 'test-key');
+    result = await loadAppShell();
+    expect(result.status === 'ready' && result.data.features).toEqual({ knockDraft: true });
+    vi.unstubAllEnvs();
+  });
+
   it('returns one trusted bootstrap with live identity and permissions', async () => {
     mocks.resolveAdminSession.mockResolvedValue({ status: 'authenticated', admin: ADMIN });
     mocks.db.mockReturnValue(databaseResults());

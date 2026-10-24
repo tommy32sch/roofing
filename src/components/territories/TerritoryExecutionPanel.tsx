@@ -2,6 +2,7 @@
 
 import { AlertCircle, Crosshair, DoorOpen, LogOut, MapPin, WifiOff } from 'lucide-react';
 import { FollowUpMenu } from '@/components/leads/FollowUpMenu';
+import { KnockDraftField, type ConfirmedKnockDraft } from '@/components/leads/KnockDraftField';
 import { shouldPromptForFollowUp } from '@/components/leads/map-constants';
 import { Button } from '@/components/ui/button';
 import {
@@ -49,6 +50,11 @@ interface TerritoryExecutionPanelProps {
     lead: TerritoryExecutionLead,
     disposition: KnockDisposition
   ) => void | Promise<void>;
+  /** Save a confirmed "say it" draft for the current door. Omit to hide the field. */
+  onRecordDraft?: (
+    lead: TerritoryExecutionLead,
+    draft: ConfirmedKnockDraft
+  ) => boolean | Promise<boolean>;
   onFollowUpChange?: () => void;
   onExit: () => void;
   className?: string;
@@ -82,6 +88,7 @@ export function TerritoryExecutionPanel({
   onFindNearest,
   onSelectLead,
   onRecordKnock,
+  onRecordDraft,
   onFollowUpChange,
   onExit,
   className,
@@ -204,6 +211,18 @@ export function TerritoryExecutionPanel({
             ))}
           </div>
         ) : null}
+
+        {/* Below the grid on purpose: the buttons stay at the top of reach and
+            the sentence is the slower path for doors that need notes. */}
+        {currentLead && !currentLead.do_not_knock && onRecordDraft && (
+          <KnockDraftField
+            key={currentLead.id}
+            leadId={currentLead.id}
+            leadStreet={currentLead.address_street}
+            disabled={recording}
+            onConfirm={(draft) => onRecordDraft(currentLead, draft)}
+          />
+        )}
 
         {currentLead && shouldPromptForFollowUp(currentLead) && (
           <div className="mt-2 flex items-center justify-between gap-2 border-t pt-2">

@@ -79,6 +79,8 @@ import {
   type LeadResultChannel,
   type LeadResultSelection,
 } from '@/components/leads/LeadResultSheet';
+import type { ConfirmedKnockDraft } from '@/components/leads/KnockDraftField';
+import { saveFollowUpDate } from '@/lib/leads/follow-up-client';
 import { AppointmentModal } from '@/components/leads/AppointmentModal';
 import { WonLeadModal } from '@/components/leads/WonLeadModal';
 import { useAppShell } from '@/components/providers/app-shell-provider';
@@ -541,9 +543,9 @@ export default function MapPage() {
    * commits to IndexedDB so cancelling a form or losing data cannot erase what
    * the rep already did.
    */
-  async function logLeadResult(result: LeadResultSelection, leadOverride?: GeoLead) {
+  async function logLeadResult(result: LeadResultSelection, leadOverride?: GeoLead): Promise<boolean> {
     const lead = leadOverride ?? resultTarget?.lead;
-    if (!lead) return;
+    if (!lead) return false;
 
     setSavingResult(true);
     try {
@@ -555,6 +557,7 @@ export default function MapPage() {
         await resultOutbox.enqueueKnock({
           ...payload,
           disposition: result.disposition,
+          notes: result.notes ?? null,
         });
       } else {
         await resultOutbox.enqueueCall({
@@ -593,11 +596,37 @@ export default function MapPage() {
           toast.info('Finish the won-lead details when this device is back online');
         }
       }
+      return true;
     } catch {
       toast.error('Could not save this result to the device');
+      return false;
     } finally {
       setSavingResult(false);
     }
+  }
+
+  /**
+   * Save a confirmed "say it" draft: the knock goes through logLeadResult like
+   * any result (offline queue, appointment and won-lead steps), then the
+   * follow-up date, which is a separate online-only lead field.
+   *
+   * Returns whether the knock was saved, so the draft is kept for a retry
+   * when it was not. A failed follow-up date does not undo a saved knock.
+   */
+  async function logDraftedKnock(lead: GeoLead, draft: ConfirmedKnockDraft): Promise<boolean> {
+    const saved = await logLeadResult(
+      { channel: 'knock', disposition: draft.disposition, notes: draft.notes },
+      lead
+    );
+    if (!saved) return false;
+    if (draft.followUpDate && draft.followUpDate !== lead.follow_up_date) {
+      if (await saveFollowUpDate(lead.id, draft.followUpDate)) {
+        refreshLeadViews();
+      } else {
+        toast.error('Result saved, but not the follow-up date. Set it again when online.');
+      }
+    }
+    return true;
   }
 
   async function geocodeMissing() {
@@ -1580,9 +1609,10 @@ export default function MapPage() {
             recording={savingResult}
             onFindNearest={() => void execution.findNearest()}
             onSelectLead={execution.selectLead}
-            onRecordKnock={(lead, disposition) =>
-              logLeadResult({ channel: 'knock', disposition }, lead)
-            }
+            onRecordKnock={async (lead, disposition) => {
+              await logLeadResult({ channel: 'knock', disposition }, lead);
+            }}
+            onRecordDraft={(lead, draft) => logDraftedKnock(lead, draft)}
             onFollowUpChange={refreshLeadViews}
             onExit={exitTerritoryWork}
             className="absolute inset-x-2 bottom-2 z-[500] max-h-[min(48dvh,30rem)] overflow-y-auto sm:right-auto sm:w-full"
@@ -1732,6 +1762,7 @@ export default function MapPage() {
           setResultTarget((current) => current ? { ...current, channel } : current)
         }
         onSelect={(result) => void logLeadResult(result)}
+        onDraftConfirm={(lead, draft) => logDraftedKnock(lead, draft)}
         saving={savingResult}
       />
 

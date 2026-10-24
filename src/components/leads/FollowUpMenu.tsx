@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { FOLLOW_UP_PRESETS, relativeFollowUpDate, describeFollowUp } from '@/lib/leads/follow-up';
 import { localDayBounds } from '@/lib/leads/today';
+import { saveFollowUpDate } from '@/lib/leads/follow-up-client';
 
 interface Props {
   leadId: string;
@@ -35,6 +36,13 @@ interface Props {
 export function FollowUpMenu({ leadId, followUpDate, onChange, compact }: Props) {
   const [saving, setSaving] = useState(false);
   const [value, setValue] = useState(followUpDate);
+  // The date can change behind the menu (a drafted knock, a refresh). Follow
+  // the stored value when it changes, during render, so no stale label paints.
+  const [syncedFrom, setSyncedFrom] = useState(followUpDate);
+  if (followUpDate !== syncedFrom) {
+    setSyncedFrom(followUpDate);
+    setValue(followUpDate);
+  }
   const today = localDayBounds(new Date()).date;
 
   async function set(next: string | null) {
@@ -44,13 +52,7 @@ export function FollowUpMenu({ leadId, followUpDate, onChange, compact }: Props)
     const previous = value;
     setValue(next);
     try {
-      const res = await fetch(`/api/admin/leads/${leadId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ follow_up_date: next }),
-      });
-      const data = await res.json();
-      if (!data.success) throw new Error(data.error || 'Failed to save');
+      if (!(await saveFollowUpDate(leadId, next))) throw new Error('Failed to save');
       toast.success(next ? `Follow up ${describeFollowUp(next, today).toLowerCase()}` : 'Follow-up cleared');
       onChange?.(next);
     } catch {

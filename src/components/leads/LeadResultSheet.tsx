@@ -17,11 +17,12 @@ import {
   type ColdCallDisposition,
 } from '@/lib/leads/calls';
 import type { GeoLead } from './map-constants';
+import { KnockDraftField, type ConfirmedKnockDraft } from './KnockDraftField';
 
 export type LeadResultChannel = 'knock' | 'cold_call';
 
 export type LeadResultSelection =
-  | { channel: 'knock'; disposition: KnockDisposition }
+  | { channel: 'knock'; disposition: KnockDisposition; notes?: string | null }
   | { channel: 'cold_call'; disposition: ColdCallDisposition };
 
 interface LeadResultSheetProps {
@@ -31,6 +32,8 @@ interface LeadResultSheetProps {
   channel: LeadResultChannel;
   onChannelChange: (channel: LeadResultChannel) => void;
   onSelect: (result: LeadResultSelection) => void;
+  /** Save a confirmed "say it" draft for this lead. Omit to hide the field. */
+  onDraftConfirm?: (lead: GeoLead, draft: ConfirmedKnockDraft) => boolean | Promise<boolean>;
   saving?: boolean;
 }
 
@@ -48,6 +51,7 @@ export function LeadResultSheet({
   channel,
   onChannelChange,
   onSelect,
+  onDraftConfirm,
   saving = false,
 }: LeadResultSheetProps) {
   if (!lead) return null;
@@ -126,6 +130,16 @@ export function LeadResultSheet({
               </Button>
             ))}
           </div>
+        )}
+
+        {channel === 'knock' && !blocked && onDraftConfirm && (
+          <KnockDraftField
+            key={lead.id}
+            leadId={lead.id}
+            leadStreet={lead.address_street}
+            disabled={saving}
+            onConfirm={(draft) => onDraftConfirm(lead, draft)}
+          />
         )}
       </SheetContent>
     </Sheet>
