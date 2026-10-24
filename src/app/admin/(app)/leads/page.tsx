@@ -36,10 +36,12 @@ import { useAppShell } from '@/components/providers/app-shell-provider';
 import { DataErrorState } from '@/components/layout/data-error-state';
 import { LeadQueueToolbar } from '@/components/leads/LeadQueueToolbar';
 import {
+  LEAD_BULK_PAGE_SIZE,
   LEAD_LIST_CHUNK_SIZE,
   LEAD_PAGE_SIZE,
   buildLeadQueueSearchParams,
   hasLeadQueueFilters,
+  leadListPageSize,
   leadListRangeLabel,
   leadPageToStepBackTo,
   leadListViewFromSearchParams,
@@ -53,6 +55,12 @@ import {
   type LeadQueueParams,
   type LeadSortOrder,
 } from '@/lib/leads/work-queue';
+
+const LIST_VIEW_OPTIONS: { view: LeadListView; label: string }[] = [
+  { view: 'page', label: '50' },
+  { view: 'bulk', label: String(LEAD_BULK_PAGE_SIZE) },
+  { view: 'all', label: 'All' },
+];
 
 export default function LeadsListPage() {
   return (
@@ -243,11 +251,12 @@ function LeadsListContent() {
     const params = buildLeadQueueSearchParams(queueParams, {
       viewId: selectedViewId || null,
       page: nextPage,
-      listView: 'page',
+      // Paging keeps the page size the admin chose (50 or 500).
+      listView: listView === 'all' ? 'page' : listView,
     });
     if (importBatchId) params.set('import_batch_id', importBatchId);
     router.replace(leadQueueHref(params), { scroll: false });
-  }, [queueParams, selectedViewId, importBatchId, router]);
+  }, [queueParams, selectedViewId, importBatchId, listView, router]);
 
   const fetchLeads = useCallback(async () => {
     fetchControllerRef.current?.abort();
@@ -259,7 +268,7 @@ function LeadsListContent() {
 
     const collected: LeadWithSource[] = [];
     let nextPage = listView === 'all' ? 1 : page;
-    const requestLimit = listView === 'all' ? LEAD_LIST_CHUNK_SIZE : LEAD_PAGE_SIZE;
+    const requestLimit = leadListPageSize(listView) ?? LEAD_LIST_CHUNK_SIZE;
     let steppingBack = false;
 
     try {
@@ -1002,7 +1011,7 @@ function LeadsListContent() {
           {loadingMore ? ' · loading the rest' : ''}
         </p>
         <div className="flex flex-wrap items-center gap-2">
-          {listView === 'page' && totalPages > 1 && (
+          {listView !== 'all' && totalPages > 1 && (
             <>
               <Button
                 variant="outline"
@@ -1025,14 +1034,22 @@ function LeadsListContent() {
               </Button>
             </>
           )}
+          {/* 500 matches the bulk-action cap: select the page, act, move on. */}
           {total > LEAD_PAGE_SIZE && (
-            <Button
-              variant="outline"
-              className="h-11"
-              onClick={() => setListView(listView === 'all' ? 'page' : 'all')}
-            >
-              {listView === 'all' ? 'Show 50 at a time' : 'Show all'}
-            </Button>
+            <div className="flex items-center gap-1" role="group" aria-label="Leads per page">
+              <span className="px-1 text-sm text-muted-foreground">Per page</span>
+              {LIST_VIEW_OPTIONS.map((option) => (
+                <Button
+                  key={option.view}
+                  variant={listView === option.view ? 'default' : 'outline'}
+                  className="h-11 min-w-11 px-3"
+                  aria-pressed={listView === option.view}
+                  onClick={() => setListView(option.view)}
+                >
+                  {option.label}
+                </Button>
+              ))}
+            </div>
           )}
         </div>
       </div>

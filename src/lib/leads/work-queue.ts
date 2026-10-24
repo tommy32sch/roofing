@@ -9,7 +9,20 @@ export const DEFAULT_LEAD_SORT = 'created_at';
 export const DEFAULT_LEAD_ORDER = 'desc';
 export const LEAD_PAGE_SIZE = 50;
 export const LEAD_LIST_CHUNK_SIZE = 1000;
-export type LeadListView = 'page' | 'all';
+/**
+ * The large page: one page is exactly what a bulk action accepts, so an admin
+ * can select a page, act on it, and move to the next. Tied to the bulk caps so
+ * the page can never offer more than the actions take.
+ */
+export const LEAD_BULK_PAGE_SIZE = Math.min(LIMITS.BULK_ASSIGN_MAX, LIMITS.BULK_DELETE_MAX);
+/** 'page' = 50 per page, 'bulk' = 500 per page, 'all' = everything. */
+export type LeadListView = 'page' | 'bulk' | 'all';
+
+/** Rows per page for a paged view, or null for the unpaged "all" view. */
+export function leadListPageSize(listView: LeadListView): number | null {
+  if (listView === 'all') return null;
+  return listView === 'bulk' ? LEAD_BULK_PAGE_SIZE : LEAD_PAGE_SIZE;
+}
 
 export const LEAD_QUEUE_PARAM_KEYS = [
   'status',
@@ -262,7 +275,9 @@ export function nextLeadSort(
 }
 
 export function leadListViewFromSearchParams(searchParams: URLSearchParams): LeadListView {
-  return searchParams.get('limit') === 'all' ? 'all' : 'page';
+  const limit = searchParams.get('limit');
+  if (limit === 'all') return 'all';
+  return limit === String(LEAD_BULK_PAGE_SIZE) ? 'bulk' : 'page';
 }
 
 export function leadListRequestLimit(raw: string | null | undefined): number {
@@ -278,11 +293,12 @@ export function leadListRangeLabel(
   listView: LeadListView
 ): string {
   if (total <= 0) return '0';
-  if (listView === 'all') {
+  const pageSize = leadListPageSize(listView);
+  if (pageSize === null) {
     return `1–${Math.max(0, loaded).toLocaleString()}`;
   }
-  const from = (page - 1) * LEAD_PAGE_SIZE + 1;
-  const to = Math.min(page * LEAD_PAGE_SIZE, total);
+  const from = (page - 1) * pageSize + 1;
+  const to = Math.min(page * pageSize, total);
   return `${from.toLocaleString()}–${to.toLocaleString()}`;
 }
 
@@ -317,6 +333,7 @@ export function buildLeadQueueSearchParams(
     result.set('limit', 'all');
     return result;
   }
+  if (options.listView === 'bulk') result.set('limit', String(LEAD_BULK_PAGE_SIZE));
   if (options.page && Number.isInteger(options.page) && options.page > 1) {
     result.set('page', String(options.page));
   }

@@ -23,8 +23,8 @@ describe('lead workspace visual contracts', () => {
     expect(listPage).toContain('md:hidden" aria-busy={loading} aria-label="Lead results"');
     expect(listPage).toContain('hidden border-y md:block');
     expect(listPage).toContain('[&_[data-slot=table-container]]:overflow-auto');
-    expect(listPage).toContain("Show 50 at a time");
-    expect(listPage).toContain('Show all');
+    expect(listPage).toContain('aria-label="Leads per page"');
+    expect(listPage).toContain("{ view: 'bulk', label: String(LEAD_BULK_PAGE_SIZE) }");
     expect(listPage).toContain('Call ${leadName}');
     expect(listPage).toContain('Text ${leadName}');
     expect(listPage).toContain('Directions to ${leadName}');

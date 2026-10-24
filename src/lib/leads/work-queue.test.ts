@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest';
+import { LIMITS } from '@/lib/utils/validation';
 import {
   LEAD_QUEUE_FILTER_KEYS,
+  LEAD_BULK_PAGE_SIZE,
   LEAD_PAGE_SIZE,
   buildLeadQueueSearchParams,
   clearLeadQueueFilters,
   hasLeadQueueFilters,
+  leadListPageSize,
   leadListRangeLabel,
   leadPageToStepBackTo,
   leadListRequestLimit,
@@ -127,6 +130,42 @@ describe('lead work queue URL state', () => {
     expect(leadListRangeLabel(967, 50, 1, 'page')).toBe('1–50');
     expect(leadListRangeLabel(967, 50, 2, 'page')).toBe('51–100');
     expect(leadListRangeLabel(1967, 1000, 1, 'all')).toBe('1–1,000');
+  });
+});
+
+describe('500-per-page bulk view', () => {
+  // One page is exactly what a bulk action accepts: select it, act, move on.
+  it('matches the bulk action caps', () => {
+    expect(LEAD_BULK_PAGE_SIZE).toBe(500);
+    expect(LEAD_BULK_PAGE_SIZE).toBeLessThanOrEqual(LIMITS.BULK_ASSIGN_MAX);
+    expect(LEAD_BULK_PAGE_SIZE).toBeLessThanOrEqual(LIMITS.BULK_DELETE_MAX);
+    expect(leadListPageSize('page')).toBe(LEAD_PAGE_SIZE);
+    expect(leadListPageSize('bulk')).toBe(500);
+    expect(leadListPageSize('all')).toBeNull();
+  });
+
+  it('round-trips through the URL with its page', () => {
+    const params = buildLeadQueueSearchParams(COMPLETE, { page: 2, listView: 'bulk' });
+    expect(params.get('limit')).toBe('500');
+    expect(params.get('page')).toBe('2');
+    expect(leadListViewFromSearchParams(params)).toBe('bulk');
+    expect(leadQueueParamsFromSearchParams(params)).toEqual(normalizeLeadQueueParams(COMPLETE));
+  });
+
+  it('falls back to 50 per page for any other limit', () => {
+    for (const limit of ['50', '499', '1000', 'abc', '']) {
+      expect(leadListViewFromSearchParams(new URLSearchParams({ limit })), limit).toBe('page');
+    }
+  });
+
+  it('labels 500-row pages', () => {
+    expect(leadListRangeLabel(868, 500, 1, 'bulk')).toBe('1–500');
+    expect(leadListRangeLabel(868, 368, 2, 'bulk')).toBe('501–868');
+  });
+
+  it('steps back from an emptied 500-row page', () => {
+    expect(leadPageToStepBackTo('bulk', 2, 0, 1)).toBe(1);
+    expect(leadPageToStepBackTo('bulk', 2, 368, 2)).toBeNull();
   });
 });
 
