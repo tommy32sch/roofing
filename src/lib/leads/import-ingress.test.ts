@@ -79,9 +79,31 @@ describe('admin import resource limits', () => {
   });
 });
 
+/**
+ * A stand-in for supabase.rpc(...).order(...).range(...) that behaves like
+ * PostgREST: rows sorted by record_order, and no reply longer than `cap`.
+ */
+function pagedRpc(
+  result: { data: Array<Record<string, unknown>> | null; error: unknown },
+  cap = 1000
+) {
+  return vi.fn(() => ({
+    order: () => ({
+      range: (from: number, to: number) => {
+        if (result.error || !result.data) return Promise.resolve(result);
+        const sorted = [...result.data].sort(
+          (a, b) => Number(a.record_order) - Number(b.record_order)
+        );
+        const end = Math.min(to + 1, from + cap);
+        return Promise.resolve({ data: sorted.slice(from, end), error: null });
+      },
+    }),
+  }));
+}
+
 describe('indexed import duplicate lookup', () => {
   it('uses the database-normalized context and keeps existing rows first', async () => {
-    const rpc = vi.fn().mockResolvedValue({
+    const rpc = pagedRpc({
       data: [
         {
           record_order: 2,
@@ -128,8 +150,8 @@ describe('indexed import duplicate lookup', () => {
   });
 
   it('fails closed when the indexed lookup fails or omits an input row', async () => {
-    const failedRpc = vi.fn().mockResolvedValue({ data: null, error: { message: 'db failed' } });
-    const incompleteRpc = vi.fn().mockResolvedValue({ data: [], error: null });
+    const failedRpc = pagedRpc({ data: null, error: { message: 'db failed' } });
+    const incompleteRpc = pagedRpc({ data: [], error: null });
     const records = [{ id: 'new:0', address_street: '1 Main St' }];
 
     await expect(assignImportDuplicates(
@@ -140,6 +162,44 @@ describe('indexed import duplicate lookup', () => {
       { rpc: incompleteRpc } as unknown as SupabaseClient,
       records
     )).rejects.toThrow('Duplicate lookup returned incomplete context');
+  });
+
+  // Regression: a 1,084-row file plus 614 existing candidates came back cut
+  // to 1,000 rows and the whole import failed as "incomplete context".
+  it('reads a reply longer than the server cap in pages', async () => {
+    const existing = Array.from({ length: 614 }, (_, i) => ({
+      record_order: i + 1,
+      id: `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`,
+      apn: null,
+      address_street: `${i} Existing St`,
+      address_city: 'Peoria',
+      address_zip: '85345',
+      address_dedupe_key: `${i} existing st`,
+    }));
+    const incoming = Array.from({ length: 1084 }, (_, i) => ({
+      record_order: 614 + i + 1,
+      id: `new:${i}`,
+      apn: null,
+      // The first incoming row repeats an existing house.
+      address_street: i === 0 ? '0 Existing St' : `${i} Incoming Ave`,
+      address_city: 'Peoria',
+      address_zip: '85345',
+      address_dedupe_key: i === 0 ? '0 existing st' : `${i} incoming ave`,
+    }));
+    for (const cap of [1000, 500]) {
+      const rpc = pagedRpc({ data: [...existing, ...incoming], error: null }, cap);
+      const assigned = await assignImportDuplicates(
+        { rpc } as unknown as SupabaseClient,
+        incoming.map(({ id, address_street, address_city, address_zip }) => ({
+          id, address_street, address_city, address_zip,
+        }))
+      );
+      expect(incoming.every((row) => assigned.has(row.id)), `cap ${cap}`).toBe(true);
+      expect(assigned.get('new:0')).toBe(existing[0].id);
+      expect(assigned.get('new:1')).toBeNull();
+      // Pages until an empty one: 1,698 rows at this cap, plus the empty page.
+      expect(rpc).toHaveBeenCalledTimes(Math.ceil(1698 / cap) + 1);
+    }
   });
 
   it('keeps the generated key and lookup private in the canonical schema', () => {
