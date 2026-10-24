@@ -21,6 +21,7 @@ import {
   ROOF_TYPE_OPTIONS,
 } from '@/types';
 import type { Lead, LeadSource } from '@/types';
+import { leadPath } from '@/lib/leads/lead-path';
 
 interface LeadFormProps {
   lead?: Lead;
@@ -157,7 +158,7 @@ export function LeadForm({ lead, isEdit }: LeadFormProps) {
       }
 
       toast.success(isEdit ? 'Lead updated' : 'Lead created');
-      router.push(`/admin/leads/${data.lead.id}`);
+      router.push(leadPath(data.lead));
     } catch {
       toast.error('An error occurred');
     } finally {

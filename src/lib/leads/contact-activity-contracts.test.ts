@@ -8,7 +8,7 @@ const reportScope = read('src/components/reporting/report-scope-bar.tsx');
 const teamPulse = read('src/components/reporting/team-pulse-ledger.tsx');
 const activityRoute = read('src/app/api/admin/contact-activity/route.ts');
 const leadRoute = read('src/app/api/admin/leads/[leadId]/route.ts');
-const leadDetail = read('src/app/admin/(app)/leads/[leadId]/page.tsx');
+const leadDetail = read('src/app/admin/(app)/leads/[leadId]/lead-detail.tsx');
 
 describe('contact activity tracking contracts', () => {
   it('counts both structured channels inside a bounded reporting window', () => {

@@ -1,4 +1,5 @@
 import { buildIcs } from './ics';
+import { leadPath } from '@/lib/leads/lead-path';
 
 /**
  * Builds the internal heads-up sent to the assigned closer when an appointment
@@ -67,7 +68,7 @@ export function buildCloserEmail(input: CloserEmailInput): BuiltCloserEmail {
     .filter(Boolean)
     .join(', ');
   const contact = lead.is_dnc ? 'Do not call — knock only' : lead.phone?.trim() || 'No number on file';
-  const leadUrl = input.appUrl ? `${input.appUrl.replace(/\/$/, '')}/admin/leads/${lead.id}` : null;
+  const leadUrl = input.appUrl ? `${input.appUrl.replace(/\/$/, '')}${leadPath(lead)}` : null;
 
   const subject = `${kindTitle}: ${name} — ${date} at ${time}`;
 

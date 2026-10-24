@@ -79,6 +79,7 @@ import {
   reportScopeKey,
   serializeReportScope,
 } from '@/lib/reporting/scope';
+import { leadPath } from '@/lib/leads/lead-path';
 
 const ACTIVITY_ICONS: Record<string, React.ElementType> = {
   note: MessageSquare,
@@ -747,7 +748,7 @@ function ActivityPageContent() {
                                 )}
                               {lead && (
                                 <Link
-                                  href={`/admin/leads/${lead.id}`}
+                                  href={leadPath(lead)}
                                   className="max-w-full truncate text-xs text-primary hover:underline"
                                 >
                                   {leadName}{location ? ` · ${location}` : ''}
@@ -824,7 +825,7 @@ function ActivityPageContent() {
                                       >
                                         <div className="min-w-0">
                                           <Link
-                                            href={`/admin/leads/${detail.lead.id}`}
+                                            href={leadPath(detail.lead)}
                                             className="block truncate text-sm font-medium hover:underline"
                                           >
                                             {detailName || 'Unnamed lead'}

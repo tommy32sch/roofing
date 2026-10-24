@@ -21,7 +21,7 @@ const clientSources = [
   read('src/app/admin/(app)/today/page.tsx'),
   read('src/app/admin/(app)/performance/page.tsx'),
   read('src/app/admin/(app)/users/page.tsx'),
-  read('src/app/admin/(app)/leads/[leadId]/page.tsx'),
+  read('src/app/admin/(app)/leads/[leadId]/lead-detail.tsx'),
 ].join('\n');
 
 describe('trusted application shell contracts', () => {

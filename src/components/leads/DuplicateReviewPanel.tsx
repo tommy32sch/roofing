@@ -15,6 +15,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import type { Lead } from '@/types';
+import { leadPath } from '@/lib/leads/lead-path';
 
 interface FlaggedLead extends Lead {
   original?: Lead | null;
@@ -115,7 +116,7 @@ export function DuplicateReviewPanel() {
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
-                    <Link href={`/admin/leads/${lead.id}`} className="font-medium text-sm hover:underline flex items-center gap-1">
+                    <Link href={leadPath(lead)} className="font-medium text-sm hover:underline flex items-center gap-1">
                       {lead.first_name} {lead.last_name}
                       <ExternalLink className="h-3 w-3" />
                     </Link>
@@ -128,7 +129,7 @@ export function DuplicateReviewPanel() {
                   {lead.original && (
                     <p className="text-xs text-muted-foreground mt-0.5">
                       Matches:{' '}
-                      <Link href={`/admin/leads/${lead.original.id}`} className="hover:underline">
+                      <Link href={leadPath(lead.original)} className="hover:underline">
                         {lead.original.first_name} {lead.original.last_name}
                       </Link>
                       {' '}({[lead.original.address_street, lead.original.address_city].filter(Boolean).join(', ')})

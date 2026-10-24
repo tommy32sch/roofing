@@ -55,6 +55,7 @@ import {
   type LeadQueueParams,
   type LeadSortOrder,
 } from '@/lib/leads/work-queue';
+import { leadPath } from '@/lib/leads/lead-path';
 
 const LIST_VIEW_OPTIONS: { view: LeadListView; label: string }[] = [
   { view: 'page', label: '50' },
@@ -139,7 +140,7 @@ function LeadQuickActions({ lead }: { lead: LeadWithSource }) {
           <Navigation className="h-4 w-4" />
         </a>
       )}
-      <Link href={`/admin/leads/${lead.id}`} aria-label={`Open ${leadName}`} className={leadActionClass}>
+      <Link href={leadPath(lead)} aria-label={`Open ${leadName}`} className={leadActionClass}>
         <ChevronRight className="h-4 w-4" />
       </Link>
     </div>
@@ -666,7 +667,7 @@ function LeadsListContent() {
                         />
                       </div>
                     )}
-                    <Link href={`/admin/leads/${lead.id}`} className="min-w-0 flex-1 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50">
+                    <Link href={leadPath(lead)} className="min-w-0 flex-1 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50">
                       <div className="flex min-w-0 items-center gap-2">
                         <h3 className="min-w-0 flex-1 truncate text-sm font-semibold">
                           {lead.first_name} {lead.last_name}
@@ -859,7 +860,7 @@ function LeadsListContent() {
                 <TableRow
                   key={lead.id}
                   className={`group cursor-pointer border-border/70 hover:bg-muted/40 ${selection.has(lead.id) ? 'bg-primary/[0.04]' : ''}`}
-                  onClick={() => router.push(`/admin/leads/${lead.id}`)}
+                  onClick={() => router.push(leadPath(lead))}
                 >
                   {isAdmin && (
                     <TableCell className="w-12" onClick={(e) => e.stopPropagation()}>
@@ -877,7 +878,7 @@ function LeadsListContent() {
                     <div className="min-w-[11rem]">
                       <p className="flex items-center gap-1 text-sm font-semibold">
                         <Link
-                          href={`/admin/leads/${lead.id}`}
+                          href={leadPath(lead)}
                           className="rounded-sm hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
                           onClick={(event) => event.stopPropagation()}
                         >

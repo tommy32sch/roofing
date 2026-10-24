@@ -7,7 +7,7 @@ const map = read('src/components/leads/LeadMap.tsx');
 const sheet = read('src/components/leads/LeadResultSheet.tsx');
 const page = read('src/app/admin/(app)/map/page.tsx');
 const geoRoute = read('src/app/api/admin/leads/geo/route.ts');
-const detail = read('src/app/admin/(app)/leads/[leadId]/page.tsx');
+const detail = read('src/app/admin/(app)/leads/[leadId]/lead-detail.tsx');
 
 describe('map lead-result UI contracts', () => {
   it('opens a bottom sheet with large targets and both exact option sources', () => {

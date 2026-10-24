@@ -79,7 +79,7 @@ describe('durable Audit Log contracts', () => {
     expect(page).toContain("item_kind: 'activity' | 'operation'");
     expect(page).toContain('View receipt');
     expect(page).toContain('toggleOperation(item.item_id)');
-    expect(page).toContain('`/admin/leads/${detail.lead.id}`');
+    expect(page).toContain('leadPath(detail.lead)');
     expect(navigation).toContain("{ href: '/admin/activity', label: 'Audit Log'");
   });
 });

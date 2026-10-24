@@ -14,6 +14,7 @@ import type {
   TrendPoint,
 } from './contracts';
 import { isStalledWork, stalledWorkThresholdDays } from './stalled-work';
+import { leadPath } from '@/lib/leads/lead-path';
 
 export interface OperationsLeadRow {
   id: string;
@@ -314,7 +315,7 @@ export function buildOperationsExceptions(input: {
       title: leadName(lead),
       detail: `${lead.address || 'No address'} · due ${lead.followUpDate}`,
       rule: `Follow-up date is before ${input.scope.localDate}.`,
-      href: `/admin/leads/${lead.id}`,
+      href: leadPath(lead),
       occurredAt: null,
     })),
     ...missingOwner.map((appointment): OperationsExceptionItem => {
@@ -326,7 +327,7 @@ export function buildOperationsExceptions(input: {
         title: lead ? leadName(lead) : 'Appointment without owner',
         detail: lead?.address || 'No address',
         rule: 'A scheduled appointment must have an assigned closer.',
-        href: `/admin/leads/${appointment.leadId}`,
+        href: leadPath({ id: appointment.leadId }),
         occurredAt: appointment.scheduledAt,
       };
     }),
@@ -339,7 +340,7 @@ export function buildOperationsExceptions(input: {
         title: leadName(lead),
         detail: lead.address || 'No address',
         rule: `${FUNNEL.find((row) => row.status === lead.status)?.label ?? lead.status} has no recorded work for ${threshold} days.`,
-        href: `/admin/leads/${lead.id}`,
+        href: leadPath(lead),
         occurredAt: lastWorkAt,
       };
     }),
@@ -350,7 +351,7 @@ export function buildOperationsExceptions(input: {
       title: leadName(lead),
       detail: `${lead.address || 'No address'} · ${lead.status === 'new' ? 'new lead' : 'contacted'}`,
       rule: 'A new or contacted lead must have an assigned setter.',
-      href: `/admin/leads/${lead.id}`,
+      href: leadPath(lead),
       occurredAt: lead.createdAt,
     })),
   ];

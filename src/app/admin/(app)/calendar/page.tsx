@@ -58,6 +58,7 @@ import { saveAppointmentOutcome } from '@/lib/leads/appointment-outcome-client';
 import { formatAddress, mapsUrl } from '@/lib/utils/format';
 import { cn } from '@/lib/utils';
 import { useAppShell } from '@/components/providers/app-shell-provider';
+import { leadPath } from '@/lib/leads/lead-path';
 
 interface ScheduleOwner {
   id: string;
@@ -177,7 +178,7 @@ function AppointmentActions({
           </a>
         )}
         <Link
-          href={`/admin/leads/${lead.id}`}
+          href={leadPath(lead)}
           className={ACTION_CLASS}
           aria-label={`Open lead for ${name}`}
         >
@@ -461,7 +462,7 @@ function MonthOverview({
                 {shown.map((appointment) => (
                   <Link
                     key={appointment.id}
-                    href={`/admin/leads/${appointment.leads.id}`}
+                    href={leadPath(appointment.leads)}
                     className={cn(
                       'block truncate border-l-2 bg-muted/50 px-1.5 py-1 text-[11px] hover:bg-muted',
                       appointment.exceptions.length > 0 && 'bg-destructive/5 text-destructive'
@@ -581,7 +582,7 @@ function UnscheduledRail({
                       <span className="sr-only">Directions</span>
                     </a>
                   )}
-                  <Link href={`/admin/leads/${lead.id}#appointments-heading`} className={ACTION_CLASS}>
+                  <Link href={`${leadPath(lead)}#appointments-heading`} className={ACTION_CLASS}>
                     <CalendarClock />
                     Schedule
                   </Link>

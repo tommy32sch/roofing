@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 const read = (path: string) => readFileSync(join(process.cwd(), path), 'utf8');
 const listPage = read('src/app/admin/(app)/leads/page.tsx');
 const queueToolbar = read('src/components/leads/LeadQueueToolbar.tsx');
-const detailPage = read('src/app/admin/(app)/leads/[leadId]/page.tsx');
+const detailPage = read('src/app/admin/(app)/leads/[leadId]/lead-detail.tsx');
 
 describe('lead workspace visual contracts', () => {
   it('treats the lead list as a queue instead of a filter wall', () => {

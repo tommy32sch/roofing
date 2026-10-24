@@ -21,6 +21,7 @@ import { STATUS_COLORS, DNC_RING_COLOR, DO_NOT_KNOCK_RING_COLOR, isLeadAddressDe
 import { buildStormZones } from '@/lib/storm/zones';
 import type { Territory } from '@/types';
 import type { TerritoryUserLocation } from '@/lib/territories/geolocation';
+import { leadPath } from '@/lib/leads/lead-path';
 
 // Phoenix metro — sensible default for an empty map until leads load
 const DEFAULT_CENTER: [number, number] = [33.4, -111.9];
@@ -1077,7 +1078,7 @@ export default function LeadMap({
                     </a>
                   )}
                   <Link
-                    href={`/admin/leads/${lead.id}`}
+                    href={leadPath(lead)}
                     className={POPUP_ACTION_CLASS}
                     aria-label={`Open lead for ${leadName}`}
                   >

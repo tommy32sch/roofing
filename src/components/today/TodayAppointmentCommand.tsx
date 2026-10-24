@@ -18,6 +18,7 @@ import { cn } from '@/lib/utils';
 import { formatAddressShort, mapsUrl } from '@/lib/utils/format';
 import type { AppointmentOutcome } from '@/types';
 import type { TodayAppointment, TodayCommandCenter, TodayScope } from '@/lib/leads/today';
+import { leadPath } from '@/lib/leads/lead-path';
 
 function leadName(appointment: TodayAppointment): string {
   const lead = appointment.leads;
@@ -101,7 +102,7 @@ function ContactActions({
         </>
       )}
       <Link
-        href={`/admin/leads/${lead.id}`}
+        href={leadPath(lead)}
         className={cn(
           buttonVariants({ variant: 'ghost' }),
           'h-11 px-3',
@@ -180,7 +181,7 @@ function NextStopPanel({
         <div className="min-w-0 border-t border-background/15 pt-5 dark:border-border sm:border-l sm:border-t-0 sm:pl-6 sm:pt-0">
           {appointment.leads ? (
             <Link
-              href={`/admin/leads/${appointment.leads.id}`}
+              href={leadPath(appointment.leads)}
               className="text-xl font-semibold tracking-tight hover:text-primary sm:text-2xl"
             >
               {name}
@@ -347,7 +348,7 @@ function AwaitingResults({
                 </p>
                 {appointment.leads ? (
                   <Link
-                    href={`/admin/leads/${appointment.leads.id}`}
+                    href={leadPath(appointment.leads)}
                     className="mt-1 block truncate text-base font-semibold hover:text-primary"
                   >
                     {name}
@@ -433,7 +434,7 @@ function LaterToday({ appointments }: { appointments: TodayAppointment[] }) {
             <div className="min-w-0">
               {appointment.leads ? (
                 <Link
-                  href={`/admin/leads/${appointment.leads.id}`}
+                  href={leadPath(appointment.leads)}
                   className="font-semibold hover:text-primary"
                 >
                   {leadName(appointment)}

@@ -22,7 +22,7 @@ describe('Leads work queue contracts', () => {
 
   it('replaces queue history while keeping lead-detail navigation deliberate', () => {
     expect(page).toContain('router.replace(leadQueueHref');
-    expect(page).toContain('router.push(`/admin/leads/${lead.id}`)');
+    expect(page).toContain('router.push(leadPath(lead))');
     expect(page).not.toContain('router.push(`/admin/leads?');
   });
 

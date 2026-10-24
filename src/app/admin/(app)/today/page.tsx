@@ -33,6 +33,7 @@ import { TodayAppointmentCommand } from '@/components/today/TodayAppointmentComm
 import type { RecordableAppointmentOutcome } from '@/components/leads/AppointmentOutcomeActions';
 import { cn } from '@/lib/utils';
 import { saveAppointmentOutcome } from '@/lib/leads/appointment-outcome-client';
+import { leadPath } from '@/lib/leads/lead-path';
 
 /** The first phone we can actually dial. DNC leads have none stored by design. */
 function firstPhone(lead: TodayLead): string | null {
@@ -60,7 +61,7 @@ function LeadRow({
 
   return (
     <article className="group flex flex-col gap-2 py-3.5 sm:flex-row sm:items-center">
-      <Link href={`/admin/leads/${lead.id}`} className="min-w-0 sm:flex-1">
+      <Link href={leadPath(lead)} className="min-w-0 sm:flex-1">
         {/* The name must win the space fight: min-w-0 + flex-1 on the name and
             shrink-0 on the chips. Without it the badge took the full row on a
             phone and truncated the customer's name to nothing. */}

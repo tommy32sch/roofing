@@ -69,7 +69,7 @@ describe('buildCloserEmail', () => {
   });
 
   it('deep-links back to the lead, and omits the link without an app URL', () => {
-    expect(buildCloserEmail(base).text).toContain('https://roofing-ebon.vercel.app/admin/leads/lead-1');
+    expect(buildCloserEmail(base).text).toContain('https://roofing-ebon.vercel.app/admin/leads/flor-erives-lead1');
     const noUrl = buildCloserEmail({ ...base, appUrl: null });
     expect(noUrl.text).not.toContain('Open lead:');
     expect(noUrl.html).not.toContain('<a href');
