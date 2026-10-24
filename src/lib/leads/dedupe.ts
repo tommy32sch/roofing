@@ -170,10 +170,12 @@ export function assignDuplicates(records: DedupeRecord[]): Map<string, string | 
   return result;
 }
 
-/** Rows asked for per duplicate-lookup page; matches Supabase's default cap. */
-const DUPLICATE_CONTEXT_PAGE_SIZE = 1000;
-/** 5,000 import rows plus their candidates fit many times over. */
-const DUPLICATE_CONTEXT_MAX_PAGES = 100;
+/**
+ * Most context rows (incoming plus existing candidates) one lookup may return.
+ * A 5,000-row import with its candidates fits; anything larger is refused
+ * rather than handed to the matcher.
+ */
+export const DUPLICATE_CONTEXT_MAX_ROWS = 20_000;
 
 interface DuplicateContextRow extends DedupeRecord {
   record_order: number | string;
@@ -206,28 +208,18 @@ export async function assignImportDuplicates(
     address_zip: record.address_zip ?? null,
   }));
 
-  // The reply is incoming rows plus existing candidates, and the API caps any
-  // one response (1,000 rows on Supabase). A 1,084-row file once came back cut
-  // to 1,000 and failed. So read it in pages ordered by the unique
-  // record_order, advancing by what each page actually returned, until a page
-  // is empty — correct whatever the server's cap is.
-  const byId = new Map<string, DuplicateContextRow>();
-  for (let from = 0, pages = 0; ; pages++) {
-    if (pages >= DUPLICATE_CONTEXT_MAX_PAGES) {
-      throw new Error('Duplicate lookup did not finish');
-    }
-    const { data, error } = await supabase
-      .rpc('find_lead_duplicate_context', { p_leads })
-      .order('record_order', { ascending: true })
-      .range(from, from + DUPLICATE_CONTEXT_PAGE_SIZE - 1);
-    if (error) throw new Error('Failed to load duplicate candidates');
-    const page = (data || []) as DuplicateContextRow[];
-    if (page.length === 0) break;
-    for (const row of page) byId.set(row.id, row);
-    from += page.length;
+  // One call, one snapshot (migration 036). The whole context comes back as a
+  // single JSON value, so the API's 1,000-row cap on a row set does not apply
+  // (a 1,084-row file used to fail on it), and no import landing mid-read can
+  // shift the numbering the way re-running a paged read could.
+  const { data, error } = await supabase.rpc('find_lead_duplicate_context_json', { p_leads });
+  if (error || !Array.isArray(data)) throw new Error('Failed to load duplicate candidates');
+  if (data.length > DUPLICATE_CONTEXT_MAX_ROWS) {
+    throw new Error('Too many matching leads to check this file safely');
   }
 
-  const context = [...byId.values()]
+  const context = (data as DuplicateContextRow[])
+    .slice()
     .sort((a, b) => Number(a.record_order) - Number(b.record_order));
   const returnedIds = new Set(context.map((record) => record.id));
 

@@ -3,7 +3,7 @@ import { join } from 'path';
 import type { NextRequest } from 'next/server';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { assignImportDuplicates } from './dedupe';
+import { DUPLICATE_CONTEXT_MAX_ROWS, assignImportDuplicates } from './dedupe';
 
 const { authMock, rateLimitMock } = vi.hoisted(() => ({
   authMock: vi.fn(),
@@ -79,31 +79,14 @@ describe('admin import resource limits', () => {
   });
 });
 
-/**
- * A stand-in for supabase.rpc(...).order(...).range(...) that behaves like
- * PostgREST: rows sorted by record_order, and no reply longer than `cap`.
- */
-function pagedRpc(
-  result: { data: Array<Record<string, unknown>> | null; error: unknown },
-  cap = 1000
-) {
-  return vi.fn(() => ({
-    order: () => ({
-      range: (from: number, to: number) => {
-        if (result.error || !result.data) return Promise.resolve(result);
-        const sorted = [...result.data].sort(
-          (a, b) => Number(a.record_order) - Number(b.record_order)
-        );
-        const end = Math.min(to + 1, from + cap);
-        return Promise.resolve({ data: sorted.slice(from, end), error: null });
-      },
-    }),
-  }));
+/** A stand-in for supabase.rpc(...) returning the lookup as one JSON value. */
+function jsonRpc(result: { data: unknown; error: unknown }) {
+  return vi.fn().mockResolvedValue(result);
 }
 
 describe('indexed import duplicate lookup', () => {
   it('uses the database-normalized context and keeps existing rows first', async () => {
-    const rpc = pagedRpc({
+    const rpc = jsonRpc({
       data: [
         {
           record_order: 2,
@@ -137,7 +120,7 @@ describe('indexed import duplicate lookup', () => {
       }]
     );
 
-    expect(rpc).toHaveBeenCalledWith('find_lead_duplicate_context', {
+    expect(rpc).toHaveBeenCalledWith('find_lead_duplicate_context_json', {
       p_leads: [{
         id: 'new:0',
         apn: null,
@@ -150,8 +133,9 @@ describe('indexed import duplicate lookup', () => {
   });
 
   it('fails closed when the indexed lookup fails or omits an input row', async () => {
-    const failedRpc = pagedRpc({ data: null, error: { message: 'db failed' } });
-    const incompleteRpc = pagedRpc({ data: [], error: null });
+    const failedRpc = jsonRpc({ data: null, error: { message: 'db failed' } });
+    const incompleteRpc = jsonRpc({ data: [], error: null });
+    const notAnArray = jsonRpc({ data: { rows: [] }, error: null });
     const records = [{ id: 'new:0', address_street: '1 Main St' }];
 
     await expect(assignImportDuplicates(
@@ -162,11 +146,16 @@ describe('indexed import duplicate lookup', () => {
       { rpc: incompleteRpc } as unknown as SupabaseClient,
       records
     )).rejects.toThrow('Duplicate lookup returned incomplete context');
+    await expect(assignImportDuplicates(
+      { rpc: notAnArray } as unknown as SupabaseClient,
+      records
+    )).rejects.toThrow('Failed to load duplicate candidates');
   });
 
   // Regression: a 1,084-row file plus 614 existing candidates came back cut
-  // to 1,000 rows and the whole import failed as "incomplete context".
-  it('reads a reply longer than the server cap in pages', async () => {
+  // to 1,000 rows and the whole import failed as "incomplete context". The
+  // context now arrives as one JSON value from one call, whatever its size.
+  it('checks a file whose context is larger than one API page, in one call', async () => {
     const existing = Array.from({ length: 614 }, (_, i) => ({
       record_order: i + 1,
       id: `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`,
@@ -186,20 +175,42 @@ describe('indexed import duplicate lookup', () => {
       address_zip: '85345',
       address_dedupe_key: i === 0 ? '0 existing st' : `${i} incoming ave`,
     }));
-    for (const cap of [1000, 500]) {
-      const rpc = pagedRpc({ data: [...existing, ...incoming], error: null }, cap);
-      const assigned = await assignImportDuplicates(
-        { rpc } as unknown as SupabaseClient,
-        incoming.map(({ id, address_street, address_city, address_zip }) => ({
-          id, address_street, address_city, address_zip,
-        }))
-      );
-      expect(incoming.every((row) => assigned.has(row.id)), `cap ${cap}`).toBe(true);
-      expect(assigned.get('new:0')).toBe(existing[0].id);
-      expect(assigned.get('new:1')).toBeNull();
-      // Pages until an empty one: 1,698 rows at this cap, plus the empty page.
-      expect(rpc).toHaveBeenCalledTimes(Math.ceil(1698 / cap) + 1);
-    }
+    const rpc = jsonRpc({ data: [...existing, ...incoming], error: null });
+    const assigned = await assignImportDuplicates(
+      { rpc } as unknown as SupabaseClient,
+      incoming.map(({ id, address_street, address_city, address_zip }) => ({
+        id, address_street, address_city, address_zip,
+      }))
+    );
+    expect(rpc).toHaveBeenCalledTimes(1);
+    expect(incoming.every((row) => assigned.has(row.id))).toBe(true);
+    expect(assigned.get('new:0')).toBe(existing[0].id);
+    expect(assigned.get('new:1')).toBeNull();
+  });
+
+  it('refuses a context too large to check safely', async () => {
+    const rows = Array.from({ length: DUPLICATE_CONTEXT_MAX_ROWS + 1 }, (_, i) => ({
+      record_order: i + 1, id: `x:${i}`,
+    }));
+    await expect(assignImportDuplicates(
+      { rpc: jsonRpc({ data: rows, error: null }) } as unknown as SupabaseClient,
+      [{ id: 'x:0', address_street: '1 Main St' }]
+    )).rejects.toThrow('Too many matching leads to check this file safely');
+  });
+
+  // Paging re-ran the lookup per page; a mid-read import could shift rows.
+  it('reads the lookup through the single-snapshot JSON function only', () => {
+    const dedupe = readFileSync(join(process.cwd(), 'src/lib/leads/dedupe.ts'), 'utf8');
+    const migration = readFileSync(
+      join(process.cwd(), 'supabase/migrations/036_duplicate_context_json.sql'),
+      'utf8'
+    );
+    expect(dedupe).toContain("rpc('find_lead_duplicate_context_json'");
+    expect(dedupe).not.toContain("rpc('find_lead_duplicate_context',");
+    expect(dedupe).not.toMatch(/\.range\(/);
+    expect(migration).toContain('FROM public.find_lead_duplicate_context(p_leads) AS context');
+    expect(migration).toMatch(/REVOKE ALL ON FUNCTION public\.find_lead_duplicate_context_json\(JSONB\) FROM anon/);
+    expect(migration).toMatch(/GRANT EXECUTE ON FUNCTION public\.find_lead_duplicate_context_json\(JSONB\) TO service_role/);
   });
 
   it('keeps the generated key and lookup private in the canonical schema', () => {
