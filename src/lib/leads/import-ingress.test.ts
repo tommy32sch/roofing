@@ -188,6 +188,28 @@ describe('indexed import duplicate lookup', () => {
     expect(assigned.get('new:1')).toBeNull();
   });
 
+  // Rows of this file inserted by an interrupted earlier run come back as
+  // "existing" candidates with the incoming ids; they must not become parents.
+  it('never makes an incoming row a duplicate of itself', async () => {
+    const row = {
+      id: '11111111-1111-4111-8111-111111111111',
+      apn: null,
+      address_street: '9 Oak St',
+      address_city: 'Peoria',
+      address_zip: '85345',
+      address_dedupe_key: '9 oak st',
+    };
+    const rpc = jsonRpc({
+      data: [{ ...row, record_order: 1 }, { ...row, record_order: 2 }],
+      error: null,
+    });
+    const assigned = await assignImportDuplicates(
+      { rpc } as unknown as SupabaseClient,
+      [{ id: row.id, address_street: row.address_street, address_city: 'Peoria', address_zip: '85345' }]
+    );
+    expect(assigned.get(row.id)).toBeNull();
+  });
+
   it('refuses a context too large to check safely', async () => {
     const rows = Array.from({ length: DUPLICATE_CONTEXT_MAX_ROWS + 1 }, (_, i) => ({
       record_order: i + 1, id: `x:${i}`,

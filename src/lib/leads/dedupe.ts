@@ -155,6 +155,8 @@ export function assignDuplicates(records: DedupeRecord[]): Map<string, string | 
       const hit = (addrSeen.get(key) || []).find((c) => !addressConflicts(scope, c));
       if (hit) dupOf = hit.id;
     }
+    // A record is never its own original, whatever the input repeats.
+    if (dupOf === r.id) dupOf = null;
     result.set(r.id, dupOf);
 
     if (!dupOf) {
@@ -218,8 +220,17 @@ export async function assignImportDuplicates(
     throw new Error('Too many matching leads to check this file safely');
   }
 
-  const context = (data as DuplicateContextRow[])
+  // An incoming id can also come back as an "existing" candidate: rows of this
+  // same file inserted by an earlier, interrupted run. That is the same lead,
+  // not an original to point at, so keep one row per id — the incoming one,
+  // which the lookup always numbers after every existing row.
+  const byId = new Map<string, DuplicateContextRow>();
+  for (const row of (data as DuplicateContextRow[])
     .slice()
+    .sort((a, b) => Number(a.record_order) - Number(b.record_order))) {
+    byId.set(row.id, row);
+  }
+  const context = [...byId.values()]
     .sort((a, b) => Number(a.record_order) - Number(b.record_order));
   const returnedIds = new Set(context.map((record) => record.id));
 

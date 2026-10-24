@@ -61,6 +61,11 @@ describe('addressConflicts', () => {
 });
 
 describe('assignDuplicates', () => {
+  it('never points a record at itself, even when the input repeats it', () => {
+    const row = { id: 'same', address_street: '9 Oak St', address_city: 'Peoria', address_zip: '85345' };
+    expect(assignDuplicates([row, row]).get('same')).toBeNull();
+  });
+
   const rec = (id: string, street: string | null, extra: Record<string, unknown> = {}) => ({
     id, address_street: street, ...extra,
   });
