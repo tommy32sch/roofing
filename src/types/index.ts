@@ -291,6 +291,7 @@ export interface AppSettings {
   default_lead_status: LeadStatus;
   default_lead_priority: LeadPriority;
   regrid_api_key: string | null;
+  geocode_api_key: string | null;
   auto_enrich_enabled: boolean;
   roof_price_per_square: number | null;
   default_geo_city: string | null;

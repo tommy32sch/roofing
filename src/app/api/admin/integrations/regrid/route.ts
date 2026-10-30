@@ -91,6 +91,7 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ success: false, error: cadenceDecision.error }, { status: 400 });
     }
 
+    const clearKey = body.clear_api_key === true;
     const suppliedKey = typeof body.api_key === 'string' ? body.api_key.trim() : '';
     if (suppliedKey.length > 500) {
       return NextResponse.json({ success: false, error: 'API key is too long' }, { status: 400 });
@@ -107,6 +108,35 @@ export async function PATCH(request: NextRequest) {
         { success: false, error: current.error?.message || 'Regrid settings were not found' },
         { status: 500 }
       );
+    }
+
+    if (clearKey) {
+      const saved = await supabase
+        .from('app_settings')
+        .update({ regrid_api_key: null, auto_enrich_enabled: false })
+        .eq('id', 'default')
+        .select('auto_enrich_enabled')
+        .single();
+      if (saved.error || !saved.data) {
+        return NextResponse.json(
+          { success: false, error: saved.error?.message || 'Regrid settings were not updated' },
+          { status: 500 }
+        );
+      }
+      await saveSingletonConnection(supabase, {
+        provider: 'regrid',
+        name: 'Regrid property enrichment',
+        paused: true,
+        expectedCadenceMinutes: cadenceDecision.value,
+      });
+      return NextResponse.json({
+        success: true,
+        configuration: {
+          secretStored: false,
+          autoEnrichEnabled: false,
+          expectedCadenceMinutes: cadenceDecision.value,
+        },
+      });
     }
 
     const apiKey = suppliedKey || current.data.regrid_api_key?.trim() || '';

@@ -19,16 +19,24 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
-import type { IntegrationApiKey, WebhookLog, LeadSource } from '@/types';
+import type { EmailImportLog, IntegrationApiKey, WebhookLog, LeadSource } from '@/types';
 import { PageHeader } from '@/components/layout/page-header';
 import { EmptyState } from '@/components/layout/empty-state';
 import { DataErrorState } from '@/components/layout/data-error-state';
+import { EmailImportPanel } from '@/components/integrations/email-import-panel';
+import { RegridPanel } from '@/components/integrations/regrid-panel';
+import { SetupCodePanel } from '@/components/integrations/setup-code-panel';
 
 export default function IntegrationsPage() {
   const [keys, setKeys] = useState<IntegrationApiKey[]>([]);
   const [revokeTarget, setRevokeTarget] = useState<IntegrationApiKey | null>(null);
   const [logs, setLogs] = useState<WebhookLog[]>([]);
   const [sources, setSources] = useState<LeadSource[]>([]);
+  const [emailLogs, setEmailLogs] = useState<EmailImportLog[]>([]);
+  const [regridConfigured, setRegridConfigured] = useState(false);
+  const [autoEnrich, setAutoEnrich] = useState(false);
+  const [emailEnabled, setEmailEnabled] = useState(false);
+  const [allowedEmails, setAllowedEmails] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [newKeyName, setNewKeyName] = useState('');
@@ -49,27 +57,39 @@ export default function IntegrationsPage() {
     setLoading(true);
     setLoadError('');
     try {
-      const [keysRes, logsRes, sourcesRes] = await Promise.all([
+      const [keysRes, logsRes, sourcesRes, settingsRes, emailLogsRes] = await Promise.all([
         fetch('/api/admin/integrations'),
         fetch('/api/admin/integrations/logs'),
         fetch('/api/admin/leads/sources'),
+        fetch('/api/admin/settings'),
+        fetch('/api/admin/integrations/email-logs'),
       ]);
 
-      const [keysData, logsData, sourcesData] = await Promise.all([
+      const [keysData, logsData, sourcesData, settingsData, emailLogsData] = await Promise.all([
         keysRes.json().catch(() => null),
         logsRes.json().catch(() => null),
         sourcesRes.json().catch(() => null),
+        settingsRes.json().catch(() => null),
+        emailLogsRes.json().catch(() => null),
       ]);
 
       if (!keysRes.ok || !keysData?.success ||
           !logsRes.ok || !logsData?.success ||
-          !sourcesRes.ok || !sourcesData?.success) {
+          !sourcesRes.ok || !sourcesData?.success ||
+          !settingsRes.ok || !settingsData?.success || !settingsData.settings) {
         throw new Error('Could not load integration data');
       }
 
       setKeys(keysData.keys);
       setLogs(logsData.logs);
       setSources(sourcesData.sources);
+      setRegridConfigured(settingsData.settings.regrid_configured === true);
+      setAutoEnrich(settingsData.settings.auto_enrich_enabled === true);
+      setEmailEnabled(settingsData.settings.email_import_enabled === true);
+      setAllowedEmails(settingsData.settings.allowed_sender_emails ?? []);
+      if (emailLogsRes.ok && emailLogsData?.success) {
+        setEmailLogs(emailLogsData.logs ?? []);
+      }
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : 'Could not load integration data';
       setLoadError(message);
@@ -166,7 +186,7 @@ export default function IntegrationsPage() {
     <div className="space-y-6">
       <PageHeader
         title="Integrations"
-        description="Webhooks and API keys for services that send you leads"
+        description="Webhooks, Regrid enrichment, and email import for inbound leads"
       />
 
       {/* Webhook URL */}
@@ -333,6 +353,25 @@ export default function IntegrationsPage() {
         </CardContent>
       </Card>
 
+      <RegridPanel
+        configured={regridConfigured}
+        autoEnrich={autoEnrich}
+        onConfiguredChange={({ configured, autoEnrich: next }) => {
+          setRegridConfigured(configured);
+          setAutoEnrich(next);
+        }}
+      />
+
+      <EmailImportPanel
+        enabled={emailEnabled}
+        allowedEmails={allowedEmails}
+        logs={emailLogs}
+        onSaved={({ enabled, allowedEmails: next }) => {
+          setEmailEnabled(enabled);
+          setAllowedEmails(next);
+        }}
+      />
+
       {/* Webhook Logs */}
       <Card>
         <CardHeader>
@@ -388,33 +427,14 @@ export default function IntegrationsPage() {
         </CardContent>
       </Card>
 
-      {/* Setup Instructions */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Setup Guide</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4 text-sm">
-          <div>
-            <h3 className="font-semibold mb-1">BatchLeads &quot;Push to CRM&quot;</h3>
-            <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
-              <li>Create an API key above with &quot;BatchLeads&quot; as the source</li>
-              <li>In BatchLeads, go to Settings &rarr; Webhooks</li>
-              <li>Add a new webhook with your Webhook URL above</li>
-              <li>Add the API key in the custom header as <code className="bg-muted px-1 rounded">x-api-key</code></li>
-              <li>Map the fields and save</li>
-            </ol>
-          </div>
-          <div>
-            <h3 className="font-semibold mb-1">cURL Example</h3>
-            <pre className="bg-muted rounded-md p-3 text-xs overflow-x-auto whitespace-pre-wrap">
-{`curl -X POST ${webhookUrl || 'https://your-app.vercel.app/api/webhooks/inbound'} \\
+      <SetupCodePanel
+        title="Webhook setup notes"
+        summary="Create an API key, then send a POST with the x-api-key header. BatchLeads uses Settings → Webhooks with this URL."
+        code={`curl -X POST ${webhookUrl || 'https://your-app.vercel.app/api/webhooks/inbound'} \\
   -H "Content-Type: application/json" \\
   -H "x-api-key: YOUR_API_KEY" \\
   -d '[{"first_name":"John","last_name":"Doe","phone":"555-123-4567","address":"123 Main St","city":"Dallas","state":"TX","zip":"75201"}]'`}
-            </pre>
-          </div>
-        </CardContent>
-      </Card>
+      />
 
       <Dialog open={revokeTarget !== null} onOpenChange={(o) => { if (!o) setRevokeTarget(null); }}>
         <DialogContent>

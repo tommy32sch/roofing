@@ -2,6 +2,7 @@ import {
   Home, Users, Map, CalendarDays, ScrollText, TrendingUp,
   Upload, UserCog, BarChart2, Webhook, Settings, PlusCircle, Sun,
 } from 'lucide-react';
+import { settingsNavLocation } from '@/lib/settings/sections';
 import type { UserRole } from '@/types';
 
 /**
@@ -78,6 +79,9 @@ export function getNavLocation(pathname: string, role: UserRole): NavLocation {
   if (pathname === '/admin/leads/new') {
     return { section: 'Fieldwork', label: 'New lead' };
   }
+
+  const settingsLocation = settingsNavLocation(pathname);
+  if (settingsLocation) return settingsLocation;
 
   for (const group of getNavGroups(role)) {
     const item = group.items.find((candidate) => isNavActive(pathname, candidate.href));

@@ -1,11 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, CheckCircle2, CloudHail, Mail, Wind } from 'lucide-react';
 import { toast } from 'sonner';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -41,8 +40,24 @@ interface AlertUser {
 
 type EmailMode = 'disabled' | 'test' | 'production';
 
-export function StormAlertsCard() {
+function ruleSnapshot(rule: StormAlertRule) {
+  return JSON.stringify({
+    enabled: rule.enabled,
+    radius_miles: rule.radius_miles,
+    hail_min_inches: rule.hail_min_inches,
+    wind_min_mph: rule.wind_min_mph,
+    include_unmeasured_wind: rule.include_unmeasured_wind,
+    subscriber_user_ids: [...rule.subscriber_user_ids].sort(),
+  });
+}
+
+export function StormAlertsCard({
+  onDirtyChange,
+}: {
+  onDirtyChange?: (dirty: boolean, summary?: string) => void;
+}) {
   const [rules, setRules] = useState<StormAlertRule[]>([]);
+  const [savedRules, setSavedRules] = useState<StormAlertRule[]>([]);
   const [users, setUsers] = useState<AlertUser[]>([]);
   const [emailConfigured, setEmailConfigured] = useState(false);
   const [emailMode, setEmailMode] = useState<EmailMode>('disabled');
@@ -68,14 +83,14 @@ export function StormAlertsCard() {
           setUnavailable(true);
           return;
         }
-        setRules(
-          (settingsData.rules ?? []).map((rule: Omit<StormAlertRule, 'subscriber_user_ids'>) => ({
-            ...rule,
-            subscriber_user_ids: (rule.subscriptions ?? [])
-              .filter((subscription) => subscription.email_enabled)
-              .map((subscription) => subscription.user_id),
-          }))
-        );
+        const nextRules = (settingsData.rules ?? []).map((rule: Omit<StormAlertRule, 'subscriber_user_ids'>) => ({
+          ...rule,
+          subscriber_user_ids: (rule.subscriptions ?? [])
+            .filter((subscription) => subscription.email_enabled)
+            .map((subscription) => subscription.user_id),
+        }));
+        setRules(nextRules);
+        setSavedRules(nextRules);
         setEmailConfigured(settingsData.email_configured === true);
         setEmailMode(
           settingsData.email_mode === 'test' || settingsData.email_mode === 'production'
@@ -97,6 +112,18 @@ export function StormAlertsCard() {
       cancelled = true;
     };
   }, []);
+
+  const dirtySummary = useMemo(() => {
+    const dirtyRule = rules.find((rule) => {
+      const saved = savedRules.find((candidate) => candidate.market_id === rule.market_id);
+      return !saved || ruleSnapshot(saved) !== ruleSnapshot(rule);
+    });
+    return dirtyRule ? `${dirtyRule.market_name} storm alerts` : '';
+  }, [rules, savedRules]);
+
+  useEffect(() => {
+    onDirtyChange?.(dirtySummary.length > 0, dirtySummary);
+  }, [dirtySummary, onDirtyChange]);
 
   function updateRule(marketId: number, patch: Partial<StormAlertRule>) {
     setRules((prev) =>
@@ -133,11 +160,18 @@ export function StormAlertsCard() {
         return;
       }
       if (data.rule) {
-        updateRule(rule.market_id, {
+        const next = {
           ...data.rule,
           subscriber_user_ids: (data.rule.subscriptions ?? [])
             .filter((subscription: AlertSubscription) => subscription.email_enabled)
             .map((subscription: AlertSubscription) => subscription.user_id),
+        } as StormAlertRule;
+        setRules((prev) => prev.map((item) => (item.market_id === rule.market_id ? { ...item, ...next } : item)));
+        setSavedRules((prev) => {
+          const exists = prev.some((item) => item.market_id === rule.market_id);
+          return exists
+            ? prev.map((item) => (item.market_id === rule.market_id ? { ...item, ...next } : item))
+            : [...prev, next];
         });
       }
       toast.success(`${rule.market_name} storm alerts saved`);
@@ -173,15 +207,7 @@ export function StormAlertsCard() {
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">Storm alerts</CardTitle>
-        <CardDescription>
-          Notify subscribed team members when preliminary NOAA hail or wind reports meet a
-          market&apos;s thresholds.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
+    <div className="space-y-4">
         {loading && <p className="text-sm text-muted-foreground">Loading alert settings...</p>}
 
         {!loading && unavailable && (
@@ -375,6 +401,7 @@ export function StormAlertsCard() {
 
                   <div className="flex justify-end">
                     <Button
+                      className="min-h-11"
                       onClick={() => save(rule)}
                       disabled={savingMarketId === rule.market_id}
                     >
@@ -386,7 +413,6 @@ export function StormAlertsCard() {
             })}
           </>
         )}
-      </CardContent>
-    </Card>
+    </div>
   );
 }

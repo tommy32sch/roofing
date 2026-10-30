@@ -1,10 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
-import { Building2, Plus } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import type { Market } from '@/types';
@@ -17,7 +16,11 @@ import { useAppShell } from '@/components/providers/app-shell-provider';
  * rows rather than a hardcoded list: with one app-wide region, a street-only
  * Minnesota address resolves into Arizona.
  */
-export function MarketsCard() {
+export function MarketsCard({
+  onDirtyChange,
+}: {
+  onDirtyChange?: (dirty: boolean, summary?: string) => void;
+}) {
   const { hasIssue, markets: shellMarkets, refresh } = useAppShell();
   const [drafts, setDrafts] = useState<Record<number, Partial<Market>>>({});
   const markets = shellMarkets.map((market) => ({ ...market, ...drafts[market.id] }));
@@ -27,6 +30,23 @@ export function MarketsCard() {
   const [newName, setNewName] = useState('');
   const [newCity, setNewCity] = useState('');
   const [newState, setNewState] = useState('');
+
+  const dirtySummary = useMemo(() => {
+    const edited = shellMarkets.some((market) => {
+      const draft = drafts[market.id];
+      if (!draft) return false;
+      return (draft.name ?? market.name) !== market.name
+        || (draft.default_geo_city ?? market.default_geo_city ?? '') !== (market.default_geo_city ?? '')
+        || (draft.default_geo_state ?? market.default_geo_state ?? '') !== (market.default_geo_state ?? '');
+    });
+    if (edited) return 'Office details';
+    if (newName.trim() || newCity.trim() || newState.trim()) return 'New office';
+    return '';
+  }, [drafts, newCity, newName, newState, shellMarkets]);
+
+  useEffect(() => {
+    onDirtyChange?.(dirtySummary.length > 0, dirtySummary);
+  }, [dirtySummary, onDirtyChange]);
 
   function edit(id: number, patch: Partial<Market>) {
     setDrafts((current) => ({
@@ -91,20 +111,7 @@ export function MarketsCard() {
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base flex items-center gap-2">
-          <Building2 className="h-4 w-4" />
-          Markets
-        </CardTitle>
-        <CardDescription>
-          Your offices. Every lead belongs to one, chosen when you import a list. Reps get a
-          home market so their Leads, Map and reporting default to their own office. Each
-          market&apos;s region is used to place street-only addresses on the map, so a
-          Minnesota street never lands in Arizona.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
+    <div className="space-y-4">
         {marketLoadFailed ? (
           <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-sm">
             Offices could not be loaded. Try again from the workspace notice above.
@@ -144,6 +151,7 @@ export function MarketsCard() {
               </div>
               <Button
                 variant="outline"
+                className="min-h-11"
                 onClick={() => save(m)}
                 disabled={savingId === m.id || !m.name.trim()}
               >
@@ -181,12 +189,15 @@ export function MarketsCard() {
               onChange={(e) => setNewState(e.target.value)}
             />
           </div>
-          <Button onClick={add} disabled={marketLoadFailed || adding || !newName.trim()}>
+          <Button
+            className="min-h-11"
+            onClick={add}
+            disabled={marketLoadFailed || adding || !newName.trim()}
+          >
             <Plus className="h-4 w-4 mr-1" />
             {adding ? 'Adding…' : 'Add'}
           </Button>
         </div>
-      </CardContent>
-    </Card>
+    </div>
   );
 }
