@@ -1,3 +1,7 @@
+> **Start here when coming back:** `tasks/product-plan.md` — the 2026-09-01
+> review and the prioritized plan to make the product worth paying for.
+> Phases 7 and 8 below are frozen by that plan until reps use the product.
+
 # Markets (AZ / MN offices)
 
 Goal: split leads by market/office so each rep works their own book, and so
@@ -1550,9 +1554,8 @@ Architectural decisions:
 
 ## Remaining product interface roadmap
 
-Phases 0–5 are implemented in the working tree. Settings, Performance, and
-Buyer Profiles remain later work. Migrations 032–034 are not yet on the live
-database — do not deploy this stack until they are applied.
+Phases 0–6 are implemented in the working tree. Performance and Buyer Profiles
+remain later work. Migrations 032–034 are live in Supabase.
 
 Goal: bring Dashboard, Calendar, Import, Activity, Integrations, Settings,
 Performance, and Analytics to the same workflow-based quality as Today, Leads,
@@ -1621,30 +1624,30 @@ what needs attention, what changed, and where to act.
 
 - [x] Put urgent exceptions first: overdue follow-ups, unassigned leads,
   appointments missing required ownership, and active deals with no recent work.
-- [ ] Define stalled-work thresholds in one tested domain module. Show the rule
+- [x] Define stalled-work thresholds in one tested domain module. Show the rule
   that caused each exception instead of using an unexplained warning.
-- [ ] Add a compact KPI strip for new leads, contacts, appointments, sold jobs,
+- [x] Add a compact KPI strip for new leads, contacts, appointments, sold jobs,
   and revenue. Use the same selected period for every KPI.
-- [ ] Replace the large intake chart with a compact trend that supports the
+- [x] Replace the large intake chart with a compact trend that supports the
   current decision and does not dominate the first screen.
-- [ ] Show the current funnel as a ledger with counts, value, and direct links to
+- [x] Show the current funnel as a ledger with counts, value, and direct links to
   the matching Leads queue.
-- [ ] Show a team pulse for knocks, calls, appointments, outcomes, and sold jobs.
-- [ ] Keep Recent Leads only when it adds new information; otherwise link to the
+- [x] Show a team pulse for knocks, calls, appointments, outcomes, and sold jobs.
+- [x] Keep Recent Leads only when it adds new information; otherwise link to the
   Lead Book and use the space for exceptions.
-- [ ] Add clear `View work` links that open URL-filtered Leads, Calendar, or
+- [x] Add clear `View work` links that open URL-filtered Leads, Calendar, or
   Activity views.
-- [ ] Keep refresh and show the exact `asOf` time.
+- [x] Keep refresh and show the exact `asOf` time.
 
 #### Data and API plan
 
-- [ ] Add a dedicated operations-overview response model instead of expanding
+- [x] Add a dedicated operations-overview response model instead of expanding
   the generic stats response without a boundary.
-- [ ] Reuse existing lead, appointment, knock, call, and contact-activity query
+- [x] Reuse existing lead, appointment, knock, call, and contact-activity query
   helpers so totals use the same policy as their source pages.
-- [ ] Return exceptions, metrics, funnel, team pulse, prior-period comparison,
+- [x] Return exceptions, metrics, funnel, team pulse, prior-period comparison,
   and destination filter URLs in one scoped response.
-- [ ] Keep partial sections usable when one optional query fails.
+- [x] Keep partial sections usable when one optional query fails.
 
 #### Exit criteria
 
@@ -1662,28 +1665,28 @@ visits instead of a passive date grid.
 
 #### Planned experience
 
-- [ ] Keep a desktop week schedule, use a compact month overview, and replace the
+- [x] Keep a desktop week schedule, use a compact month overview, and replace the
   phone grid with a chronological agenda.
-- [ ] Add admin filters for All Team, one setter, and one closer. Keep reps fixed
+- [x] Add admin filters for All Team, one setter, and one closer. Keep reps fixed
   to their permitted appointments.
-- [ ] Show appointment type, time, homeowner, address, setter, closer, status,
+- [x] Show appointment type, time, homeowner, address, setter, closer, status,
   and outcome in a clear hierarchy.
-- [ ] Add 44 px Call, Directions, Open Lead, and Record Outcome actions.
-- [ ] Remove Call when the lead is DNC. Keep navigation and lead access.
-- [ ] Add an unscheduled-work rail for due follow-ups that need an appointment or
+- [x] Add 44 px Call, Directions, Open Lead, and Record Outcome actions.
+- [x] Remove Call when the lead is DNC. Keep navigation and lead access.
+- [x] Add an unscheduled-work rail for due follow-ups that need an appointment or
   a new date.
-- [ ] Show conflicts, missing ownership, and overdue outcome recording as visible
+- [x] Show conflicts, missing ownership, and overdue outcome recording as visible
   schedule exceptions.
-- [ ] Preserve week and month navigation in the URL.
+- [x] Preserve week and month navigation in the URL.
 
 #### Data and API plan
 
-- [ ] Extend the appointment query contract with validated team scope and the
+- [x] Extend the appointment query contract with validated team scope and the
   display fields required by the schedule.
-- [ ] Return setter and closer names with the appointment instead of resolving
+- [x] Return setter and closer names with the appointment instead of resolving
   account IDs in the UI.
-- [ ] Reuse the existing appointment-outcome mutation and result dialogs.
-- [ ] Define one schedule-work response for follow-ups that are due but do not
+- [x] Reuse the existing appointment-outcome mutation and result dialogs.
+- [x] Define one schedule-work response for follow-ups that are due but do not
   already have a future appointment.
 
 #### Exit criteria
@@ -1702,31 +1705,31 @@ lead is created.
 
 #### Planned architecture
 
-- [ ] Evolve `lead_import_batches` into a durable import-job state machine with
+- [x] Evolve `lead_import_batches` into a durable import-job state machine with
   `uploaded`, `review_ready`, `processing`, `completed`, `failed`, and
   `cancelled` states.
-- [ ] Store the original file in a private Supabase Storage bucket with a file
+- [x] Store the original file in a private Supabase Storage bucket with a file
   hash, uploader, market, row count, preview summary, and retention policy.
-- [ ] Use one server-side parser and validator for preview and commit. Do not
+- [x] Use one server-side parser and validator for preview and commit. Do not
   create a second client parser that can disagree with production import rules.
-- [ ] Make confirmation idempotent so a retry or double click cannot insert the
+- [x] Make confirmation idempotent so a retry or double click cannot insert the
   same job twice.
-- [ ] Keep the final batch as the durable receipt linked from imported leads.
-- [ ] Add a migration for job state, storage reference, file hash, confirmation
+- [x] Keep the final batch as the durable receipt linked from imported leads.
+- [x] Add a migration for job state, storage reference, file hash, confirmation
   metadata, failure details, and structured preview counts.
 
 #### Planned experience
 
-- [ ] Step 1 — Upload: support file picker, real drag-and-drop, keyboard access,
+- [x] Step 1 — Upload: support file picker, real drag-and-drop, keyboard access,
   file replacement, market selection, and clear file limits.
-- [ ] Step 2 — Review: show detected columns, mapped fields, valid rows, missing
+- [x] Step 2 — Review: show detected columns, mapped fields, valid rows, missing
   required fields, duplicate candidates, DNC handling, and a bounded row sample.
-- [ ] Let the user cancel or replace the file before any lead is written.
-- [ ] Step 3 — Confirm: show an explicit summary of what will import and what
+- [x] Let the user cancel or replace the file before any lead is written.
+- [x] Step 3 — Confirm: show an explicit summary of what will import and what
   will be flagged or skipped.
-- [ ] Step 4 — Receipt: show uploader, market, filename, timestamps, counts,
+- [x] Step 4 — Receipt: show uploader, market, filename, timestamps, counts,
   errors, and direct links to the imported batch in Leads.
-- [ ] Add a recent-imports ledger so a refresh or another session can reopen the
+- [x] Add a recent-imports ledger so a refresh or another session can reopen the
   receipt.
 
 #### Exit criteria
@@ -1745,33 +1748,33 @@ represent one bulk operation without hundreds of identical rows.
 
 #### Planned architecture
 
-- [ ] Add a durable `audit_operations` record for bulk actions with actor,
+- [x] Add a durable `audit_operations` record for bulk actions with actor,
   operation type, market, affected count, safe metadata, and timestamp.
-- [ ] Add `operation_id` to `lead_activities` so detailed per-lead history can
+- [x] Add `operation_id` to `lead_activities` so detailed per-lead history can
   link to the parent operation.
-- [ ] Update bulk mutation routes to create one operation and link every affected
+- [x] Update bulk mutation routes to create one operation and link every affected
   lead activity in the same transaction or server operation boundary.
-- [ ] Do not guess groups from matching text or nearby timestamps. Existing rows
+- [x] Do not guess groups from matching text or nearby timestamps. Existing rows
   without an operation ID remain honest legacy events.
-- [ ] Add indexes for operation, date, actor, type, and lead access patterns.
+- [x] Add indexes for operation, date, actor, type, and lead access patterns.
 
 #### Planned experience
 
-- [ ] Rename the navigation label to Audit Log while keeping the current route
+- [x] Rename the navigation label to Audit Log while keeping the current route
   stable.
-- [ ] Group results by calendar date and show both relative and absolute time.
-- [ ] Render one summary row for a bulk operation with an expandable lead sample
+- [x] Group results by calendar date and show both relative and absolute time.
+- [x] Render one summary row for a bulk operation with an expandable lead sample
   and affected count.
-- [ ] Add lead or address search, date range, event type, market, and user scope.
-- [ ] Store all filters and pagination in the URL.
-- [ ] Use a mobile filter sheet and a flat desktop ledger.
-- [ ] Preserve the deleted-leads panel and its separate permission boundary.
+- [x] Add lead or address search, date range, event type, market, and user scope.
+- [x] Store all filters and pagination in the URL.
+- [x] Use a mobile filter sheet and a flat desktop ledger.
+- [x] Preserve the deleted-leads panel and its separate permission boundary.
 
 #### API plan and exit criteria
 
-- [ ] Extend the API with validated `q`, `from`, `to`, scope, operation, and
+- [x] Extend the API with validated `q`, `from`, `to`, scope, operation, and
   cursor or page parameters.
-- [ ] Return operation summaries and individual events as explicit union types.
+- [x] Return operation summaries and individual events as explicit union types.
 - A bulk assignment produces one audit summary, while each lead retains its own
   linked history.
 - Search and filters cannot reveal leads outside the caller's visibility.
@@ -1784,29 +1787,32 @@ or failing, and give the admin one place to fix it.
 
 #### Planned architecture
 
-- [ ] Define one `IntegrationConnection` response model with provider, state,
+- [x] Define one `IntegrationConnection` response model with provider, state,
   last attempt, last success, last failure, expected cadence, recent volume,
   configuration state, and safe error summary.
-- [ ] Build provider adapters for webhook API keys, email import, and Regrid.
+- [x] Build provider adapters for webhook API keys, email import, and Regrid.
   Keep provider secrets in their existing secure storage.
-- [ ] Add durable integration health state so status does not depend on only the
+- [x] Add durable integration health state so status does not depend on only the
   last 50 visible log rows.
-- [ ] Update each provider path to record attempts, successes, failures, and
+- [x] Update each provider path to record attempts, successes, failures, and
   consecutive failures at the source of truth.
-- [ ] Define health rules for Not configured, Healthy, Stale, Failing, and
+- [x] Define health rules for Not configured, Healthy, Stale, Failing, and
   Paused. A connection without an expected cadence must not be called Stale.
-- [ ] Isolate provider failures so one failed request cannot hide every other
+- [x] Isolate provider failures so one failed request cannot hide every other
   connection.
 
 #### Planned experience
 
 - [ ] Replace setup cards with a compact connection ledger and clear state.
+      Health API exists; the Integrations page still uses webhook cards plus the
+      Regrid and email panels from Phase 6 (local, uncommitted).
 - [ ] Add provider detail panels with configuration, recent runs, error detail,
   test connection, pause or resume, and setup guidance.
-- [ ] Move Regrid and email-import configuration out of Settings and into the
-  relevant integration detail.
+- [x] Move Regrid and email-import configuration out of Settings and into the
+  relevant integration detail. (Local Phase 6 work; not on origin/main yet.)
 - [ ] Keep API-key reveal behavior safe: show a new secret once and never return
-  the full stored key later.
+  the full stored key later. New keys are shown once; the webhook list still
+  renders `key.api_key`.
 - [ ] Add in-app stale or failure warnings. External alert delivery remains a
   separate decision until owned email delivery is enabled.
 
@@ -1823,26 +1829,40 @@ or failing, and give the admin one place to fix it.
 Objective: replace the long card stack with stable, deep-linkable settings
 areas and remove integration setup from general company configuration.
 
+Note 2026-08-18: live Supabase already has migrations 032–034
+(`lead_import_batches.status`, `audit_operations`, `integration_connections`,
+`integration_runs`, and `lead_activities.operation_id`). The earlier “do not
+deploy until applied” hold is closed.
+
+Implementation decisions:
+- Nested routes: `/admin/settings/{company,markets,lead-rules,mapping,notifications}`.
+  `/admin/settings` redirects to company.
+- GET `/api/admin/settings` returns a public DTO. API keys never leave the server.
+- PATCH `/api/admin/settings` updates company, lead-rule, and mapping fields only.
+  An empty secret field leaves the stored key unchanged. Regrid and email import
+  write through their Integrations routes so there is one save path each.
+- Section nav plus a document click guard warn before unsaved changes are lost.
+
 #### Planned information architecture
 
-- [ ] Create internal settings navigation for Company, Markets, Lead Rules,
+- [x] Create internal settings navigation for Company, Markets, Lead Rules,
   Mapping, and Notifications.
-- [ ] Use stable nested routes or URL sections so a link opens the exact setting.
-- [ ] Keep Regrid, webhook, and email-import setup in Integrations only.
-- [ ] Keep storm delivery thresholds and recipients under Notifications.
-- [ ] Keep roof pricing and default lead behavior under Lead Rules.
-- [ ] Keep office region and geocoding defaults under Markets and Mapping.
+- [x] Use stable nested routes or URL sections so a link opens the exact setting.
+- [x] Keep Regrid, webhook, and email-import setup in Integrations only.
+- [x] Keep storm delivery thresholds and recipients under Notifications.
+- [x] Keep roof pricing and default lead behavior under Lead Rules.
+- [x] Keep office region and geocoding defaults under Markets and Mapping.
 
 #### Planned behavior
 
-- [ ] Give each section its own loading and error boundary.
-- [ ] Track saved and changed values. Warn before leaving a section with unsaved
+- [x] Give each section its own loading and error boundary.
+- [x] Track saved and changed values. Warn before leaving a section with unsaved
   changes.
-- [ ] Use one clear save action per section and confirm which fields changed.
-- [ ] Mask secret fields and never place saved secrets back into normal text
+- [x] Use one clear save action per section and confirm which fields changed.
+- [x] Mask secret fields and never place saved secrets back into normal text
   inputs.
-- [ ] Keep all settings routes admin-only on both the page and API.
-- [ ] Replace long setup code blocks with a short summary and an expandable copy
+- [x] Keep all settings routes admin-only on both the page and API.
+- [x] Replace long setup code blocks with a short summary and an expandable copy
   panel only where setup code is still required.
 
 #### Exit criteria
@@ -1853,6 +1873,22 @@ areas and remove integration setup from general company configuration.
 - Unsaved changes cannot be lost without a warning.
 - No database migration is expected beyond any health-state migration already
   completed for Integrations.
+
+#### Review — 2026-08-18
+
+- Settings is now five nested routes under a shared work rail: Company, Markets,
+  Lead rules, Mapping, and Notifications. `/admin/settings` opens Company.
+- GET `/api/admin/settings` returns a public DTO. Stored Regrid and geocoder
+  keys never leave the server. An empty secret field leaves the stored key
+  unchanged. Settings PATCH rejects Regrid and email-import fields.
+- Regrid and email import save only through their Integrations routes. Setup
+  scripts sit behind expandable copy panels.
+- Each section loads and fails on its own. A document click guard and
+  `beforeunload` warn before unsaved changes are lost. Save bars name the
+  changed fields.
+- Verified locally: focused settings/integration tests, TypeScript, changed-file
+  ESLint, and `git diff --check`. Not deployed. No signed-in browser pass in
+  this session.
 
 ### Phase 7 — Performance: Team Scoreboard
 
@@ -1956,3 +1992,225 @@ sample as a confident advertising recommendation.
 
 Do not start a later phase by adding a temporary version of a dependency that
 an earlier phase is designed to own.
+
+## Admin lead deletion (single + bulk)
+
+Goal (2026-10-22): an admin can delete one lead or many leads, and can find the
+option. Owner chose "label the existing button + add bulk delete".
+
+Found before building: single delete already existed — an unlabelled red trash
+icon on Lead Detail, admin-only, with a `lead_deletions` snapshot. It failed
+silently on an error response. The queue's selection bar had no delete.
+
+Design:
+- One deletion path for single and bulk: migration 035
+  `delete_leads_with_audit(actor, lead_ids[], dry_run)`. It locks the leads,
+  writes one `lead_deletions` row per lead with destroyed-child counts, and
+  deletes, all in one transaction (same pattern as
+  `apply_bulk_assignment_with_audit`). Service-role only; actor must be admin
+  in the DB. Max 500 IDs. `dry_run` returns the same counts without writing,
+  so the preview and the audit record use one definition.
+- Server helper `deleteLeadsWithAudit()` calls the RPC, validates the receipt,
+  then removes the deleted leads' photo objects from Storage (they were
+  orphaned before).
+- `POST /api/admin/leads/bulk-delete` (admin-only, middleware + in-route).
+- Queue: admin "Delete" in the selection bar → dialog with a dry-run preview of
+  the fieldwork lost; operator must type the lead count to confirm.
+- Lead Detail: labelled "Delete lead" button, real error toast, busy state,
+  lists the knocks/calls/appointments that go with the lead.
+
+- [x] Migration 035 + regenerate schema.sql
+- [x] Server helper + pure validators (unit tests)
+- [x] Single DELETE route uses the helper; bulk-delete route
+- [x] Middleware admin-only prefix + authz guard test
+- [x] BulkDeleteDialog + queue selection bar button
+- [x] Lead Detail labelled button + error handling
+- [x] Contract tests; typecheck, tests, lint, build
+- [x] Run the SQL against a real Postgres before the live DB
+- [x] Review workflow: 1 confirmed finding (deleting the last queue page left an
+      out-of-range page) — fixed in the API (PGRST103 → real total) and the queue
+      (`leadPageToStepBackTo`)
+- [x] Apply 035 to live DB, deploy, verify on the live URL (needs owner OK)
+
+### Review — 2026-10-22
+
+- Commit `3fbc507` pushed to `origin/main`; Vercel auto-deployed it. The owner
+  confirmed delete works on https://roofing-ebon.vercel.app.
+- Migration 035 is live in `xgpwxmurbkbtbqtzzjqc`. Live read-only dry runs:
+  admin actor returns a complete receipt and deletes nothing; a non-admin actor
+  is refused ("Only admins can delete leads").
+- The owner first ran 035 in the other Supabase project
+  (`umwdwhnltgrewpkvgsqe`) and was told to drop it there with
+  `DROP FUNCTION IF EXISTS public.delete_leads_with_audit(UUID, UUID[], BOOLEAN);`.
+  Not verified from here (no access to that project).
+- SQL verified before the live DB: full 35-migration schema loaded in PGlite
+  0.5.8 with Supabase stubs; 21 behavior checks (guards, dry run, snapshot
+  fields and counts, cascade, photo paths, privileges, rollback) passed.
+- Local: 1,196 tests, typecheck, changed-file ESLint, production build,
+  `git diff --check`. The commit alone (clean worktree, without the
+  uncommitted settings work): typecheck + 1,178 tests.
+- Review workflow (3 reviewers + verifier): 1 confirmed finding — fixed.
+- Backup before the migration: `backups/backup-2026-10-22T21-35-51-729Z`.
+- Follow-up `c1eb072`: Delete added to the Map selection bar (same dialog);
+  a delete also clears drawn areas and refreshes territory progress. Vercel
+  reported the deployment complete.
+- Not covered: the Deleted leads panel approves 20 at a time, so a large bulk
+  delete takes several "Approve all" clicks.
+
+## "Say it" knock logging (AI draft, rep confirms)
+
+Goal (2026-10-22): at the door a rep types or dictates one sentence ("not home,
+try Thursday after 5") and gets a proposed knock result, notes and follow-up
+date to confirm. Owner chose Claude Haiku 5.5 for cost (~$0.0005 per draft).
+
+Facts that shaped the design (read-only mapping workflow):
+- A knock saves only `disposition` + `notes` (record_lead_knock, offline
+  outbox, idempotent client_id). `follow_up_date` is a separate, online-only
+  DATE PATCH; there is no follow-up time field, so a time goes into notes.
+- In-page microphone is blocked (`microphone=()`), and Web Speech is unreliable
+  in iOS PWAs. The phone keyboard's own dictation works, so v1 is a text field.
+- All knock UI already goes through `logLeadResult` on the map page, which
+  drops notes today.
+
+Design (v1):
+- Works on a lead that is already chosen (territory panel current door, and
+  the Full result sheet). No address matching: the model never picks a house.
+- `POST /api/admin/leads/[leadId]/knock-draft` returns a proposal only and never
+  writes. authorizeLeadAccess, per-user rate limit, refuses DNK leads, 503 when
+  `ANTHROPIC_API_KEY` is unset. Sends the model only the sentence, today's date
+  in the lead's market timezone, and the lead's street (to flag a mismatch) — no
+  names, phones or emails.
+- Structured output (zod): disposition | null, notes, follow-up as a relative
+  spec (days / weekday / date); the server turns it into a date in the market
+  timezone, bounded to 0–90 days. Date math is code, not model.
+- Confirm card: rep can change the result, edit notes, change or clear the date,
+  then Save → `logLeadResult` (now with notes) → outbox; then the follow-up date
+  via the existing PATCH. Appointment/contract proposals still open the
+  existing modals.
+- Feature is hidden for everyone until the key is set (app shell flag).
+
+- [x] Add @anthropic-ai/sdk 0.132.1
+- [x] Pure module: schema, prompt, follow-up resolver, proposal parser (tests)
+- [x] Server call + route (tests: authz, never writes, rate limit, DNK)
+- [x] App shell flag; env docs
+- [x] KnockDraftField + wire into territory panel and result sheet; notes
+      through logLeadResult; shared follow-up save
+- [x] Typecheck, tests, lint, build; review workflow (6 confirmed findings, all
+      fixed: no SDK retry + request abort, failed save keeps the draft, no
+      follow-up date for appointment/contract/DNK, invalid dates, stale
+      FollowUpMenu label, rate-limit text). Committed `8159277`, not pushed
+- [ ] Owner: create Anthropic key + spend limit, add to Vercel; then live test
+- [ ] Deeper check (once the key exists): ~30 labeled rep sentences through the
+      real draft function — result and date accuracy, every miss listed; one
+      full test on a real iPhone with keyboard dictation
+
+## Next up (owner request 2026-10-24, after "Say it" ships)
+
+- [x] Select 500 leads at once for bulk actions — Per page 50 · 500 · All;
+      500 is derived from the bulk caps (`d349a2b`, live)
+- [x] Readable lead addresses: `/admin/leads/jane-smith-3f9c2a1b` (name + first
+      8 hex of the id); old UUID links redirect; `leadPath()` builds every link
+      (`db360e1`). Live data: 1,689 leads, 1,689 distinct codes
+- [x] Security follow-up on the import fix: the paged duplicate read could drop
+      a candidate if an import landed mid-read. Migration 036
+      `find_lead_duplicate_context_json` returns one snapshot as one JSON value;
+      applied live, real 1,084-row file checks in one call (`0b5e09b`)
+- [x] Import failures — root cause was NOT a missing field: the duplicate
+      lookup reply (incoming + existing candidates) was capped at 1,000 rows by
+      Supabase, so the 1,084-row Peoria file failed 7 times with "incomplete
+      context". Now read in pages (`6d92f98`). Verified read-only on the real
+      failed file: 1,084 checked, 470 new, 614 duplicates
+- [ ] Texting via Twilio. 2026-10-27 decision: APPOINTMENT TEXTS FIRST
+      (confirmation, reminders, maybe "on my way") to homeowners who said OK
+      at booking. Bulk texts to purchased lists are on hold: TCPA requires prior
+      written consent for automated marketing texts ($500–$1,500 per text), and
+      carriers reject 10DLC campaigns without consent. Revisit consent-based
+      bulk texting later. Build hidden until TWILIO_* env vars are set; owner
+      creates the Twilio account + registers an appointment-notification
+      campaign
+- [ ] Hardening (from security review, not built): cap candidates per street key
+      inside find_lead_duplicate_context (only the oldest original can be a
+      parent), so a pile of same-street originals cannot inflate the lookup
+
+## Appointment texts (Twilio) — design 2026-10-27
+
+From a read-only mapping workflow (notification pipeline, booking data,
+webhook/platform). Hidden until TWILIO_* env vars are set.
+
+Messages (homeowner, appointment only):
+- confirmation (on booking), rescheduled (time changed), day_before reminder,
+  on_my_way (closer taps on Today). No morning-of SMS in v1: the daily job
+  cannot reach early slots inside quiet hours.
+
+Rules, checked when queued AND again at send time:
+- consent given at booking (per appointment: phone snapshot, who, when);
+- lead not `is_dnc`; number not in `sms_opt_outs` (STOP wins over consent);
+- appointment still `scheduled`, same time, in the future;
+- quiet hours 08:00–21:00 in the market timezone — outside them the row waits.
+
+Pieces:
+- [ ] Migration 037: consent columns on lead_appointments; `sms_opt_outs`;
+      `appointment_sms_deliveries` ledger (dedupe key, pending → processing →
+      sent → delivered/failed, attempts, next_attempt_at, Twilio SID/status,
+      SET NULL on delete); claim RPC with FOR UPDATE SKIP LOCKED. PGlite test.
+- [ ] Pure: message text, quiet hours, phone choice, dedupe keys, status order,
+      Twilio signature check (timingSafeEqual), STOP/START keywords. Tests.
+- [ ] Twilio client (REST fetch, never throws, disabled|test|production)
+- [ ] SMS service: queue + claim + send; cron plans day_before and drains the
+      queue; cron moves to 15:00 UTC (08:00 Phoenix)
+- [ ] Booking paths store consent; queue confirmation/rescheduled; send now
+      when allowed
+- [ ] Webhooks: /api/webhooks/twilio/inbound (STOP/START), /status (callbacks);
+      signature first, no message bodies stored
+- [ ] UI: consent checkbox with the number (AppointmentModal, lead-detail add
+      dialog); "On my way" on Today; features.sms flag
+- [ ] Env docs, contract tests, review workflow, owner pastes 037, push
+
+## Selling to other companies — plan (2026-10-30)
+
+Owner decisions: separate copy per company (own Supabase project, own Vercel
+project, own secrets); 1–2 companies within a month; invoice by hand at first.
+
+The boundary between companies is the deployment: different database, different
+JWT secret, different domain. No shared database, no shared keys. A company's
+settings, markets and integration keys stay single-row-per-copy, so the 72
+service-role routes do not change. If the count passes about 10, revisit a
+shared system.
+
+### 0. Clean base
+- [ ] Separate the Settings work from the texting work; each passes alone
+- [ ] Ship Settings (also stops GET /settings returning secrets)
+- [ ] Rerun the texting review (it did not run); keep texting on a branch until
+      it is reviewed and migration 037 is applied
+
+### 1. Safety net (needed before any outside data)
+- [ ] CI: typecheck, tests, lint on every push
+- [ ] Error monitoring
+- [ ] Separate test database; local development stops using live data
+- [ ] Rate limiting backed by Upstash in production
+- [ ] Restore from backup, actually rehearsed
+
+### 2. Accounts (no one but the user should know their password)
+- [ ] Invitation by email; set your own password
+- [ ] Password reset
+- [ ] Two-factor login for admins
+- [ ] Remove admin-typed passwords
+
+### 3. Set up and update a company copy
+- [ ] Script: new company from nothing (schema, first admin, secrets check)
+- [ ] Script: apply a migration to every copy (ends pasting SQL by hand)
+- [ ] Isolation check: copies share no database, secret or domain; a session
+      from one copy is refused by another
+- [ ] Per-company names in emails and pages; own email sender, Twilio, keys
+- [ ] Data export for a company that leaves
+
+### 4. Owner steps (outside the code)
+- [ ] Paid Vercel and Supabase plans; custom domains
+- [ ] Resend: verified sending domain
+- [ ] Lawyer: terms, privacy policy, data agreement, texting rules
+- [ ] Map tiles and geocoding that allow commercial use
+- [ ] Independent security review
+
+### Proof before a real company goes live
+A session from copy A is refused by copy B; restore rehearsal succeeded; one
+outside person completes set-up alone; independent review signed off.
