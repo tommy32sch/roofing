@@ -47,6 +47,7 @@ interface MapFiltersPanelProps {
   marketValue: string;
   status: string;
   priority: string;
+  assignmentOnly?: boolean;
   blockedReasons?: (string | null)[];
   onMarketChange: (value: string) => void;
   onStatusChange: (value: string) => void;
@@ -59,6 +60,7 @@ export function MapFiltersPanel({
   marketValue,
   status,
   priority,
+  assignmentOnly = false,
   blockedReasons = [],
   onMarketChange,
   onStatusChange,
@@ -72,6 +74,9 @@ export function MapFiltersPanel({
         <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
           Lead view
         </p>
+        {assignmentOnly && (
+          <p className="mt-2 text-xs text-muted-foreground">Only leads assigned to you are shown.</p>
+        )}
         <div className="mt-2 grid gap-2">
           {!marketsLoading && (
             <MarketFilter

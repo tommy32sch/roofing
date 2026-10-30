@@ -1,3 +1,30 @@
+## Map lead visibility audit (2026-10-30)
+
+Goal: show every lead that the current user is allowed to see and make each
+filter or missing location clear.
+
+- [x] Check the live deployment and trace lead loading, access, and map filters.
+- [x] Compare map totals with stored leads without changing lead data.
+- [x] Fix confirmed causes and add focused regression checks.
+- [ ] Run the checks that cover the faults and record the live result.
+
+Review:
+- The live map returned 954 pins and reported 46 missing locations. The shared
+  database had 3,221 non-duplicate leads: 2,708 mapped and 513 without locations.
+  Supabase silently capped the old query at 1,000 rows.
+- The geo route now reads ordered pages until the result is empty. Every page
+  keeps the same access and map filters. A page error fails the full request.
+- Old filter responses can no longer replace a newer map view. The filters
+  panel now explains that sales staff see only their assigned leads.
+- All 513 unmapped leads have complete addresses and were created October 30.
+  No lead data or assignments were changed. Existing Place action remains
+  available to an admin; geocoding those records was not run during this audit.
+- All 1,252 tests, TypeScript, changed-file ESLint, and diff checks passed on
+  the deployment branch. Four new route tests cover pagination and failure.
+- Deployment and signed-in live proof: pending.
+- The fix starts from origin/main so it does not publish the three pending
+  account changes that require separate setup.
+
 > **Start here when coming back:** `tasks/product-plan.md` — the 2026-09-01
 > review and the prioritized plan to make the product worth paying for.
 > Phases 7 and 8 below are frozen by that plan until reps use the product.

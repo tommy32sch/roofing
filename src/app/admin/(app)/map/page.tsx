@@ -224,6 +224,7 @@ export default function MapPage() {
   } | null>(null);
   const mapRef = useRef<LeafletMap | null>(null);
   const territoryFetchIdRef = useRef(0);
+  const leadFetchIdRef = useRef(0);
   const territoryProgressFetchIdRef = useRef(0);
   const territoryArchivePendingRef = useRef(false);
   const executionRefreshRef = useRef<() => void>(() => undefined);
@@ -239,6 +240,7 @@ export default function MapPage() {
   const isAdmin = userRole === 'admin';
 
   const fetchLeads = useCallback(async () => {
+    const requestId = ++leadFetchIdRef.current;
     setLoading(true);
     setLeadError('');
     const params = new URLSearchParams();
@@ -251,13 +253,19 @@ export default function MapPage() {
       if (!res.ok || !data?.success) {
         throw new Error(data?.error || 'Could not load map leads');
       }
+      // A slower request for the previous filters must not replace this view.
+      if (requestId !== leadFetchIdRef.current) return;
       setLeads(data.leads);
       setMissingCoords(data.missing_coords);
     } catch (cause) {
-      setLeadError(cause instanceof Error ? cause.message : 'Could not load map leads');
+      if (requestId === leadFetchIdRef.current) {
+        setLeadError(cause instanceof Error ? cause.message : 'Could not load map leads');
+      }
     } finally {
-      setLoading(false);
-      setHasLoadedOnce(true);
+      if (requestId === leadFetchIdRef.current) {
+        setLoading(false);
+        setHasLoadedOnce(true);
+      }
     }
   }, [status, priority, market]);
 
@@ -292,6 +300,7 @@ export default function MapPage() {
 
   useEffect(() => {
     fetchLeads();
+    return () => { leadFetchIdRef.current += 1; };
   }, [fetchLeads]);
 
   useEffect(() => {
@@ -1342,6 +1351,7 @@ export default function MapPage() {
                     marketValue={marketValue}
                     status={status}
                     priority={priority}
+                    assignmentOnly={!isAdmin}
                     blockedReasons={drawBlockedReasons}
                     onMarketChange={handleMarketChange}
                     onStatusChange={handleStatusChange}
@@ -1699,6 +1709,7 @@ export default function MapPage() {
                     marketValue={marketValue}
                     status={status}
                     priority={priority}
+                    assignmentOnly={!isAdmin}
                     blockedReasons={drawBlockedReasons}
                     onMarketChange={handleMarketChange}
                     onStatusChange={handleStatusChange}
