@@ -517,11 +517,14 @@ export default function ImportPage() {
               <p className="mt-1 text-muted-foreground">
                 DNC numbers stay removed. Duplicate candidates are created with a review flag. A retry uses this same receipt and cannot create a second batch.
               </p>
+              <p className="mt-2 text-muted-foreground">
+                Property addresses are checked for precise map locations during import. Addresses that cannot be placed stay in Leads.
+              </p>
             </div>
             <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-between">
               <Button variant="outline" onClick={() => setStage('review')} disabled={busy}>Back to review</Button>
               <Button onClick={confirmImport} disabled={busy}>
-                {busy ? <><Loader2 className="animate-spin" /> Confirming…</> : `Confirm ${job.preview.willImport} leads`}
+                {busy ? <><Loader2 className="animate-spin" /> Importing and placing leads…</> : `Confirm ${job.preview.willImport} leads`}
               </Button>
             </div>
           </CardContent>
@@ -583,6 +586,9 @@ export default function ImportPage() {
             <div className="flex flex-wrap gap-2">
               <Link href={`/admin/leads?import_batch_id=${job.id}`}>
                 <Button>View imported leads</Button>
+              </Link>
+              <Link href={`/admin/map${job.marketId ? `?market_id=${job.marketId}` : ''}`}>
+                <Button variant="outline">Open map</Button>
               </Link>
               <Button variant="outline" onClick={startAnotherImport}>Import another file</Button>
             </div>

@@ -1,3 +1,47 @@
+## Automatic import locations and current missing pins (2026-10-30)
+
+Goal: run location lookup during file confirmation and fill precise locations
+for the existing 513 leads, using the configured Geocodio service.
+
+Design:
+- Use the provider's batch API with lead IDs as request keys. Send at most
+  50 addresses per request, with at most four requests at once and a shared
+  20-second time budget. Keep completed matches if a later request fails.
+- Accept precise building/parcel results only. Preserve saved locations, skip
+  flagged duplicates, and leave uncertain addresses available for review.
+- Save matched coordinates with new lead records through the existing import
+  inserts. No database migration is needed.
+- Keep the existing durable import claim and retry rules. A lookup failure
+  must not lose leads or prevent the import from completing. The receipt must
+  state how many imported leads still need a map location.
+- Use the same lookup helper for the approved backfill. Save a private
+  coordinate snapshot first and fill only rows that still have no location.
+- Publish only this change; keep the pending account changes out of production.
+
+- [x] Add batch lookup and focused result/failure tests.
+- [x] Connect file confirmation and show remaining locations on the receipt.
+- [x] Place the current leads and record matched and unmatched counts.
+- [ ] Check, deploy, and test the live result.
+
+Review:
+- Automatic lookup runs during file confirmation. Precise matches are saved
+  with new leads. Duplicate candidates are not sent for lookup. Import retries
+  keep existing rows, including saved locations and edited addresses.
+- Provider calls use batches of 50, at most four at a time, with a shared
+  20-second time budget. Service failures retain completed matches and appear
+  on the import receipt with the actual remaining-location count.
+- The owner explicitly approved sending all 513 addresses and future imported
+  addresses to Geocodio. All 513 received precise matches and were saved:
+  zero unmatched, zero skipped, zero save errors, zero remaining in the import.
+- Private before/after coordinate snapshots are under ignored backups/:
+  locations-2026-10-30T23-23-40-634Z.json and its -saved.json companion.
+- No database migration is needed. The existing account changes remain local.
+- All 1,269 tests, TypeScript, changed-file ESLint, and diff checks passed on
+  the isolated release checkout.
+- A fresh signed-in live map load shows 3,221 mapped leads and no missing-
+  coordinates warning. All 513 newly placed leads are included.
+- Automatic-import release deployment and live receipt check are pending.
+
 ## Map lead visibility audit (2026-10-30)
 
 Goal: show every lead that the current user is allowed to see and make each
@@ -6,7 +50,7 @@ filter or missing location clear.
 - [x] Check the live deployment and trace lead loading, access, and map filters.
 - [x] Compare map totals with stored leads without changing lead data.
 - [x] Fix confirmed causes and add focused regression checks.
-- [ ] Run the checks that cover the faults and record the live result.
+- [x] Run the checks that cover the faults and record the live result.
 
 Review:
 - The live map returned 954 pins and reported 46 missing locations. The shared
@@ -21,9 +65,27 @@ Review:
   available to an admin; geocoding those records was not run during this audit.
 - All 1,252 tests, TypeScript, changed-file ESLint, and diff checks passed on
   the deployment branch. Four new route tests cover pagination and failure.
-- Deployment and signed-in live proof: pending.
+- Commit `57e4ebe` deployed successfully to Vercel. In the owner's normal
+  signed-in Safari session at `https://roofing-ebon.vercel.app/admin/map`, a
+  fresh load now shows 2,708 mapped leads and 513 missing locations, matching
+  the database counts. The map tiles and lead pins render. Before the fix,
+  the same fresh signed-in page showed 954 pins and 46 missing locations.
 - The fix starts from origin/main so it does not publish the three pending
   account changes that require separate setup.
+
+### Missing-location check (2026-10-30)
+
+- All 513 remaining leads belong to one upload of 597 records. Their records
+  have not changed since creation. The CSV confirmation route inserts leads
+  but does not run a location lookup; the map's Place action is separate.
+- The configured Geocodio key works. A public-address control returned HTTP
+  200 and a rooftop match.
+- The owner approved sending three sample lead addresses to the existing
+  location services. All three returned HTTP 200 and rooftop matches from
+  Geocodio through the application's normal lookup function. No fallback was
+  needed. This proves those three addresses can be placed, not all 513.
+- No lead records were changed. Approval covered the three-address test;
+  no bulk lookup or coordinate backfill was run.
 
 > **Start here when coming back:** `tasks/product-plan.md` — the 2026-09-01
 > review and the prioritized plan to make the product worth paying for.
@@ -2207,21 +2269,42 @@ shared system.
 ### 0. Clean base
 - [ ] Separate the Settings work from the texting work; each passes alone
 - [ ] Ship Settings (also stops GET /settings returning secrets)
-- [ ] Rerun the texting review (it did not run); keep texting on a branch until
-      it is reviewed and migration 037 is applied
+- [x] Settings shipped (`1ef75ca`); texting moved to `feat/appointment-texts`
+- [ ] Before merging texting: rerun the review (it did not run); treat "STOP
+      texting me" as an opt-out (first word, and the FCC any-reasonable-means
+      rule); keep opt-out history instead of deleting it; refuse new consent for
+      an opted-out or DNC number; audit entry per consent. Each company needs its
+      own Twilio brand and campaign. Apply 037 first
 
 ### 1. Safety net (needed before any outside data)
-- [ ] CI: typecheck, tests, lint on every push
+- [x] CI: typecheck, tests, lint on every push (GitHub run on `9a3a654` passed)
 - [ ] Error monitoring
 - [ ] Separate test database; local development stops using live data
 - [ ] Rate limiting backed by Upstash in production
 - [ ] Restore from backup, actually rehearsed
 
 ### 2. Accounts (no one but the user should know their password)
-- [ ] Invitation by email; set your own password
-- [ ] Password reset
-- [ ] Two-factor login for admins
-- [ ] Remove admin-typed passwords
+- [x] Invitation by email; set your own password
+- [x] Password reset
+- [x] Two-step login, for anyone who turns it on
+- [x] Remove admin-typed passwords
+- [x] Review of the first version: 24 confirmed findings, all fixed. Each attack
+      is a test against the real routes (`account-attack-chains.test.ts`), and
+      the SQL is tested in Postgres (PGlite)
+- [x] Operator scripts: `npm run admin:create`, `npm run admin:recover`. Admins
+      are made only this way, on purpose: no screen can create or take over one
+- [x] Durable wrong-password limit (039): 100 in a row (NIST 800-63B), then only
+      a password reset gets back in. Every path that asks for a password counts
+- [ ] Apply 038 and 039 in Supabase, set `MFA_ENCRYPTION_KEY` and
+      `NEXT_PUBLIC_APP_URL` in Vercel, THEN push. Pushing first locks everyone
+      out: login reads the new columns
+- [ ] Live proof: a real invitation, a reset, two-step login on a phone
+- [ ] Screen for reading `account_events`: recorded now, read only in Supabase
+
+Open risk, owner's decision on 2026-10-30: the live `admin@example.com` account
+keeps the old seed default password. Anyone who tries it gets admin access to all
+live data. New copies cannot have this account: the seed script no longer has a
+default email or password.
 
 ### 3. Set up and update a company copy
 - [ ] Script: new company from nothing (schema, first admin, secrets check)
@@ -2240,4 +2323,5 @@ shared system.
 
 ### Proof before a real company goes live
 A session from copy A is refused by copy B; restore rehearsal succeeded; one
-outside person completes set-up alone; independent review signed off.
+outside person completes set-up alone; independent review signed off; no account
+on the copy uses a known default password.

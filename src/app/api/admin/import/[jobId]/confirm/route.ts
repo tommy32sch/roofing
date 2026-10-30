@@ -21,6 +21,7 @@ import {
   previewDatabaseValues,
 } from '@/lib/leads/import-job.server';
 import { assignmentForNewLead } from '@/lib/leads/lead-visibility';
+import { locateImportAddresses } from '@/lib/leads/import-locations.server';
 import { db } from '@/lib/supabase/server';
 import { isValidUUID } from '@/lib/utils/validation';
 
@@ -222,9 +223,26 @@ export async function POST(
       };
     });
 
+    // Location lookup has a shared time budget. A service failure
+    // must not lose the file's leads. Existing rows remain unchanged on retry.
+    let lookupFailed = false;
+    let locations: Awaited<ReturnType<typeof locateImportAddresses>>['locations'] = new Map();
+    try {
+      const located = await locateImportAddresses(annotatedLeads, job.market_id);
+      locations = located.locations;
+      lookupFailed = located.error !== null;
+    } catch {
+      lookupFailed = true;
+    }
+
     const batchSize = 100;
     for (let i = 0; i < annotatedLeads.length; i += batchSize) {
-      const batch = annotatedLeads.slice(i, i + batchSize);
+      const batch = annotatedLeads.slice(i, i + batchSize).map((lead) => {
+        const location = locations.get(lead.id);
+        return location
+          ? { ...lead, latitude: location.latitude, longitude: location.longitude }
+          : lead;
+      });
       const ids = batch.map((lead) => lead.id);
       const { data: existing, error: existingError } = await supabase
         .from('leads')
@@ -263,6 +281,23 @@ export async function POST(
       }
     }
 
+    // Read the saved count, since retries may keep already placed or edited rows.
+    let locationWarning: string | null = null;
+    const { count: missingLocations, error: locationCountError } = await supabase
+      .from('leads')
+      .select('id', { count: 'exact' })
+      .eq('import_batch_id', jobId)
+      .eq('is_flagged_duplicate', false)
+      .or('latitude.is.null,longitude.is.null')
+      .limit(1);
+    if (locationCountError || missingLocations == null) {
+      locationWarning = 'Map locations could not be counted. Open the map to check placement.';
+    } else if (missingLocations > 0) {
+      locationWarning = `${missingLocations} lead${missingLocations === 1 ? '' : 's'} still need${missingLocations === 1 ? 's' : ''} a map location. ` +
+        (lookupFailed ? 'Automatic placement could not finish. ' : '') +
+        'Open the map and select Place to try again.';
+    }
+
     const imported = annotatedLeads.length;
     const duplicates = annotatedLeads.filter((lead) => lead.is_flagged_duplicate).length;
     const dnc = annotatedLeads.filter((lead) => lead.is_dnc).length;
@@ -275,7 +310,10 @@ export async function POST(
         skipped_count: parsed.skipped,
         duplicate_count: duplicates,
         dnc_count: dnc,
-        preview_errors: parsed.errors.slice(0, 25),
+        preview_errors: [
+          ...(locationWarning ? [locationWarning] : []),
+          ...parsed.errors,
+        ].slice(0, 25),
         completed_at: completedAt,
         confirmation_plan: null,
         confirmation_plan_ready: false,
